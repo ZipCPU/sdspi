@@ -1,0 +1,15 @@
+CAPI=1
+[main]
+
+description = SD-Card controller, using a shared SPI interface
+simulators = verilator
+
+[fileset rtl]
+files = rtl/llsdspi.v rtl/sdspi.v
+file_type = verilogSource
+
+[verilator]
+verilator_options = -Wno-fatal --trace
+include_files = bench/cpp/sdspisim.h
+tb_toplevel   = bench/cpp/sdspisim.cpp
+top_module    = sdspi

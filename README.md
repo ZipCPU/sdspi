@@ -18,7 +18,7 @@ with it, this controller requires external software to be used when interacting
 with the card.  This makes this SDSPI controller both more versatile, in the
 face of potential changes to the card interface, but also less--turn key.
 
-While this core was written for the purpose of being used with the [ZipCPU](/../zipcpu),
+While this core was written for the purpose of being used with the [ZipCPU](https://github.com/ZipCPU/zipcpu),
 as enhanced by the Wishbone DMA controller used by the ZipCPU, nothing in this
 core prevents it from being used with any other architecture that supports
 the 32-bit Wishbone interface of this core.

@@ -16,7 +16,7 @@ provides a lower level interface to the card than these other controllers.
 Whereas the XESS controller will automatically start up the card and interact
 with it, this controller requires external software to be used when interacting
 with the card.  This makes this SDSPI controller both more versatile, in the
-face of potential changes to the card interface, but also less--turn key.
+face of potential changes to the card interface, but also less turn-key.
 
 While this core was written for the purpose of being used with the [ZipCPU](https://github.com/ZipCPU/zipcpu),
 as enhanced by the Wishbone DMA controller used by the ZipCPU, nothing in this
@@ -30,3 +30,11 @@ use the multiple block write or multiple block read commands, restricting us to
 single block read and write commands alone.
 
 For more information, please consult the specification document.
+
+# Next Steps
+
+Now that I have an initial SD Card controller working over the SPI port, I've
+kind of fallen in love with the simple interface it uses.  I'm wondering if I
+can use the same control interface for the full SD protocol.  To that end, I
+intend to build a version of this controller that works with the full SD
+protocol--even integrating a card detect bit into the control register.

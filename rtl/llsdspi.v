@@ -87,6 +87,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 //
+`default_nettype	none
+//
 `define	LLSDSPI_IDLE	4'h0
 `define	LLSDSPI_HOTIDLE	4'h1
 `define	LLSDSPI_WAIT	4'h2
@@ -97,22 +99,22 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 		o_stb, o_byte, o_idle, i_bus_grant);
 	parameter	SPDBITS = 7;
 	//
-	input			i_clk;
+	input	wire		i_clk;
 	// Parameters/setup
-	input		[(SPDBITS-1):0]	i_speed;
+	input	wire	[(SPDBITS-1):0]	i_speed;
 	// The incoming interface
-	input			i_cs;
-	input			i_stb;
-	input		[7:0]	i_byte;
+	input	wire		i_cs;
+	input	wire		i_stb;
+	input	wire	[7:0]	i_byte;
 	// The actual SPI interface
 	output	reg		o_cs_n, o_sclk, o_mosi;
-	input			i_miso;
+	input	wire		i_miso;
 	// The outgoing interface
 	output	reg		o_stb;
 	output	reg	[7:0]	o_byte;
 	output	wire		o_idle;
 	// And whether or not we actually own the interface (yet)
-	input			i_bus_grant;
+	input	wire		i_bus_grant;
 
 	reg			r_z_counter;
 	reg	[(SPDBITS-1):0]	r_clk_counter;
@@ -126,11 +128,11 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	initial	r_clk_counter = 7'h0;
 	always @(posedge i_clk)
 	begin
-		if ((~i_cs)||(~i_bus_grant))
+		if ((!i_cs)||(!i_bus_grant))
 			r_clk_counter <= 0;
 		else if (byte_accepted)
 			r_clk_counter <= i_speed;
-		else if (~r_z_counter)
+		else if (!r_z_counter)
 			r_clk_counter <= (r_clk_counter - {{(SPDBITS-1){1'b0}},1'b1});
 		else if ((r_state != `LLSDSPI_IDLE)&&(r_state != `LLSDSPI_HOTIDLE))
 			r_clk_counter <= (i_speed);
@@ -141,11 +143,11 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	initial	r_z_counter = 1'b1;
 	always @(posedge i_clk)
 	begin
-		if ((~i_cs)||(~i_bus_grant))
+		if ((!i_cs)||(!i_bus_grant))
 			r_z_counter <= 1'b1;
 		else if (byte_accepted)
 			r_z_counter <= 1'b0;
-		else if (~r_z_counter)
+		else if (!r_z_counter)
 			r_z_counter <= (r_clk_counter == 1);
 		else if ((r_state != `LLSDSPI_IDLE)&&(r_state != `LLSDSPI_HOTIDLE))
 			r_z_counter <= 1'b0;
@@ -155,13 +157,13 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	always @(posedge i_clk)
 	begin
 		o_stb <= 1'b0;
-		o_cs_n <= ~i_cs;
-		if (~i_cs)
+		o_cs_n <= !i_cs;
+		if (!i_cs)
 		begin
 			r_state <= `LLSDSPI_IDLE;
 			r_idle <= 1'b0;
 			o_sclk <= 1'b1;
-		end else if (~r_z_counter)
+		end else if (!r_z_counter)
 		begin
 			r_idle <= 1'b0;
 			if (byte_accepted)

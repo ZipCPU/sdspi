@@ -38,14 +38,16 @@
 ##
 
 all: rtl export.v
+VERILATOR:= verilator
 # VOB := $(HOME)/src/verilog/vopro
 VOB := cat
 VOBJ:= obj_dir
+VFLAGS := -MMD -Wall -trace -cc
 
 .PHONY: rtl
 rtl: $(VOBJ)/Vsdspi.h
 $(VOBJ)/Vsdspi.h: sdspi.v llsdspi.v
-	verilator -cc sdspi.v
+	$(VERILATOR) $(VFLAGS) sdspi.v
 
 export.v: sdspi.v llsdspi.v
 	$(VOB) $^ > $@

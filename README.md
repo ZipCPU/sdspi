@@ -38,3 +38,8 @@ kind of fallen in love with the simple interface it uses.  I'm wondering if I
 can use the same control interface for the full SD protocol.  To that end, I
 intend to build a version of this controller that works with the full SD
 protocol--even integrating a card detect bit into the control register.
+
+# Commercial Applications
+
+Should you find the GPLv3 license insufficient for your needs, other licenses
+can be purchased from Gisselquist Technology, LLC.

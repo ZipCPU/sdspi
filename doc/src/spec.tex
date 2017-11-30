@@ -335,7 +335,7 @@ prior condition.  Hence we wait for the card to be no longer busy (it
 shouldn't be busy anyway), and we then clear any errors:
 \begin{tabbing}
 {\tt SD\_WAIT\_WHILE\_BUSY;} \\
-{\tt CMD} \= {\tt SD\_CLEARERR};
+{\tt CMD} \= {\tt = SD\_CLEARERR};
 \end{tabbing}
 
 Now that the controller is idle (which it should've been from startup anyway),
@@ -458,7 +458,7 @@ FIFO, we need to include the {\tt SD\_FIFO\_OP} part of the command:
 \begin{tabbing}
 {\tt int CSD[4];}\\
 {\tt DATA} \= {\tt = 0;} \\
-{\tt CMD} \> {\tt = (SD\_FIFO\_OP|SD\_CMD)+9;}
+{\tt CMD} \> {\tt = (SD\_FIFO\_OP|SD\_CMD)+9;} \\
 {\tt SD\_WAIT\_WHILE\_BUSY;} \\
 {\tt for(int i=0; i<4; i++) } \\
 \> {\tt CSD[i] = FIFO[0];}

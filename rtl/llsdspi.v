@@ -89,11 +89,6 @@
 //
 `default_nettype	none
 //
-`define	LLSDSPI_IDLE	4'h0
-`define	LLSDSPI_HOTIDLE	4'h1
-`define	LLSDSPI_WAIT	4'h2
-`define	LLSDSPI_START	4'h3
-//
 module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte, 
 		o_cs_n, o_sclk, o_mosi, i_miso,
 		o_stb, o_byte, o_idle, i_bus_grant);
@@ -116,6 +111,11 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	// And whether or not we actually own the interface (yet)
 	input	wire		i_bus_grant;
 
+	localparam [3:0]	LLSDSPI_IDLE    = 4'h0,
+				LLSDSPI_HOTIDLE	= 4'h1,
+				LLSDSPI_WAIT	= 4'h2,
+				LLSDSPI_START	= 4'h3;
+//
 	reg			r_z_counter;
 	reg	[(SPDBITS-1):0]	r_clk_counter;
 	reg			r_idle;
@@ -134,10 +134,8 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 			r_clk_counter <= i_speed;
 		else if (!r_z_counter)
 			r_clk_counter <= (r_clk_counter - {{(SPDBITS-1){1'b0}},1'b1});
-		else if ((r_state != `LLSDSPI_IDLE)&&(r_state != `LLSDSPI_HOTIDLE))
+		else if ((r_state != LLSDSPI_IDLE)&&(r_state != LLSDSPI_HOTIDLE))
 			r_clk_counter <= (i_speed);
-		// else 
-		//	r_clk_counter <= 16'h00;
 	end
 
 	initial	r_z_counter = 1'b1;
@@ -149,18 +147,20 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 			r_z_counter <= 1'b0;
 		else if (!r_z_counter)
 			r_z_counter <= (r_clk_counter == 1);
-		else if ((r_state != `LLSDSPI_IDLE)&&(r_state != `LLSDSPI_HOTIDLE))
+		else if ((r_state != LLSDSPI_IDLE)&&(r_state != LLSDSPI_HOTIDLE))
 			r_z_counter <= 1'b0;
 	end
 
-	initial	r_state = `LLSDSPI_IDLE;
+	initial	o_stb  = 1'b0;
+	initial	o_cs_n = 1'b1;
+	initial	r_state = LLSDSPI_IDLE;
 	always @(posedge i_clk)
 	begin
 		o_stb <= 1'b0;
 		o_cs_n <= !i_cs;
 		if (!i_cs)
 		begin
-			r_state <= `LLSDSPI_IDLE;
+			r_state <= LLSDSPI_IDLE;
 			r_idle <= 1'b0;
 			o_sclk <= 1'b1;
 		end else if (!r_z_counter)
@@ -169,27 +169,27 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 			if (byte_accepted)
 			begin // Will only happen within a hot idle state
 				r_byte <= { i_byte[6:0], 1'b1 };
-				r_state <= `LLSDSPI_START+1;
+				r_state <= LLSDSPI_START+1;
 				o_mosi <= i_byte[7];
 			end
-		end else if (r_state == `LLSDSPI_IDLE)
+		end else if (r_state == LLSDSPI_IDLE)
 		begin
 			o_sclk <= 1'b1;
 			if (byte_accepted)
 			begin
 				r_byte <= i_byte[7:0];
-				r_state <= (i_bus_grant)?`LLSDSPI_START:`LLSDSPI_WAIT;
+				r_state <= (i_bus_grant)? LLSDSPI_START:LLSDSPI_WAIT;
 				r_idle <= 1'b0;
 				o_mosi <= i_byte[7];
 			end else begin
 				r_idle <= 1'b1;
 			end
-		end else if (r_state == `LLSDSPI_WAIT)
+		end else if (r_state == LLSDSPI_WAIT)
 		begin
 			r_idle <= 1'b0;
 			if (i_bus_grant)
-				r_state <= `LLSDSPI_START;
-		end else if (r_state == `LLSDSPI_HOTIDLE)
+				r_state <= LLSDSPI_START;
+		end else if (r_state == LLSDSPI_HOTIDLE)
 		begin
 			// The clock is low, the bus is granted, we're just
 			// waiting for the next byte to transmit
@@ -197,24 +197,20 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 			if (byte_accepted)
 			begin
 				r_byte <= i_byte[7:0];
-				r_state <= `LLSDSPI_START;
+				r_state <= LLSDSPI_START;
 				r_idle <= 1'b0;
 				o_mosi <= i_byte[7];
 			end else
 				r_idle <= 1'b1;
-		// end else if (r_state == `LLSDSPI_START)
-		// begin
-			// o_sclk <= 1'b0;
-			// r_state <= r_state + 1;
 		end else if (o_sclk)
 		begin
 			o_mosi <= r_byte[7];
 			r_byte <= { r_byte[6:0], 1'b1 };
 			r_state <= r_state + 1;
 			o_sclk <= 1'b0;
-			if (r_state >= `LLSDSPI_START+8)
+			if (r_state >= LLSDSPI_START+8)
 			begin
-				r_state <= `LLSDSPI_HOTIDLE;
+				r_state <= LLSDSPI_HOTIDLE;
 				r_idle <= 1'b1;
 				o_stb <= 1'b1;
 				o_byte <= r_ireg;
@@ -227,6 +223,17 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	end
 
 	assign o_idle = (r_idle)&&( (i_cs)&&(i_bus_grant) );
+
+`ifdef	FORMAL
+	always @(*)
+		assert(r_z_counter == (r_clk_counter == 0));
+
+//	reg	f_first;
+//
+//	initial	f_first = 0;
+//	always @(posedge i_clk)
+	
+`endif
 endmodule
 
 

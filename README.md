@@ -31,13 +31,12 @@ single block read and write commands alone.
 
 For more information, please consult the specification document.
 
-# Next Steps
+# SDIO
 
-Now that I have an initial SD Card controller working over the SPI port, I've
-kind of fallen in love with the simple interface it uses.  I'm wondering if I
-can use the same control interface for the full SD protocol.  To that end, I
-intend to build a version of this controller that works with the full SD
-protocol--even integrating a card detect bit into the control register.
+This particular branch contains the beginnings of an SDIO protocol
+implementation.  Low level logic for both command and data wires is
+complete--including both generating and testing CRCs.  Of these, only
+the command wire implementation has been formally verified.
 
 # Commercial Applications
 

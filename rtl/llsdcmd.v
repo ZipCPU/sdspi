@@ -68,10 +68,12 @@
 //
 `default_nettype none
 //
-module	llsdcmd(i_clk, i_reset, i_pedge, i_stb, i_cmd, i_data, o_busy,
+module	llsdcmd(i_clk, i_reset,
+		i_pedge, i_stb, i_cmd, i_data, o_busy,
 		i_nedge, o_stb, o_cmd, o_data, o_crc, o_err,
 		o_bstb, o_byte,
-		i_sd_cmd, o_sd_cmd);
+		i_sd_cmd, o_sd_cmd);	
+	parameter [6:0]	CRC_POLYNOMIAL = 7'h09;
 	input	wire	i_clk, i_reset, i_pedge;
 	//
 	input	wire		i_stb;
@@ -92,67 +94,86 @@ module	llsdcmd(i_clk, i_reset, i_pedge, i_stb, i_cmd, i_data, o_busy,
 	input	wire		i_sd_cmd;
 	output	reg		o_sd_cmd;
 
+	//
+	//
+	//
+
+
 	reg	[3:0]	r_rxstate;
-
-	wire	write_cmd = (i_stb && !o_busy && !i_cmd[7]);
-	wire	read_cmd  = (i_nedge && !i_sd_cmd && r_rxstate == 1);
-
 	integer	ik;
 
-	reg	[39:0]	r_cmd;
+	reg	[39:0]	tx_cmd_sreg;
 	reg	[6:0]	r_txcrc;
-	reg	[47:0]	r_busy, r_rxreg;
-	reg		last_busy;
+	reg	[47:0]	tx_busy_sreg, rx_sreg;
+	reg		last_busy, tx_busy;
 	reg	[5:0]	r_rxpkt_count;
 
-	initial	r_busy =  0;
-	initial	r_cmd  = -1;
+	//
+	//
+	//
+	wire	write_cmd = (i_stb && !o_busy && !i_cmd[7]);
+	wire	read_cmd  = (i_nedge && !i_sd_cmd && r_rxstate == 1 && !tx_busy);
+
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Transmit/command logic
+	//
+
+	initial	tx_busy_sreg =  0;
+	initial	tx_cmd_sreg  = -1;
 	always @(posedge i_clk)
 	if (i_reset)
 	begin
-		r_busy <= 0;
-		r_cmd  <= -1;
+		tx_busy_sreg <= 0;
+		tx_cmd_sreg  <= -1;
 	end else if (write_cmd)
 	begin
-		r_cmd <= { i_cmd, i_data };
-		r_busy <= -1;;
+		tx_cmd_sreg <= { i_cmd, i_data };
+		tx_busy_sreg <= -1;
 	end else if (i_pedge)
 	begin
-		r_cmd  <= { r_cmd[38:0], 1'b1 };
-		if (r_busy[39:38] == 2'b10)
-			r_cmd[39:33] <= r_txcrc;
-		r_busy <= r_busy << 1;
+		tx_cmd_sreg  <= { tx_cmd_sreg[38:0], 1'b1 };
+		if (tx_busy_sreg[39:38] == 2'b10)
+			tx_cmd_sreg[39:33] <= r_txcrc;
+		tx_busy_sreg <= tx_busy_sreg << 1;
 	end
 
 	always @(*)
-		o_busy = r_busy[47] || !i_pedge;
+	begin
+		tx_busy = tx_busy_sreg[47];
+		o_busy = tx_busy || !i_pedge;
+	end
 
 	always @(*)
-		o_sd_cmd = r_cmd[39];
+		o_sd_cmd = tx_cmd_sreg[39];
 
 	always @(posedge i_clk)
 	if (write_cmd)
 		r_txcrc <= 0; // (i_cmd[6]) ? 8'h12 : 8'h0;
 	else if (i_pedge)
 	begin
-		if (r_txcrc[6] ^ r_cmd[38])
-			r_txcrc <= { r_txcrc[5:0], 1'b0 } ^ 7'h09;
+		if (r_txcrc[6] ^ tx_cmd_sreg[38])
+			r_txcrc <= { r_txcrc[5:0], 1'b0 } ^ CRC_POLYNOMIAL;
 		else
 			r_txcrc <= { r_txcrc[5:0], 1'b0 };
 	end
 
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Receiver/response logic
+	//
 	initial	last_busy = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset)
 		last_busy <= 1'b0;
 	else if (i_pedge)
-		last_busy <= o_busy;
+		last_busy <= tx_busy;
 
 	initial	r_rxstate = 0;
 	always @(posedge i_clk)
 	if (i_reset || (write_cmd))
 		r_rxstate <= 4'h0;
-	else if (i_pedge && !o_busy && last_busy)
+	else if (i_pedge && !tx_busy && last_busy)
 		r_rxstate <= 4'h1;
 	else if (i_nedge && r_rxstate == 4'h1 && !i_sd_cmd)
 		r_rxstate <= 4'h2;
@@ -176,24 +197,24 @@ module	llsdcmd(i_clk, i_reset, i_pedge, i_stb, i_cmd, i_data, o_busy,
 	if (i_reset || (write_cmd))
 		o_byte <= -1;
 	else if (i_nedge && r_rxstate == 4'h8)
-		o_byte <= { r_rxreg[6:0], i_sd_cmd };
+		o_byte <= { rx_sreg[6:0], i_sd_cmd };
 
-	initial	r_rxreg = -1;
+	initial	rx_sreg = -1;
 	always @(posedge i_clk)
 	if (i_reset || (write_cmd))
-		r_rxreg <= -1;
+		rx_sreg <= -1;
 	else if (i_nedge && read_cmd)
-		r_rxreg <= { {(47){1'b1}}, 1'b0 };
+		rx_sreg <= { {(47){1'b1}}, 1'b0 };
 	else if (i_nedge && r_rxstate > 1)
-		r_rxreg <= { r_rxreg[46:0], i_sd_cmd };
+		rx_sreg <= { rx_sreg[46:0], i_sd_cmd };
 
 	always @(posedge i_clk)
 	if (i_nedge && r_rxpkt_count == 6'd47)
-		{ o_cmd, o_data, o_crc } = { r_rxreg[46:0], i_sd_cmd };
+		{ o_cmd, o_data, o_crc } = { rx_sreg[46:0], i_sd_cmd };
 
 	initial	r_rxpkt_count = 0;
 	always @(posedge i_clk)
-	if (i_reset || write_cmd || o_busy)
+	if (i_reset || write_cmd || tx_busy)
 		r_rxpkt_count <= 0;
 	else if (read_cmd)
 		r_rxpkt_count <= 1;
@@ -210,11 +231,11 @@ module	llsdcmd(i_clk, i_reset, i_pedge, i_stb, i_cmd, i_data, o_busy,
 		r_err <= 0;
 	end else if (i_nedge)
 	begin
-		if (r_rxpkt_count < 6'h28)
+		if (r_rxpkt_count < 6'd40)
 		begin
 			r_err <= 0;
 			if (i_sd_cmd ^ r_rxcrc[6])
-				r_rxcrc <= { r_rxcrc[5:0], 1'b0 } ^ 8'h09;
+				r_rxcrc <= { r_rxcrc[5:0], 1'b0 } ^ CRC_POLYNOMIAL;
 			else
 				r_rxcrc <= { r_rxcrc[5:0], 1'b0 };
 		end else begin
@@ -243,6 +264,14 @@ module	llsdcmd(i_clk, i_reset, i_pedge, i_stb, i_cmd, i_data, o_busy,
 		o_err <= 1'b0;
 
 `ifdef	FORMAL
+always @(*)
+begin
+	cover(i_nedge && r_rxpkt_count == 6'd8);
+	cover(i_nedge && r_rxpkt_count == 6'd16);
+	cover(i_nedge && r_rxpkt_count == 6'd24);
+	cover(i_nedge && r_rxpkt_count == 6'd48);
+end
+
 	reg	f_past_valid;
 
 	reg	[47:0]	f_txcmd, f_txcmdnow;
@@ -285,15 +314,15 @@ module	llsdcmd(i_clk, i_reset, i_pedge, i_stb, i_cmd, i_data, o_busy,
 	always @(posedge i_clk)
 	if (!f_past_valid || $past(i_reset))
 	begin
-		assert(r_busy == 0);
-		assert(&r_cmd);
+		assert(tx_busy_sreg == 0);
+		assert(&tx_cmd_sreg);
 		//
 		assert(last_busy == 1'b0);
 		assert(r_rxstate == 4'h0);
 		//
 		assert(o_bstb == 1'b0);
 		assert(o_byte == 8'hff);
-		assert(&r_rxreg);
+		assert(&rx_sreg);
 		assert(r_rxpkt_count == 0);
 		//
 		assert(!o_stb);
@@ -333,16 +362,38 @@ module	llsdcmd(i_clk, i_reset, i_pedge, i_stb, i_cmd, i_data, o_busy,
 	always @(*)
 		f_txcmdnow = f_txcmd << f_txseq;
 
+	reg	[47:0]	f_checktxmsg;
+	reg	[7:0]	f_checktxcrc;
+	always @(*)
+	begin
+		f_checktxmsg = f_txcmd[47:0] >> (6'd47-f_txseq);
+		f_checktxcrc = f_gencrc(f_checktxmsg);
+	end
+
 	always @(*)
 	if (f_txseq < 6'd48)
 	begin
 		assert(o_sd_cmd == f_txcmdnow[47]);
+		assert(f_txcmd[7:0] == f_gencrc({ f_txcmd[47:8] }));
 		assert(o_busy);
-		assert((~r_busy[31:0] & ~r_cmd[31:0])==0);
+		assert((~tx_busy_sreg[31:0] & ~tx_cmd_sreg[31:0])==0);
+		if ((f_txseq > 3)&&(f_txseq < 6'd40))
+		begin
+			assert(r_txcrc == f_checktxcrc[7:1]);
+			assert(tx_busy_sreg == ({(48){1'b1}} << f_txseq));
+			if (f_txseq == 6'd8)
+				assert(tx_cmd_sreg[39:0] == { f_txcmd[39:8], 8'hff});
+			if (f_txseq == 6'd16)
+				assert(tx_cmd_sreg[39:0] == { f_txcmd[31:8], 16'hffff});
+			if (f_txseq == 6'd24)
+				assert(tx_cmd_sreg[39:0] == { f_txcmd[23:8], 24'hffffff});
+			if (f_txseq == 6'd32)
+				assert(tx_cmd_sreg[39:0] == { f_txcmd[15:8], 32'hffffffff});
+		end
 	end else begin
 		assert(o_sd_cmd);
-		assert(r_busy == 0);
-		assert(&r_cmd);
+		assert(tx_busy_sreg == 0);
+		assert(&tx_cmd_sreg);
 	end
 
 	////////////////////////////////////////////////////////////////////////
@@ -363,7 +414,7 @@ module	llsdcmd(i_clk, i_reset, i_pedge, i_stb, i_cmd, i_data, o_busy,
 	initial	f_rxcmd = -1;
 	initial	f_rxseq = 6'h3f;
 	always @(posedge i_clk)
-	if (i_reset || write_cmd)
+	if (i_reset || write_cmd || tx_busy)
 	begin
 		f_rxcmd <= -1;
 		f_rxseq <= 6'h3f;
@@ -378,6 +429,13 @@ module	llsdcmd(i_clk, i_reset, i_pedge, i_stb, i_cmd, i_data, o_busy,
 		// f_rxcmd <= f_rxcmd << 1;
 		if (f_rxseq != 6'h3f)
 			f_rxseq <= f_rxseq + 1;
+	end
+
+	always @(*)
+	if (f_rxseq != 6'h3f)
+	begin
+		assert(f_rxcmd[47:46] == 2'b00);
+		assert(f_rxcmd_err == (f_gencrc(f_rxcmd[47:8]) != f_rxcmd[7:0]));
 	end
 
 	//
@@ -433,13 +491,12 @@ module	llsdcmd(i_clk, i_reset, i_pedge, i_stb, i_cmd, i_data, o_busy,
 	end else
 		assert(o_err == 1'b0);
 
-
 	always @(posedge i_clk)
 	if (!f_past_valid || $past(i_reset) || $past(!i_nedge))
 		assert(!o_stb);
 
 	always @(*)
-	if (o_busy & i_pedge)
+	if (tx_busy && i_pedge)
 	begin
 		assert(r_rxstate <= 1);
 		assert(f_rxbyte_count == 4'hf);
@@ -447,6 +504,40 @@ module	llsdcmd(i_clk, i_reset, i_pedge, i_stb, i_cmd, i_data, o_busy,
 	end else if (!i_pedge)
 		assert(o_busy);
 
+	always @(*)
+	if (tx_busy)
+		assert(r_rxstate == 0);
+
+	reg	[47:0]	f_checkrxmsg;
+	reg	[7:0]	f_checkrxcrc;
+	always @(*)
+	begin
+		f_checkrxmsg = f_rxcmd[47:0] >> (6'd48-f_rxseq);
+		f_checkrxcrc = f_gencrc(f_checkrxmsg);
+		f_checkrxmsg = f_checkrxmsg | ({(48){1'b1}} << f_rxseq);
+		if (r_rxpkt_count == 0)
+			assert(f_rxseq > 6'd48);
+		else
+			assert(r_rxpkt_count == f_rxseq);
+		if ((f_rxseq > 6'd3)&&(f_rxseq < 6'd40))
+		begin
+			assert(r_rxcrc == f_checkrxcrc[7:1]);
+			assert(rx_sreg == f_checkrxmsg);
+		end
+	end
+
+	always @(*)
+		assert(r_rxstate <= 4'ha);
+
+	reg	[2:0]	f_rxcheckstate;
+	always @(*)
+		f_rxcheckstate = r_rxstate - 1;
+
+	always @(*)
+	if (r_rxstate <= 1)
+		assert(f_rxseq >= 6'd48);
+	else if (r_rxpkt_count < 6'd48)
+		assert(f_rxcheckstate == r_rxpkt_count[2:0]);
 
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -481,7 +572,7 @@ module	llsdcmd(i_clk, i_reset, i_pedge, i_stb, i_cmd, i_data, o_busy,
 		f_gencrc = 0;
 		for(icrc=0; icrc<40; icrc=icrc+1)
 		if (i_cmdword[39-icrc] ^ f_gencrc[7])
-			f_gencrc[7:1] = { f_gencrc[6:1], 1'b0 } ^ 7'h09;
+			f_gencrc[7:1] = { f_gencrc[6:1], 1'b0 } ^ CRC_POLYNOMIAL;
 		else
 			f_gencrc[7:1] = { f_gencrc[6:1], 1'b0 };
 		f_gencrc = { f_gencrc[7:1], 1'b1 };
@@ -502,7 +593,7 @@ module	llsdcmd(i_clk, i_reset, i_pedge, i_stb, i_cmd, i_data, o_busy,
 	begin
 		assert(f_gencrc({ 2'b01, 6'h00, 32'h000 }) == 8'b1001_0101);
 		assert(f_gencrc({ 2'b01, 6'h11, 32'h000 }) == 8'b0101_0101);
-		assert(f_gencrc({ 2'b00, 6'h11, 32'h0900 }) == 8'b0110_0111);
+		assert(f_gencrc({ 2'b00, 6'h11, 32'h0900}) == 8'b0110_0111);
 	end
 `endif
 
@@ -513,13 +604,12 @@ module	llsdcmd(i_clk, i_reset, i_pedge, i_stb, i_cmd, i_data, o_busy,
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
-	always @(*)
-	if (write_cmd)
-		assume(i_cmd[6]);
-	// always @(*)
-	//	assume(i_cmd[7:0] == 8'h48);
-	// always @(*)
-	//	assume(i_data == 32'hffff_ffff);
+
+	// We could make the following assumption ...
+	//  but it's not really necessary
+	//	always @(*)
+	//	if (write_cmd)
+	//		assume(i_cmd[6]);
 
 `endif
 endmodule

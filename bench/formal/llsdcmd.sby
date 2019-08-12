@@ -4,10 +4,10 @@ cvr
 
 [options]
 prf: mode prove
-prf: depth 99
+prf: depth 17
 cvr: mode cover
-cvr: depth 99
-cvr: depth 8
+cvr: depth 110
+# cvr: depth 8
 
 [engines]
 smtbmc boolector

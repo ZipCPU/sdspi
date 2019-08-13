@@ -75,7 +75,37 @@ module	sdspi(i_clk,
 		i_bus_grant,
 		// And some wires for debugging it all
 		o_debug);
-	parameter	LGFIFOLN = 7;
+	//
+	// LGFIFOLN defines the size of the internal memory in words.  An
+	// LGFIFOLN of 7 is appropriate for a 2^(7+2)=512 byte FIFO
+	parameter	LGFIFOLN = 7,
+	//
+	// Many SD-Cards require a minimum number of SPI clocks to get them
+	// started.  STARTUP_CLOCKS defines this number.  Set this to zero
+	// if you don't want to use this initialization sequence.
+			STARTUP_CLOCKS = 75;
+	//
+	// The SPI frequency is given by the system clock frequency divided
+	// by a (clock_divider + 1).  INITIAL_CLKDIV provides an initial value
+	// for this clock divider.
+	parameter [CKDIV_BITS-1:0]	INITIAL_CLKDIV = 7'h63;
+	//
+	// When I originally built this SDSPI controller, it was for an
+	// environment where the SPI was shared.  Doing this requires feedback
+	// from an arbiter, to know when one SPI device has the bus or not.
+	// This feedback is provided in i_bus_grant.  If you don't have an
+	// arbiter, just set i_bus_grant to the constant 1'b1 and set
+	// OPT_SPI_ARBITRATION to 1'b0 to remove this extra logic.
+	parameter [0:0]			OPT_SPI_ARBITRATION = 1'b0;
+	//
+	// For my first design, using an 80MHz clock, 7 bits to the clock
+	// divider was plenty.  Now that I'm starting to use faster and faster
+	// designs, it becomes important to parameterize the number of bits
+	// in the clock divider.  More than 8, however, and the interface
+	// will need to change.
+	parameter			CKDIV_BITS = 7;
+	//
+	//
 	input	wire		i_clk;
 	//
 	input	wire		i_wb_cyc, i_wb_stb, i_wb_we;
@@ -152,7 +182,9 @@ module	sdspi(i_clk,
 	reg	[7:0]	ll_cmd_dat;
 	wire		ll_out_stb, ll_idle;
 	wire	[7:0]	ll_out_dat;
-	llsdspi	lowlevel(i_clk, r_sdspi_clk, r_cmd_busy, ll_cmd_stb, ll_cmd_dat,
+	llsdspi #(.STARTUP_CLOCKS(STARTUP_CLOCKS),
+		.OPT_SPI_ARBITRATION(OPT_SPI_ARBITRATION))
+	lowlevel(i_clk, r_sdspi_clk, r_cmd_busy, ll_cmd_stb, ll_cmd_dat,
 			o_cs_n, o_sck, o_mosi, i_miso,
 			ll_out_stb, ll_out_dat, ll_idle,
 			i_bus_grant);
@@ -507,8 +539,7 @@ module	sdspi(i_clk,
 	always @(posedge i_clk)
 		r_cmd_sent <= (ll_cmd_stb)&&(r_cmd_state >= 3'h5);
 
-	// initial	r_sdspi_clk = 6'h3c;
-	initial	r_sdspi_clk = 7'h63;
+	initial	r_sdspi_clk = INITIAL_CLKDIV;
 	always @(posedge i_clk)
 	begin
 		// Update our internal configuration parameters, unconnected
@@ -518,8 +549,7 @@ module	sdspi(i_clk,
 		if ((new_cmd)&&(wb_data[7:6]==2'b11)&&(!r_data_reg[7])
 			&&(r_data_reg[15:12]==4'h00))
 		begin
-			if (|r_data_reg[6:0])
-				r_sdspi_clk <= r_data_reg[6:0];
+			r_sdspi_clk <= r_data_reg[CKDIV_BITS-1:0];
 			if (|r_data_reg[11:8])
 				r_lgblklen <= r_data_reg[11:8];
 		end if (r_lgblklen > max_lgblklen)

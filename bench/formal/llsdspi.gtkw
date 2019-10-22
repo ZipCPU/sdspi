@@ -1,0 +1,62 @@
+[*]
+[*] GTKWave Analyzer v3.3.66 (w)1999-2015 BSI
+[*] Mon Aug 12 18:49:55 2019
+[*]
+[dumpfile] "/home/dan/work/rnd/opencores/sdspi/trunk/bench/formal/llsdspi_prf/engine_0/trace.vcd"
+[dumpfile_mtime] "Mon Aug 12 18:47:36 2019"
+[dumpfile_size] 2218
+[savefile] "/home/dan/work/rnd/opencores/sdspi/trunk/bench/formal/llsdspi.gtkw"
+[timestart] 0
+[size] 1785 600
+[pos] -786 -1
+*-3.909014 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 196
+[signals_width] 174
+[sst_expanded] 1
+[sst_vpaned_height] 155
+@28
+llsdspi.i_clk
+@22
+llsdspi.i_speed[6:0]
+@28
+llsdspi.i_bus_grant
+@200
+-
+@28
+llsdspi.i_cs
+llsdspi.i_stb
+@22
+llsdspi.i_byte[7:0]
+@200
+-
+@28
+llsdspi.i_miso
+llsdspi.o_cs_n
+llsdspi.o_idle
+llsdspi.o_mosi
+llsdspi.o_sclk
+llsdspi.o_stb
+@200
+-
+@28
+llsdspi.startup_hold
+@201
+-
+@28
+llsdspi.r_z_counter
+@200
+-
+@28
+llsdspi.byte_accepted
+llsdspi.f_past_valid
+@22
+llsdspi.o_byte[7:0]
+llsdspi.r_byte[7:0]
+llsdspi.r_clk_counter[6:0]
+@28
+llsdspi.r_idle
+@22
+llsdspi.r_ireg[7:0]
+llsdspi.r_state[3:0]
+[pattern_trace] 1
+[pattern_trace] 0

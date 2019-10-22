@@ -1,0 +1,23 @@
+[tasks]
+prfa prf optarbiter
+prf
+cvra cvr optarbiter
+cvr
+
+[options]
+prf: mode prove
+prf: depth 3
+cvr: mode cover
+cvr: depth 120
+
+[engines]
+smtbmc boolector
+
+[script]
+read -formal -DLLSDSPI llsdspi.v
+optarbiter:  hierarchy -top llsdspi -chparam OPT_SPI_ARBITRATION 1
+~optarbiter: hierarchy -top llsdspi -chparam OPT_SPI_ARBITRATION 0
+prep -top llsdspi
+
+[files]
+../../rtl/llsdspi.v

@@ -24,7 +24,7 @@
 %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%
-%% Copyright (C) 2016, Gisselquist Technology, LLC
+%% Copyright (C) 2016-2019, Gisselquist Technology, LLC
 %%
 %% This program is free software (firmware): you can redistribute it and/or
 %% modify it under the terms of  the GNU General Public License as published
@@ -75,6 +75,7 @@ You should have received a copy of the GNU General Public License along
 with this program.  If not, see \texttt{http://www.gnu.org/licenses/} for a copy.
 \end{license}
 \begin{revisionhistory}
+0.2 & 10/21/2019 & Gisselquist & Card detect feature \\\hline
 0.1 & 6/18/2016 & Gisselquist & First Draft \\\hline
 \end{revisionhistory}
 % Revision History
@@ -129,7 +130,7 @@ provides a lower level interface to the card than these other controllers.
 Whereas the XESS controller will automatically start up the card and interact
 with it, this controller requires external software to be used when interacting
 with the card.  This makes the SDSPI controller both more versatile, in the
-face of potential changes to the card interface, but also less--turn key.
+face of potential changes to the card interface, but also less turn--key.
 % What is new
 % What does the new have that the old lacks
 % What performance gain can be expected?
@@ -158,6 +159,8 @@ device, it will tell this controller and processing can continue.  If your
 application does not have any contention for the SPI interface, you may simply
 wire this grant line high.  The controller will still work, although it will
 wait one clock more than necessary in that case before starting any transaction.
+Setting the {\tt OPT\_SPI\_ARBITRATION} parameter to zero will remove this
+arbitration logic for those designs that don't need it.
 
 Second, the SDSPI core is completely controlled via the wishbone bus.  In
 particular a command register is used to initiate interaction across the bus.
@@ -200,7 +203,7 @@ Specifications documents.\footnote{This particular interface, and the examples
 using it, were built using the SD Specifications, Part 1: Physical Layer
 Simplified Specification, Version 4.10, dated 22 January, 2013.}
 
-Finally, individual commands may or may not use the FIFO.  Commands that need
+Individual commands may or may not use the FIFO.  Commands that need
 use of the FIFO will be specified by the {\tt use\_fifo} bit of the CMD
 register.  Commands writing to the device will also set the {\tt fifo\_wr} bit
 of the CMD register, whereas commands simply reading from the fifo will set the
@@ -211,7 +214,7 @@ argument to the CMD interaction, and second to provide a place to put the
 R2, R3, or R7 response after the transaction has completed.  The register will
 be set to {\tt 0xffffffff} if not set by the response.
 
-Finally, this core supports two separate FIFO's.  This allows a program to
+This core supports two separate FIFO data sections.  This allows a program to
 fill (or read) one FIFO while the second FIFO can be read/written from the
 SD card.  The FIFO internal address will be cleared and reset to the beginning
 upon any write to the CMD register.  After clearing, the FIFO may be written
@@ -222,6 +225,10 @@ Currently, the core will detect two types of errors in the interface.  The
 first is a CRC error, and the second a timeout error.  Either error will set
 an error bit in the CMD register.  Once set, only writing the error bit back
 to the CMD register will clear it.
+
+Finally, if a card detect bit is present, the core can detect if a card has
+been removed and so notify the driver.  This interface was added to simplify
+FatFS driver interaction.
 
 Now, if this discussion isn't thoroughly confusing, let's move on to the 
 Operation chapter to see some examples of how this might be used.
@@ -294,9 +301,34 @@ Clearing an error may be done by writing {\tt SD\_ERROR} back to the card, but
 to make things simpler we also create {\tt SD\_CLEARERR} for the same purpose.
 
 \begin{tabular}{lll}
-{\tt \#define} & {\tt SD\_BUSY} & {\tt 0x4000} \\
-{\tt \#define} & {\tt SD\_ERROR} & {\tt 0x8000} \\
-{\tt \#define} & {\tt SD\_CLEARERR} & {\tt 0x8000}
+{\tt \#define} & {\tt SD\_BUSY}     & {\tt 0x04000} \\
+{\tt \#define} & {\tt SD\_ERROR}    & {\tt 0x08000} \\
+{\tt \#define} & {\tt SD\_CLEARERR} & {\tt 0x08000} \\
+{\tt \#define} & {\tt SD\_CRCERR}   & {\tt 0x10000} \\
+{\tt \#define} & {\tt SD\_ERRTOK}   & {\tt 0x20000}
+\end{tabular}
+
+The controller offers two means of knowing whether or not the card is present.
+The first is a {\tt SD\_PRESENTN} bit.  This is a debounced version of the
+card detect input, adjusted for negative logic.  If this bit is clear (normal
+operation), then a card is present and ready to be set up.  On the other hand,
+if the card detect line ever goes low then the second bit, {\tt SD\_REMOVED},
+will be set.  This bit is sticky.  Once set, it will remain set until explicitly
+written to.  This allows us to clear it on an {\tt SD\_GO\_IDLE} command, and
+otherwise leave it alone.  If the {\tt SD\_REMOVED} flag ever goes high, then
+the driver knows it's time to restart the interface with a new card.
+\begin{tabular}{lll}
+{\tt \#define} & {\tt SD\_REMOVED}  & {\tt 0x40000} \\
+{\tt \#define} & {\tt SD\_PRESENTN} & {\tt 0x80000}
+\end{tabular}
+
+{\tt SD\_GO\_IDLE} is an abbreviation for command zero, but in a starting over
+context.  Not only does it send the command zero, but it will also clear any
+unacknowledged errors and clear the {\tt SD\_REMOVED} bit.  After this command,
+therefore, if the {\tt SD\_REMOVED} bit ever goes high the protocol will need
+to start over with another {\tt SD\_GO\_IDLE} command.
+\begin{tabular}{lll}
+{\tt \#define} & {\tt SD\_GO\_IDLE} & {\tt ((SD\_REMOVED|SD\_CLEARERR|SD\_CMD)+0)}
 \end{tabular}
 
 The two most important commands, though, are probably going to be those that
@@ -365,10 +397,11 @@ called the \hbox{\tt GO\_IDLE\_STATE} command.  We then wait for the
 command to complete:
 \begin{tabbing}
 {\tt DATA} \= {\tt = 0;} \\
-{\tt CMD} \> {\tt = SD\_CMD+0;} \\
+{\tt CMD} \> {\tt = SD\_GO\_IDLE;} \\
 {\tt SD\_WAIT\_WHILE\_BUSY;}
 \end{tabbing}
-The card should now be in its idle state.
+This will also clear any card-inserted {\tt SD\_REMOVED} flag.  Once complete,
+the card should now be in its idle state.
 
 The next part of the negotiation tells the card whether or not we are able to 
 handle high capacity cards.  For this, we send a command one,
@@ -469,7 +502,7 @@ another command first, before reading that FIFO result.
 
 We could read the Card Identification (CID) register as well, but this would've
 been the same sequence as above, save only that we would've written a 
-{\tt (SD\_READREG|SD\_CMD)+10)} to CMD.
+{\tt (SD\_READREG|SD\_CMD)+10} to CMD.
 
 Reading the STATUS is similar, only the response to the {\tt SEND\_STATUS}
 command is an 8--bit value from an R2 response, not the 32--bit values of
@@ -573,11 +606,14 @@ composed of several packed bit fields, as shown in Fig.~\ref{fig:CMD}.
 \begin{bytefield}[endianness=big]{32}
 \bitheader{0-31}\\
 \bitbox{15}{Unused}
-\bitbox{1}{C}
-\bitbox{1}{E}
-\bitbox{1}{B}
-\bitbox{1}{0}
-\bitbox{1}{I}
+\bitbox{1}{P}	% PRESENTn,0x80000
+\bitbox{1}{R}	% REMOVED, 0x40000
+\bitbox{1}{T}	% TOKERR,  0x20000
+\bitbox{1}{C}	% CRCERR,  0x10000
+\bitbox{1}{E}	% ERROR,   0x08000
+\bitbox{1}{B}	% BUSY,    0x04000
+\bitbox{1}{0}	% Unused
+\bitbox{1}{I}	% 0x01000
 \bitbox{1}{F}
 \bitbox{1}{W}
 \bitbox{2}{R}
@@ -609,11 +645,21 @@ be used: 0 for the primary, or 1 for the alternate.
 While the command is running, the BUSY or $B$ bit will be set.
 
 Once the command has completed, the $E$ bit may be set if either the command 
-timed out, or a CRC error was noted while reading from the card.  (To detect
-a CRC error when writing to the card, check the R1 response according to the
-SD Card specification.)  Errors may be cleared by writing a 1 to this bit.
-Until such time as an error is cleared, the error condition will simply
-persist.
+timed out, or a CRC error was noted while reading from the card.  On an
+incoming CRC read error, the $C$RCERR bit will be set.  To detect a CRC error
+when writing to the card, check the R1 response according to the
+SD Card specification.  The $T$ bit indicates a token error.
+Errors may be cleared by writing a 1 to the $E$ bit.
+Error conditions will persist until cleared.
+
+The $R$ register is used to detect if a card is ever removed.  This bit is
+cleared by writing a `1' to it--typically as part of the {\tt SD\_GO\_IDLE}
+command.
+
+Finally, the $P$ register can be used to determine if a card is present at all.
+If $P$ is high, no card is present.  If $P$ is low, a card is present.  If
+$P$ is low but $R$ is high, then a card has been inserted since the last
+{\tt SD\_GO\_IDLE} command, and the new card should be initialized.
 
 \section{DATA Register}
 Compared to the CMD register, the DATA register is quite simple.  Like the
@@ -662,11 +708,11 @@ CRC.  The fields of this register are shown in Fig.~\ref{fig:CONFIG}.
 \begin{figure}\begin{center}
 \begin{bytefield}[endianness=big]{32}
 \bitheader{0-31}\\
-\bitbox{8}{Unused}
+\bitbox{8}{Rsrvd}
 \bitbox{8}{Max LgFIFO}
 \bitbox{8}{LgFIFO}
-\bitbox{2}{0}
-\bitbox{6}{CLKDIV}
+\bitbox{1}{0}
+\bitbox{7}{CLKDIV}
 \end{bytefield}
 \caption{CONFIG Register fields}\label{fig:CONFIG}
 \end{center}\end{figure}
@@ -676,8 +722,8 @@ The minimum value of this field is `1', corresponding to dividing the input
 clock by `4'.  As discussed earlier, the input clock will be divided by
 twice this field plus one.  Hence, setting this field to one will cause the
 original clock to be divided by $2(1+{\tt CLKDIV})$ or $4$.  Thus an 80~MHz
-input clock will become a 20~MHz SPI clock.  Setting this value to zero will
-cause the set to be ignored.
+input clock will become a 20~MHz SPI clock.  Attempts to set this value to
+zero will be quietly ignored.
 
 The LgFIFO field sets the log, base two, of the FIFO size.  The actual FIFO
 size used will be $2^{\mbox{\tiny LGFIFO}}$ words.  The maximum size the
@@ -756,6 +802,7 @@ o\_cs\_n & 1 & Output & Chip--select and SPI request line\\\hline
 o\_sck & 1 & Output & SD Card clock\\\hline
 o\_mosi & 1 & Output & Output data wire to the SD Card\\\hline
 i\_miso & 1 & Input & Input data wire from the SD Card\\\hline\hline
+i\_card\_detect & 1 & Input & High if the hardware detects a card, low o.w.\\\hline\hline
 o\_int & 1 & Output & An interrupt line to the CPU controller\\\hline
 i\_bus\_grant & 1 & Input  & True if the SDSPI controller is controlling the bus\\\hline
 o\_debug & 32 & Output & See Verilog for details\\\hline
@@ -767,7 +814,11 @@ inputs and outputs are divided into sections: the master clock, the wishbone
 bus, the SPI interface to the card, and three other wires.  Of these, the
 last two chapters discussed the wishbone bus interface and the clock.  The
 SPI interface should be fairly straightforward, so we'll move on and discuss
-the other three wires.
+the other four wires.
+
+The {\tt i\_card\_detect} wire should come from any card detection circuitry
+if present.  This is an active high input.  It's used to set both the
+{\tt SD\_PRESENTN} (active low) and {\tt REMOVED} bits.
 
 This controller supports an interrupt line, {\tt o\_int}.  Upon completion of
 any operation, when the SPI chip select line is deactivated (raised high),
@@ -775,17 +826,20 @@ any operation, when the SPI chip select line is deactivated (raised high),
 chip to catch and use that interrupt line or ignore it.  In particular, it is
 possible to use that interrupt line to trigger a DMA service to move data
 in or out of the FIFO, although the details of that are beyond this discussion
-here.
+here.  Removing the SD card will also cause an {\tt o\_int} interrupt, but only
+if the {\tt SD\_REMOVED} bit is clear.
 
-The second wire, {\tt i\_bus\_grant}, exists because this controller is 
-expected to operate together with other SPI controllers that may also wish
-to drive the same three wires ({\tt o\_sck} and {\tt o\_mosi} to the device,
-and {\tt i\_miso} from the device).  When the controller therefore lowers the
-{\tt o\_cs\_n} line to make it active, it then waits for {\tt i\_bus\_grant}
-to go high.  This is its signal, from the outside world, that its chip has been
-selected and that it is now driving the {\tt o\_sck} and {\tt o\_mosi} pins.
+Optionally, if the {\tt OPT\_SPI\_ARBITRATION} bit is set, then the controller
+will use the {\tt i\_bus\_grant} input as feedback from a SPI bus arbiter.
+This allows the controller to operate in shared SPI environments, such as when
+multiple cores wish to drive the the same two wires ({\tt o\_sck} and
+{\tt o\_mosi}).  When enabled, any time the controller lowers the {\tt o\_cs\_n}
+line, it will then wait for {\tt i\_bus\_grant} to go high.  This is the
+signal from the outside arbiter indicating that this chip has been selected
+and that it is now directly driving the {\tt o\_sck} and {\tt o\_mosi} pins.
 Should you not need this in your environment, you can simply leave this line
-wired high.
+wired high or remove this logic entirely by clearing the
+{\tt OPT\_SPI\_ARBITRATION} parameter.
 
 The final bus of 32--wires, {\tt o\_debug}, is defined internally and used
 when/if necessary to debug the core and watch what is going on within it.

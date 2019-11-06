@@ -89,14 +89,14 @@
 //
 `default_nettype	none
 //
-module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
+module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		o_cs_n, o_sclk, o_mosi, i_miso,
 		o_stb, o_byte, o_idle, i_bus_grant);
 	parameter	SPDBITS = 7,
 		STARTUP_CLOCKS = 75;
 	parameter [0:0]	OPT_SPI_ARBITRATION = 1'b0;
 	//
-	input	wire		i_clk;
+	input	wire		i_clk, i_reset;
 	// Parameters/setup
 	input	wire	[(SPDBITS-1):0]	i_speed;
 	// The incoming interface
@@ -116,7 +116,8 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	localparam [3:0]	LLSDSPI_IDLE    = 4'h0,
 				LLSDSPI_HOTIDLE	= 4'h1,
 				LLSDSPI_WAIT	= 4'h2,
-				LLSDSPI_START	= 4'h3;
+				LLSDSPI_START	= 4'h3,
+				LLSDSPI_END	= 4'hb;
 //
 	reg			r_z_counter;
 	reg	[(SPDBITS-1):0]	r_clk_counter;
@@ -124,6 +125,11 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	reg		[3:0]	r_state;
 	reg		[7:0]	r_byte, r_ireg;
 	wire			byte_accepted;
+	reg			restart_counter;
+
+	wire			bus_grant;
+
+	assign	bus_grant = (OPT_SPI_ARBITRATION ? i_bus_grant : 1'b1);
 
 `ifdef	FORMAL
 	reg	f_past_valid;
@@ -134,28 +140,30 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	begin : WAIT_FOR_STARTUP
 		localparam	STARTUP_BITS = $clog2(STARTUP_CLOCKS);
 		reg	[STARTUP_BITS-1:0]	startup_counter;
-		reg				past_sclk;
-
-		initial	past_sclk = 1;
-		always @(posedge i_clk)
-			past_sclk <= o_sclk;
 
 `ifndef	FORMAL
 		initial startup_counter = STARTUP_CLOCKS[STARTUP_BITS-1:0];
 `endif
 		initial	startup_hold = 1;
 		always @(posedge i_clk)
-		if (startup_hold && !past_sclk && o_sclk)
+		if (i_reset)
+		begin
+			startup_counter <= STARTUP_CLOCKS;
+			startup_hold    <= 1;
+		end else if (startup_hold && r_z_counter && !o_sclk)
 		begin
 			if (|startup_counter)
 				startup_counter <= startup_counter - 1;
 			startup_hold <= (startup_counter > 0);
 		end
 
-`ifdef	F_PAST_VALID
+`ifdef	FORMAL
 		always @(*)
 		if (!f_past_valid)
-			assume(startup_counter > 1);
+			assume(startup_counter > 2);
+		always @(*)
+		if (startup_counter > 0)
+			assert(startup_hold);
 `endif
 	end else begin
 
@@ -172,123 +180,153 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	//
 	initial	r_clk_counter = 7'h0;
 	initial	r_z_counter = 1'b1;
+
+	always @(*)
+	begin
+		if (!startup_hold && (!i_cs ||
+				(!bus_grant
+				|| r_state == LLSDSPI_IDLE
+				|| r_state == LLSDSPI_WAIT)))
+			restart_counter = 1'b0;
+		else if (startup_hold || byte_accepted)
+			restart_counter = 1'b1;
+		else
+			restart_counter = !r_idle;
+	end
+
 	always @(posedge i_clk)
 	begin
-		if (!startup_hold && (!i_cs || (OPT_SPI_ARBITRATION && !i_bus_grant)))
-		begin
-			// Hold, waiting for some action
-			r_clk_counter <= 0;
-			r_z_counter <= 1'b1;
-		end else if (startup_hold || byte_accepted)
-		begin
-			r_clk_counter <= i_speed;
-			r_z_counter <= (i_speed == 0);
-		end else if (!r_z_counter)
+		if (!r_z_counter)
 		begin
 			r_clk_counter <= (r_clk_counter - 1);
 			r_z_counter <= (r_clk_counter == 1);
-		end else if ((r_state > LLSDSPI_WAIT)&&(!r_idle))
+		end else if (restart_counter)
 		begin
-			if (r_state >= LLSDSPI_START+8)
-			begin
-				r_clk_counter <= 0;
-				r_z_counter <= 1;
-			end else begin
-				r_clk_counter <= i_speed;
-				r_z_counter <= (i_speed == 0);
-			end
+			r_clk_counter <= i_speed;
+			r_z_counter <= (i_speed == 0);
 		end
 	end
-
 
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Control o_stb, o_cs_n, and o_mosi
 	//
-	initial	o_stb  = 1'b0;
 	initial	o_cs_n = 1'b1;
-	initial	o_sclk = 1'b1;
 	initial	r_state = LLSDSPI_IDLE;
-	initial	r_idle  = 0;
 	always @(posedge i_clk)
+	if (i_reset)
 	begin
-		o_stb <= 1'b0;
-		o_cs_n <= (startup_hold || !i_cs);
+		o_cs_n <= 1;
+		r_state <= LLSDSPI_IDLE;
+	end else if (r_z_counter)
+	begin
 		if (!i_cs)
 		begin
 			// No request for action.  If anything, a request
 			// to close up/seal up the bus for the next transaction
 			// Expect to lose arbitration here.
 			r_state <= LLSDSPI_IDLE;
-			r_idle <= (r_z_counter);
-			o_sclk <= 1'b1;
-		end else if (!r_z_counter)
-			r_idle <= 1'b0;
-		else if (r_state == LLSDSPI_IDLE)
+			o_cs_n <= 1'b1;
+		end else if (r_state == LLSDSPI_IDLE)
 		begin
-			o_sclk <= 1'b1;
-			r_idle <= (!startup_hold);
 			if (byte_accepted)
 			begin
-				r_byte <= i_byte[7:0];
+				o_cs_n <= 1'b0;
 				if (OPT_SPI_ARBITRATION)
-					r_state <= (!o_cs_n && i_bus_grant)
-						? LLSDSPI_START:LLSDSPI_WAIT;
+					// Wait for arbitration
+					r_state <= LLSDSPI_WAIT;
 				else
 					r_state <= LLSDSPI_START;
-				r_idle <= 1'b0;
-				o_mosi <= i_byte[7];
 			end
 		end else if (r_state == LLSDSPI_WAIT)
 		begin
-			r_idle <= 1'b0;
-			o_sclk <= 1'b1;
-			if (!OPT_SPI_ARBITRATION || i_bus_grant)
+			if (bus_grant)
 				r_state <= LLSDSPI_START;
-		end else if (r_state == LLSDSPI_HOTIDLE)
+		end else if (byte_accepted)
+			r_state <= LLSDSPI_START+1;
+		else if (o_sclk && r_state >= LLSDSPI_START)
 		begin
-			// The clock is low, the bus is granted, we're just
-			// waiting for the next byte to transmit
-			o_sclk <= 1'b1;
-			if (byte_accepted)
-			begin
-				r_byte <= { i_byte[6:0], 1'b1 };
-				r_state <= LLSDSPI_START+1;
-				r_idle <= 1'b0;
-				o_mosi <= i_byte[7];
-				o_sclk <= 1'b0;
-			end else
-				r_idle <= 1'b1;
-		end else if (o_sclk)
-		begin
-			o_mosi <= r_byte[7];
-			r_byte <= { r_byte[6:0], 1'b1 };
 			r_state <= r_state + 1;
-			o_sclk <= 1'b0;
-			if (r_state >= LLSDSPI_START+8)
-			begin
+			if (r_state >= LLSDSPI_END)
 				r_state <= LLSDSPI_HOTIDLE;
-				r_idle <= 1'b1;
-				o_stb <= 1'b1;
-				o_byte <= r_ireg;
-				o_sclk <= 1'b1;
-			end else
-				r_state <= r_state + 1;
-		end else begin
-			r_ireg <= { r_ireg[6:0], i_miso };
-			o_sclk <= 1'b1;
 		end
 
 		if (startup_hold)
-		begin
-			r_idle <= 0;
 			o_cs_n <= 1;
-			if (r_z_counter)
-				o_sclk <= !o_sclk;
+	end
+
+	always @(posedge i_clk)
+	if (r_z_counter && !o_sclk)
+		r_ireg <= { r_ireg[6:0], i_miso };
+
+	always @(posedge i_clk)
+	if (r_z_counter && o_sclk && r_state == LLSDSPI_END)
+		o_byte <= r_ireg;
+
+	initial	r_idle  = 0;
+	always @(posedge i_clk)
+	if (startup_hold || i_reset)
+		r_idle <= 0;
+	else if (r_z_counter)
+	begin
+		if (byte_accepted)
+			r_idle <= 1'b0;
+		else if ((r_state == LLSDSPI_END)
+				||(r_state == LLSDSPI_HOTIDLE))
+			r_idle <= 1'b1;
+		else if (r_state == LLSDSPI_IDLE)
+			r_idle <= 1'b1;
+		else
+			r_idle <= 1'b0;
+	end
+
+	initial	o_sclk = 1;
+	always @(posedge i_clk)
+	if (i_reset)
+		o_sclk <= 1;
+	else if (r_z_counter)
+	begin
+		if (restart_counter && (startup_hold || (i_cs && !o_cs_n) || !o_sclk))
+			o_sclk <= (r_state == LLSDSPI_WAIT) || !o_sclk;
+	end
+
+	initial	r_byte = -1;
+	initial	o_mosi = 1;
+	always @(posedge i_clk)
+	if (i_reset)
+	begin
+		r_byte = -1;
+		o_mosi = 1;
+	end else if (r_z_counter)
+	begin
+		if (byte_accepted)
+		begin
+			o_mosi <= -1;
+			if (o_cs_n)
+				r_byte <= i_byte[7:0];
+			else begin
+				r_byte <= { i_byte[6:0], 1'b1 };
+				o_mosi <= i_byte[7];
+			end
+		end else if (o_sclk && (!OPT_SPI_ARBITRATION
+				|| (bus_grant && r_state != LLSDSPI_WAIT)))
+		begin
+			r_byte <= { r_byte[6:0], 1'b1 };
+			if (r_state >= LLSDSPI_START && r_state < LLSDSPI_END)
+				o_mosi <= r_byte[7];
+			else if (!i_cs)
+				o_mosi <= 1'b1;
 		end
 	end
 
-	assign o_idle = (r_idle)&&( (i_cs)&&(!OPT_SPI_ARBITRATION || i_bus_grant) );
+	initial	o_stb  = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset || startup_hold || !i_cs || !r_z_counter || !o_sclk)
+		o_stb <= 1'b0;
+	else
+		o_stb <= (r_state >= LLSDSPI_END);
+
+	assign o_idle = (r_idle)&&(r_z_counter);
 
 `ifdef	FORMAL
 `ifdef	LLSDSPI
@@ -305,12 +343,30 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 
 	////////////////////////////////////////////////////////////////////////
 	//
+	// Clock division logic (checks)
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
+	
+	(* anyconst *) reg constant_speed;
+	always @(posedge i_clk)
+	if (constant_speed)
+	begin
+		assume($stable(i_speed));
+		assert(r_clk_counter <= i_speed);
+	end
+
+	always @(posedge i_clk)
+	if (f_past_valid && $past(r_clk_counter != 0))
+		assert(r_clk_counter == $past(r_clk_counter - 1));
+	else if (f_past_valid)
+		assert((r_clk_counter == 0)||(r_clk_counter == $past(i_speed)));
+
+
+	////////////////////////////////////////////////////////////////////////
+	//
 	// Interface assumptions
 	//
-	always @(*)
-	if (!OPT_SPI_ARBITRATION)
-		assume(i_bus_grant);
-
 	always @(*)
 	if (i_stb)
 		`ASSUME(i_cs);
@@ -332,18 +388,64 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 		`ASSUME($stable(i_speed));
 
 	always @(posedge i_clk)
-	if ($past(i_bus_grant && !o_cs_n))
-		assume(i_bus_grant);
-	else if ($past(!i_bus_grant && o_cs_n))
-		assume(!i_bus_grant);
+	if (!f_past_valid)
+		assert(o_cs_n);
+	else if ($past(bus_grant && !o_cs_n))
+		assume(bus_grant);
+	else if ($past(!bus_grant && o_cs_n))
+		assume(!bus_grant);
 
-//	always @(posedge i_clk)
-//	if ($past(!o_cs_n && i_bus_grant) && (!o_cs_n && i_bus_grant))
-//	begin
-//		if (!$rose(o_sclk))
-//			assume($stable(i_miso));
-//	end
+	always @(*)
+	if (r_state == LLSDSPI_IDLE)
+		assert(o_cs_n);
+	else
+		assert(!o_cs_n);
 
+	always @(*)
+	if (r_state == LLSDSPI_WAIT)
+		assert(!o_cs_n && o_sclk);
+	else
+		assert(o_cs_n || bus_grant);
+
+	always @(posedge i_clk)
+	if (f_past_valid && $past(i_cs && !o_cs_n && !bus_grant))
+		assert(!o_cs_n && o_sclk);
+
+	always @(posedge i_clk)
+	if ($past(!o_cs_n && bus_grant) && (!o_cs_n && bus_grant))
+	begin
+		if (!$fell(o_sclk))
+			assume($stable(i_miso));
+
+		cover($changed(i_miso));
+	end
+
+	always @(posedge i_clk)
+	if (!f_past_valid || $past(i_reset))
+	begin
+		assume(!i_stb);
+		assume(!i_cs);
+	end
+
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Reset checks
+	//
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
+	always @(posedge i_clk)
+	if (!f_past_valid || $past(i_reset))
+	begin
+		assert(startup_hold);
+		assert(o_cs_n);
+		assert(o_sclk);
+	end
+
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Send byte sequences: from nothing, and from the last byte
+	//
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
@@ -358,41 +460,51 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 		fv_byte <= i_byte;
 
 	always @(posedge i_clk)
-		assert(r_state <= LLSDSPI_START+8);
+		assert(r_state <= LLSDSPI_END);
 
 	initial	f_start_seq = 0;
 	always @(posedge i_clk)
-	if (!i_cs)
+	if (i_reset || !i_cs)
 		f_start_seq <= 0;
 	else if (f_start_seq == 0)
 	begin
-		if (!OPT_SPI_ARBITRATION && byte_accepted)
-			f_start_seq <= (f_next_seq == 0);
 		if (OPT_SPI_ARBITRATION)
 		begin
 			if (r_state == LLSDSPI_IDLE && byte_accepted)
 			begin
-				if (!o_cs_n && i_bus_grant)
-					f_start_seq <= (f_next_seq == 0);
-				//r_start_seq <= (!o_cs_n && i_bus_grant) ? 1:0;
+			//	if (!o_cs_n && bus_grant)
+			//		f_start_seq <= (f_next_seq == 0);
+			//	//r_start_seq <= (!o_cs_n && bus_grant) ? 1:0;
 			end else if (r_state == LLSDSPI_WAIT && r_z_counter)
-				f_start_seq <= (i_bus_grant ? 1:0);
-		end
+				f_start_seq <= (bus_grant ? 1:0);
+		end else if (byte_accepted)
+			f_start_seq <= (f_next_seq == 0);
 	end else if (r_z_counter)
 	begin
 		f_start_seq <= f_start_seq << 1;
 		if (byte_accepted)
+		begin
 			f_start_seq[17] <= 0;
-		else if (f_start_seq[17])
+			f_start_seq[16] <= 0;
+		end else if (f_start_seq[17])
 			f_start_seq[17] <= 1;
 	end
 
 	always @(*)
+	if (!OPT_SPI_ARBITRATION)
+		assert(r_state != LLSDSPI_WAIT);
+
+	always @(*)
 	if (r_state == LLSDSPI_WAIT)
 	begin
-		assert(o_mosi == fv_byte[7]);
+		// assert(o_mosi == fv_byte[7]);
 		assert(r_byte == fv_byte[7:0]);
 		assert(o_sclk);
+		assert(!o_stb);
+		assert(f_start_seq == 0);
+		assert(f_next_seq == 0);
+		assert(!r_idle);
+		assert(r_z_counter);
 	end
 
 	always @(*)
@@ -407,7 +519,7 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 		assert(o_sclk);
 		assert(r_byte == fv_byte[7:0] );
 		assert(r_state == LLSDSPI_START);
-		assert(o_mosi == fv_byte[7]);
+		// assert(o_mosi == fv_byte[7]);
 		cover(r_state == LLSDSPI_START);
 		assert(!o_cs_n);
 		assert(!r_idle);
@@ -476,7 +588,7 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 		assert(!o_cs_n);
 		assert(!r_idle);
 		end
-	18'h200: begin
+	18'h00200: begin
 		assert(!o_sclk);
 		assert(r_byte == { fv_byte[2:0], 5'h1f });
 		assert(r_state == LLSDSPI_START+5);
@@ -484,7 +596,7 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 		assert(!o_cs_n);
 		assert(!r_idle);
 		end
-	18'h400: begin
+	18'h00400: begin
 		assert(o_sclk);
 		assert(r_byte == { fv_byte[2:0], 5'h1f });
 		assert(r_state == LLSDSPI_START+5);
@@ -492,7 +604,7 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 		assert(!o_cs_n);
 		assert(!r_idle);
 		end
-	18'h800: begin
+	18'h00800: begin
 		assert(!o_sclk);
 		assert(r_byte == { fv_byte[1:0], 6'h3f });
 		assert(r_state == LLSDSPI_START+6);
@@ -500,7 +612,7 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 		assert(!o_cs_n);
 		assert(!r_idle);
 		end
-	18'h1000: begin
+	18'h01000: begin
 		assert(o_sclk);
 		assert(r_byte == { fv_byte[1:0], 6'h3f });
 		assert(r_state == LLSDSPI_START+6);
@@ -508,7 +620,7 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 		assert(!o_cs_n);
 		assert(!r_idle);
 		end
-	18'h2000: begin
+	18'h02000: begin
 		assert(!o_sclk);
 		assert(r_byte == { fv_byte[0], 7'h7f });
 		assert(r_state == LLSDSPI_START+7);
@@ -516,7 +628,7 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 		assert(!o_cs_n);
 		assert(!r_idle);
 		end
-	18'h4000: begin
+	18'h04000: begin
 		assert(o_sclk);
 		assert(r_byte == { fv_byte[0], 7'h7f });
 		assert(r_state == LLSDSPI_START+7);
@@ -524,10 +636,10 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 		assert(!o_cs_n);
 		assert(!r_idle);
 		end
-	18'h8000: begin
+	18'h08000: begin
 		assert(!o_sclk);
 		assert(r_byte == { 8'hff });
-		assert(r_state == LLSDSPI_START+8);
+		assert(r_state == LLSDSPI_END);
 		assert(o_mosi == fv_byte[0]);
 		assert(!o_cs_n);
 		assert(!r_idle);
@@ -535,10 +647,10 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	18'h10000: begin
 		assert(o_sclk);
 		assert(r_byte == { 8'hff });
-		assert(r_state == LLSDSPI_START+8);
+		assert(r_state == LLSDSPI_END);
 		assert(o_mosi == fv_byte[0]);
 		assert(!o_cs_n);
-		assert(!r_idle);
+		assert(r_idle);
 		end
 	18'h20000: begin
 		assert(o_sclk);
@@ -552,16 +664,16 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	if (|f_start_seq[16:1])
 	begin
 		assert(!o_cs_n);
-		assert(i_bus_grant);
+		assert(bus_grant);
 	end
 
 	initial	f_next_seq = 0;
 	always @(posedge i_clk)
-	if (!i_cs)
+	if (i_reset || !i_cs)
 		f_next_seq <= 0;
-	else if (f_start_seq[17] && byte_accepted)
+	else if ((|f_start_seq[16:17]) && byte_accepted)
 		f_next_seq <= 1;
-	else if (f_next_seq[16] && byte_accepted)
+	else if ((|f_next_seq[15:16]) && byte_accepted)
 		f_next_seq <= 1;
 	else if (r_z_counter)
 	begin
@@ -572,6 +684,10 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 		if (f_next_seq[16])
 			f_next_seq[16] <= 1;
 	end
+
+	always @(posedge i_clk)
+	if (f_past_valid && !$fell(o_sclk) && !o_cs_n)
+		assert($stable(o_mosi));
 
 	always @(*)
 	if (|(f_next_seq & {(8){2'b10}}))
@@ -696,7 +812,7 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	17'h4000: begin
 		assert(!o_sclk);
 		assert(r_byte == { 8'hff });
-		assert(r_state == LLSDSPI_START+8);
+		assert(r_state == LLSDSPI_END);
 		assert(o_mosi == fv_byte[0]);
 		assert(!o_cs_n);
 		assert(!r_idle);
@@ -704,10 +820,10 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	17'h8000: begin
 		assert(o_sclk);
 		assert(r_byte == { 8'hff });
-		assert(r_state == LLSDSPI_START+8);
+		assert(r_state == LLSDSPI_END);
 		assert(o_mosi == fv_byte[0]);
 		assert(!o_cs_n);
-		assert(!r_idle);
+		assert(r_idle);
 		end
 	17'h10000: begin
 		assert(o_sclk);
@@ -730,7 +846,25 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	always @(*)
 	if ((f_start_seq==0) && (f_next_seq == 0))
 		assert((r_state == LLSDSPI_IDLE)
-				||(OPT_SPI_ARBITRATION && r_state == LLSDSPI_WAIT));
+			||(OPT_SPI_ARBITRATION && r_state == LLSDSPI_WAIT));
+
+	always @(posedge i_clk)
+	if (f_past_valid && !$past(i_reset) && $changed({ o_sclk, o_mosi }))
+	begin
+		if ($past(i_cs))
+		begin
+			assert(r_z_counter == $past(i_speed == 0));
+			assert(r_clk_counter == $past(i_speed));
+		end
+	end
+
+	always @(posedge i_clk)
+	if (f_past_valid && !$past(i_reset) && !$past(r_z_counter))
+	begin
+		assert($stable(o_cs_n));
+		assert($stable(o_sclk));
+		assert($stable(o_mosi));
+	end
 
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -750,11 +884,11 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 		assume(i_miso == f_rxdata[7]);
 		end
 	18'h004: begin
-		assume(i_miso == f_rxdata[7]);
+		// assume(i_miso == f_rxdata[7]);
 		assert(r_ireg[0] == f_rxdata[7]);
 		end
 	18'h008: begin
-		assume(i_miso == f_rxdata[6]);
+		// assume(i_miso == f_rxdata[6]);
 		assert(r_ireg[0] == f_rxdata[7]);
 		end
 	18'h010: begin
@@ -817,12 +951,48 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 	endcase
 
 	always @(posedge i_clk)
-	if (f_past_valid && $rose(f_start_seq[17]))
-		assert(o_stb);
-	else if (f_past_valid && $rose(f_next_seq[16]))
-		assert(o_stb);
-	else
+	if (!f_past_valid || $past(i_reset))
 		assert(!o_stb);
+	else if ($past(i_cs))
+	begin
+		if ($fell(f_start_seq[16]))
+			assert(o_stb);
+		else if ($fell(f_next_seq[15]))
+			assert(o_stb);
+		else
+			assert(!o_stb);
+	end else
+		assert(!o_stb);
+
+	always @(posedge i_clk)
+	if (o_cs_n)
+		assert(o_mosi);
+
+	always @(*)
+	if (!f_past_valid)
+	begin
+		if (STARTUP_CLOCKS > 0)
+			assume(startup_hold);
+		assert(r_z_counter);
+		assert(!r_idle);
+		assert(o_cs_n);
+		assert(o_sclk);
+	end
+
+	always @(*)
+	if (r_state == LLSDSPI_WAIT)
+		assert(o_sclk && !o_cs_n);
+
+	always @(*)
+	if (o_cs_n && r_idle)
+		assert(o_sclk);
+
+	always @(*)
+	if (startup_hold)
+		assert(o_cs_n);
+	else if (o_cs_n)
+		assert(o_sclk);
+
 
 `ifndef	VERIFIC
 `else
@@ -853,30 +1023,20 @@ module	llsdspi(i_clk, i_speed, i_cs, i_stb, i_byte,
 			cover($past(f_next_seq[16]) && f_next_seq[0]);
 		end
 
-		cover(o_stb && o_byte == 8'haa);
-		cover(o_stb && o_byte == 8'h55);
+		cover(o_stb && o_byte == 8'haa && $changed(o_byte));
+		cover(o_stb && o_byte == 8'h55 && $changed(o_byte));
 	end
 
-	always @(*)
-	if (!f_past_valid)
+	////////////////////////////////////////////////////////////////////////
+	//
+	// "Careless" constraining assumptions
+	//
+	always @(posedge i_clk)
 	begin
-		if (STARTUP_CLOCKS > 0)
-			assume(startup_hold);
-		assert(r_z_counter);
-		assert(!r_idle);
-		assert(o_cs_n);
-		assert(o_sclk);
+		if (!$past(r_idle))
+			assume($stable(i_cs));
+		if ($past(i_stb))
+			assume(i_cs);
 	end
-
-	always @(*)
-	if (r_state == LLSDSPI_WAIT)
-		assert(o_sclk && !o_cs_n);
-
-	always @(*)
-	if (o_cs_n && r_idle)
-		assert(o_sclk);
-
 `endif // FORMAL
 endmodule
-
-

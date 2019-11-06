@@ -1,20 +1,24 @@
 [*]
 [*] GTKWave Analyzer v3.3.66 (w)1999-2015 BSI
-[*] Mon Aug 12 18:49:55 2019
+[*] Wed Nov  6 17:03:33 2019
 [*]
-[dumpfile] "/home/dan/work/rnd/opencores/sdspi/trunk/bench/formal/llsdspi_prf/engine_0/trace.vcd"
-[dumpfile_mtime] "Mon Aug 12 18:47:36 2019"
-[dumpfile_size] 2218
+[dumpfile] "/home/dan/work/rnd/opencores/sdspi/trunk/bench/formal/llsdspi_cvr/engine_0/trace7.vcd"
+[dumpfile_mtime] "Wed Nov  6 17:00:42 2019"
+[dumpfile_size] 20588
 [savefile] "/home/dan/work/rnd/opencores/sdspi/trunk/bench/formal/llsdspi.gtkw"
 [timestart] 0
-[size] 1785 600
-[pos] -786 -1
-*-3.909014 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[size] 1785 992
+[pos] 1786 -1
+*-6.909014 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] llsdspi.
 [sst_width] 196
-[signals_width] 174
+[signals_width] 190
 [sst_expanded] 1
-[sst_vpaned_height] 155
+[sst_vpaned_height] 296
+@29
+llsdspi.f_past_valid
 @28
+llsdspi.i_reset
 llsdspi.i_clk
 @22
 llsdspi.i_speed[6:0]
@@ -23,32 +27,50 @@ llsdspi.i_bus_grant
 @200
 -
 @28
+[color] 3
 llsdspi.i_cs
+[color] 3
 llsdspi.i_stb
 @22
+[color] 3
 llsdspi.i_byte[7:0]
+@28
+[color] 3
+llsdspi.o_idle
+[color] 2
+llsdspi.o_stb
+@22
+[color] 2
+llsdspi.o_byte[7:0]
 @200
 -
 @28
-llsdspi.i_miso
+[color] 2
 llsdspi.o_cs_n
-llsdspi.o_idle
-llsdspi.o_mosi
+[color] 2
 llsdspi.o_sclk
-llsdspi.o_stb
+[color] 2
+llsdspi.o_mosi
+[color] 3
+llsdspi.i_miso
 @200
 -
 @28
 llsdspi.startup_hold
-@201
+@22
+llsdspi.WAIT_FOR_STARTUP.startup_counter[6:0]
+@200
 -
 @28
 llsdspi.r_z_counter
+@22
+llsdspi.r_clk_counter[6:0]
+@28
+llsdspi.restart_counter
 @200
 -
 @28
 llsdspi.byte_accepted
-llsdspi.f_past_valid
 @22
 llsdspi.o_byte[7:0]
 llsdspi.r_byte[7:0]

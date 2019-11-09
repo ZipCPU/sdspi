@@ -1,0 +1,19 @@
+[tasks]
+prf
+cvr
+
+[options]
+prf: mode prove
+prf: depth 8
+cvr: mode cover
+cvr: depth 160
+
+[engines]
+smtbmc boolector
+
+[script]
+read -formal -D SPITXDATA spitxdata.v
+prep -top spitxdata
+
+[files]
+../../rtl/spitxdata.v

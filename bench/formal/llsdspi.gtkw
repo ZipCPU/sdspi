@@ -1,23 +1,20 @@
 [*]
 [*] GTKWave Analyzer v3.3.66 (w)1999-2015 BSI
-[*] Wed Nov  6 17:03:33 2019
+[*] Thu Nov  7 18:10:51 2019
 [*]
-[dumpfile] "/home/dan/work/rnd/opencores/sdspi/trunk/bench/formal/llsdspi_cvr/engine_0/trace7.vcd"
-[dumpfile_mtime] "Wed Nov  6 17:00:42 2019"
-[dumpfile_size] 20588
-[savefile] "/home/dan/work/rnd/opencores/sdspi/trunk/bench/formal/llsdspi.gtkw"
-[timestart] 0
+[dumpfile_mtime] "Thu Nov  7 18:00:22 2019"
+[dumpfile_size] 18660
+[timestart] 267
 [size] 1785 992
-[pos] 1786 -1
-*-6.909014 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[pos] 1946 61
+*-4.909014 0 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] llsdspi.
 [sst_width] 196
 [signals_width] 190
 [sst_expanded] 1
 [sst_vpaned_height] 296
-@29
-llsdspi.f_past_valid
 @28
+llsdspi.f_past_valid
 llsdspi.i_reset
 llsdspi.i_clk
 @22
@@ -57,16 +54,12 @@ llsdspi.i_miso
 -
 @28
 llsdspi.startup_hold
-@22
-llsdspi.WAIT_FOR_STARTUP.startup_counter[6:0]
 @200
 -
 @28
 llsdspi.r_z_counter
 @22
 llsdspi.r_clk_counter[6:0]
-@28
-llsdspi.restart_counter
 @200
 -
 @28
@@ -80,5 +73,11 @@ llsdspi.r_idle
 @22
 llsdspi.r_ireg[7:0]
 llsdspi.r_state[3:0]
+@200
+-
+@23
+llsdspi.f_start_seq[17:0]
+@22
+llsdspi.f_next_seq[16:0]
 [pattern_trace] 1
 [pattern_trace] 0

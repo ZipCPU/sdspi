@@ -93,8 +93,32 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		o_cs_n, o_sclk, o_mosi, i_miso,
 		o_stb, o_byte, o_idle, i_bus_grant);
 	parameter	SPDBITS = 7,
-		STARTUP_CLOCKS = 75;
+			// Minimum startup clocks
+			STARTUP_CLOCKS = 150,
+			// System clocks to wait before the startup clock
+			// sequence
+			POWERUP_IDLE = 1000;
+	//
+	// This core was originally developed for a shared SPI bus
+	// implementation on a XuLA2-LX25 board--one that shared flash with
+	// the SD-card.  Few cards support such an implementation any more,
+	// since per protocol CS high (inactive) and clock and data pins
+	// toggling could well put the SD card into it's SD mode instead of
+	// SPI mode.
 	parameter [0:0]	OPT_SPI_ARBITRATION = 1'b0;
+	//
+	//
+	localparam [0:0]	CSN_ON_STARTUP = 1'b1;
+	//
+	// The MOSI INACTIVE VALUE *MUST* be 1'b1 to be compliant
+	localparam [0:0]	MOSI_INACTIVE_VALUE = 1'b1;
+	//
+	// Normally, an SPI transaction shuts the clock down when finished.
+	// If OPT_CONTINUOUS_CLOCK is set, the clock will be continuous.
+	// This also means that any driving program must be ready when the
+	// SDSPI is idle.
+	parameter [0:0]	OPT_CONTINUOUS_CLOCK = 1'b0;
+
 	//
 	input	wire		i_clk, i_reset;
 	// Parameters/setup
@@ -109,7 +133,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	// The outgoing interface
 	output	reg		o_stb;
 	output	reg	[7:0]	o_byte;
-	output	wire		o_idle;
+	output	reg		o_idle;
 	// And whether or not we actually own the interface (yet)
 	input	wire		i_bus_grant;
 
@@ -135,18 +159,51 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	reg	f_past_valid;
 `endif
 
-	reg	startup_hold;
+	reg	startup_hold, powerup_hold;
+
+	generate if (POWERUP_IDLE > 0)
+	begin : WAIT_FOR_POWERUP
+
+		localparam	POWERUP_BITS = $clog2(POWERUP_IDLE);
+		reg	[POWERUP_BITS-1:0]	powerup_counter;
+
+		initial powerup_counter = POWERUP_IDLE[POWERUP_BITS-1:0];
+		initial	powerup_hold = 1;
+		always @(posedge i_clk)
+		if (i_reset)
+		begin
+			powerup_counter <= POWERUP_IDLE;
+			powerup_hold    <= 1;
+		end else if (powerup_hold)
+		begin
+			if (|powerup_counter)
+				powerup_counter <= powerup_counter - 1;
+			powerup_hold <= (powerup_counter > 0);
+		end
+
+`ifdef	FORMAL
+		always @(*)
+		if (!f_past_valid)
+			assume(powerup_counter > 2);
+		always @(*)
+		if (powerup_counter > 0)
+			assert(powerup_hold);
+`endif
+	end else begin
+
+		always @(*)
+			powerup_hold = 0;
+	end endgenerate
+
 	generate if (STARTUP_CLOCKS > 0)
 	begin : WAIT_FOR_STARTUP
 		localparam	STARTUP_BITS = $clog2(STARTUP_CLOCKS);
 		reg	[STARTUP_BITS-1:0]	startup_counter;
 
-`ifndef	FORMAL
 		initial startup_counter = STARTUP_CLOCKS[STARTUP_BITS-1:0];
-`endif
 		initial	startup_hold = 1;
 		always @(posedge i_clk)
-		if (i_reset)
+		if (i_reset || powerup_hold)
 		begin
 			startup_counter <= STARTUP_CLOCKS;
 			startup_hold    <= 1;
@@ -160,7 +217,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 `ifdef	FORMAL
 		always @(*)
 		if (!f_past_valid)
-			assume(startup_counter > 2);
+			assume(startup_counter > 1);
 		always @(*)
 		if (startup_counter > 0)
 			assert(startup_hold);
@@ -174,6 +231,11 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 
 	assign	byte_accepted = (i_stb)&&(o_idle);
 
+`ifdef	FORMAL
+	always @(*)
+	if (powerup_hold)
+		assert(startup_hold);
+`endif
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Clock divider and speed control
@@ -182,13 +244,21 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	initial	r_z_counter = 1'b1;
 
 	always @(*)
-	begin
-		if (!startup_hold && (!i_cs ||
-				(!bus_grant
-				|| r_state == LLSDSPI_IDLE
-				|| r_state == LLSDSPI_WAIT)))
+	if (OPT_CONTINUOUS_CLOCK || powerup_hold)
+		restart_counter = !powerup_hold;
+	else begin
+		restart_counter = 1'b0;
+
+		if (startup_hold || !i_cs)
+			restart_counter = 1'b1;
+		else if (!OPT_SPI_ARBITRATION && byte_accepted)
+			restart_counter = 1'b1;
+		else if (OPT_SPI_ARBITRATION && r_state == LLSDSPI_IDLE)
 			restart_counter = 1'b0;
-		else if (startup_hold || byte_accepted)
+		else if (OPT_SPI_ARBITRATION && r_state == LLSDSPI_WAIT
+				&& !bus_grant)
+			restart_counter = 1'b0;
+		else if (OPT_SPI_ARBITRATION && byte_accepted)
 			restart_counter = 1'b1;
 		else
 			restart_counter = !r_idle;
@@ -211,12 +281,12 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	//
 	// Control o_stb, o_cs_n, and o_mosi
 	//
-	initial	o_cs_n = 1'b1;
+	initial	o_cs_n = CSN_ON_STARTUP;
 	initial	r_state = LLSDSPI_IDLE;
 	always @(posedge i_clk)
-	if (i_reset)
+	if (i_reset || (!CSN_ON_STARTUP && startup_hold))
 	begin
-		o_cs_n <= 1;
+		o_cs_n <= CSN_ON_STARTUP;
 		r_state <= LLSDSPI_IDLE;
 	end else if (r_z_counter)
 	begin
@@ -236,7 +306,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 					// Wait for arbitration
 					r_state <= LLSDSPI_WAIT;
 				else
-					r_state <= LLSDSPI_START;
+					r_state <= LLSDSPI_START + (OPT_CONTINUOUS_CLOCK ? 1:0);
 			end
 		end else if (r_state == LLSDSPI_WAIT)
 		begin
@@ -286,36 +356,39 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		o_sclk <= 1;
 	else if (r_z_counter)
 	begin
-		if (restart_counter && (startup_hold || (i_cs && !o_cs_n) || !o_sclk))
+		if (OPT_CONTINUOUS_CLOCK)
+			o_sclk <= !o_sclk;
+		else if (restart_counter
+			&& (startup_hold || (i_cs && !o_cs_n) || !o_sclk))
 			o_sclk <= (r_state == LLSDSPI_WAIT) || !o_sclk;
 	end
 
 	initial	r_byte = -1;
-	initial	o_mosi = 1;
+	initial	o_mosi = MOSI_INACTIVE_VALUE;
 	always @(posedge i_clk)
 	if (i_reset)
 	begin
-		r_byte = -1;
-		o_mosi = 1;
+		r_byte <= {(8){MOSI_INACTIVE_VALUE}};
+		o_mosi <= MOSI_INACTIVE_VALUE;
 	end else if (r_z_counter)
 	begin
 		if (byte_accepted)
 		begin
-			o_mosi <= -1;
-			if (o_cs_n)
+			o_mosi <= MOSI_INACTIVE_VALUE;
+			if (o_cs_n && !OPT_CONTINUOUS_CLOCK)
 				r_byte <= i_byte[7:0];
 			else begin
-				r_byte <= { i_byte[6:0], 1'b1 };
+				r_byte <= { i_byte[6:0], MOSI_INACTIVE_VALUE };
 				o_mosi <= i_byte[7];
 			end
 		end else if (o_sclk && (!OPT_SPI_ARBITRATION
 				|| (bus_grant && r_state != LLSDSPI_WAIT)))
 		begin
-			r_byte <= { r_byte[6:0], 1'b1 };
+			r_byte <= { r_byte[6:0], MOSI_INACTIVE_VALUE };
 			if (r_state >= LLSDSPI_START && r_state < LLSDSPI_END)
 				o_mosi <= r_byte[7];
 			else if (!i_cs)
-				o_mosi <= 1'b1;
+				o_mosi <= MOSI_INACTIVE_VALUE;
 		end
 	end
 
@@ -326,7 +399,13 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	else
 		o_stb <= (r_state >= LLSDSPI_END);
 
-	assign o_idle = (r_idle)&&(r_z_counter);
+	always @(*)
+	begin
+		if (OPT_CONTINUOUS_CLOCK)
+			o_idle = (r_idle)&&(r_z_counter)&&(o_sclk);
+		else
+			o_idle = (r_idle)&&(r_z_counter);
+	end
 
 `ifdef	FORMAL
 `ifdef	LLSDSPI
@@ -347,8 +426,8 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
-	
 	(* anyconst *) reg constant_speed;
+
 	always @(posedge i_clk)
 	if (constant_speed)
 	begin
@@ -362,6 +441,12 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	else if (f_past_valid)
 		assert((r_clk_counter == 0)||(r_clk_counter == $past(i_speed)));
 
+	//
+	// And assumptions
+	//
+	always @(posedge i_clk)
+	if (f_past_valid && (i_cs || !r_z_counter))
+		assume($stable(i_speed));
 
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -374,32 +459,36 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	always @(posedge i_clk)
 	if (f_past_valid && $past(i_stb && !o_idle))
 	begin
-		`ASSUME(i_stb);
-		`ASSUME($stable(i_byte));
-	end else if ($past(i_cs && !o_idle))
+		if ($past(i_reset || !i_cs))
+			`ASSUME(!i_stb);
+		// else
+		//	`ASSUME(i_stb);
+		if ($past(f_past_valid)&&(!$past(o_idle,2)))
+			`ASSUME($stable(i_byte));
+	end else if (f_past_valid && $past(i_cs && !o_idle && !i_reset))
 		`ASSUME(i_cs);
-
-	always @(posedge i_clk)
-	if (f_past_valid && i_cs)
-		`ASSUME($stable(i_speed));
-
-	always @(posedge i_clk)
-	if (!r_z_counter)
-		`ASSUME($stable(i_speed));
+		// assume(i_cs);
 
 	always @(posedge i_clk)
 	if (!f_past_valid)
-		assert(o_cs_n);
+		assert(o_cs_n == CSN_ON_STARTUP);
 	else if ($past(bus_grant && !o_cs_n))
-		assume(bus_grant);
+		`ASSUME(bus_grant);
 	else if ($past(!bus_grant && o_cs_n))
-		assume(!bus_grant);
+		`ASSUME(!bus_grant);
 
 	always @(*)
 	if (r_state == LLSDSPI_IDLE)
-		assert(o_cs_n);
+		assert(!CSN_ON_STARTUP || o_cs_n);
 	else
 		assert(!o_cs_n);
+
+
+	always @(posedge i_clk)
+	if (f_past_valid && CSN_ON_STARTUP && $past(r_state == LLSDSPI_IDLE)
+		&& $past(!i_reset)
+		&& r_state == LLSDSPI_IDLE)
+		assert(o_cs_n);
 
 	always @(*)
 	if (r_state == LLSDSPI_WAIT)
@@ -408,7 +497,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		assert(o_cs_n || bus_grant);
 
 	always @(posedge i_clk)
-	if (f_past_valid && $past(i_cs && !o_cs_n && !bus_grant))
+	if (f_past_valid && $past(!i_reset && i_cs && !o_cs_n && !bus_grant))
 		assert(!o_cs_n && o_sclk);
 
 	always @(posedge i_clk)
@@ -423,8 +512,8 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	always @(posedge i_clk)
 	if (!f_past_valid || $past(i_reset))
 	begin
-		assume(!i_stb);
-		assume(!i_cs);
+		`ASSUME(!i_stb);
+		`ASSUME(!i_cs);
 	end
 
 	////////////////////////////////////////////////////////////////////////
@@ -438,7 +527,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	if (!f_past_valid || $past(i_reset))
 	begin
 		assert(startup_hold);
-		assert(o_cs_n);
+		assert(o_cs_n == CSN_ON_STARTUP);
 		assert(o_sclk);
 	end
 
@@ -478,7 +567,12 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 			end else if (r_state == LLSDSPI_WAIT && r_z_counter)
 				f_start_seq <= (bus_grant ? 1:0);
 		end else if (byte_accepted)
-			f_start_seq <= (f_next_seq == 0);
+		begin
+			if (OPT_CONTINUOUS_CLOCK)
+				f_start_seq <= (f_next_seq == 0) ? 2:0;
+			else
+				f_start_seq <= (f_next_seq == 0);
+		end
 	end else if (r_z_counter)
 	begin
 		f_start_seq <= f_start_seq << 1;
@@ -520,13 +614,12 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		assert(r_byte == fv_byte[7:0] );
 		assert(r_state == LLSDSPI_START);
 		// assert(o_mosi == fv_byte[7]);
-		cover(r_state == LLSDSPI_START);
 		assert(!o_cs_n);
 		assert(!r_idle);
 		end
 	18'h002: begin
 		assert(!o_sclk);
-		assert(r_byte == { fv_byte[6:0], 1'b1 });
+		assert(r_byte == { fv_byte[6:0], {(1){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+1);
 		assert(o_mosi == fv_byte[7]);
 		assert(!o_cs_n);
@@ -534,7 +627,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h004: begin
 		assert(o_sclk);
-		assert(r_byte == { fv_byte[6:0], 1'b1 });
+		assert(r_byte == { fv_byte[6:0], {(1){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+1);
 		assert(o_mosi == fv_byte[7]);
 		assert(!o_cs_n);
@@ -542,7 +635,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h008: begin
 		assert(!o_sclk);
-		assert(r_byte == { fv_byte[5:0], 2'b11 });
+		assert(r_byte == { fv_byte[5:0], {(2){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+2);
 		assert(o_mosi == fv_byte[6]);
 		assert(!o_cs_n);
@@ -550,7 +643,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h010: begin
 		assert(o_sclk);
-		assert(r_byte == { fv_byte[5:0], 2'b11 });
+		assert(r_byte == { fv_byte[5:0], {(2){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+2);
 		assert(o_mosi == fv_byte[6]);
 		assert(!o_cs_n);
@@ -558,7 +651,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h020: begin
 		assert(!o_sclk);
-		assert(r_byte == { fv_byte[4:0], 3'b111 });
+		assert(r_byte == { fv_byte[4:0], {(3){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+3);
 		assert(o_mosi == fv_byte[5]);
 		assert(!o_cs_n);
@@ -566,7 +659,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h040: begin
 		assert(o_sclk);
-		assert(r_byte == { fv_byte[4:0], 3'b111 });
+		assert(r_byte == { fv_byte[4:0], {(3){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+3);
 		assert(o_mosi == fv_byte[5]);
 		assert(!o_cs_n);
@@ -574,7 +667,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h080: begin
 		assert(!o_sclk);
-		assert(r_byte == { fv_byte[3:0], 4'hf });
+		assert(r_byte == { fv_byte[3:0], {(4){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+4);
 		assert(o_mosi == fv_byte[4]);
 		assert(!o_cs_n);
@@ -582,7 +675,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h100: begin
 		assert(o_sclk);
-		assert(r_byte == { fv_byte[3:0], 4'hf });
+		assert(r_byte == { fv_byte[3:0], {(4){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+4);
 		assert(o_mosi == fv_byte[4]);
 		assert(!o_cs_n);
@@ -590,7 +683,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h00200: begin
 		assert(!o_sclk);
-		assert(r_byte == { fv_byte[2:0], 5'h1f });
+		assert(r_byte == { fv_byte[2:0], {(5){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+5);
 		assert(o_mosi == fv_byte[3]);
 		assert(!o_cs_n);
@@ -598,7 +691,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h00400: begin
 		assert(o_sclk);
-		assert(r_byte == { fv_byte[2:0], 5'h1f });
+		assert(r_byte == { fv_byte[2:0], {(5){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+5);
 		assert(o_mosi == fv_byte[3]);
 		assert(!o_cs_n);
@@ -606,7 +699,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h00800: begin
 		assert(!o_sclk);
-		assert(r_byte == { fv_byte[1:0], 6'h3f });
+		assert(r_byte == { fv_byte[1:0], {(6){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+6);
 		assert(o_mosi == fv_byte[2]);
 		assert(!o_cs_n);
@@ -614,7 +707,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h01000: begin
 		assert(o_sclk);
-		assert(r_byte == { fv_byte[1:0], 6'h3f });
+		assert(r_byte == { fv_byte[1:0], {(6){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+6);
 		assert(o_mosi == fv_byte[2]);
 		assert(!o_cs_n);
@@ -622,7 +715,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h02000: begin
 		assert(!o_sclk);
-		assert(r_byte == { fv_byte[0], 7'h7f });
+		assert(r_byte == { fv_byte[0], {(7){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+7);
 		assert(o_mosi == fv_byte[1]);
 		assert(!o_cs_n);
@@ -630,7 +723,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h04000: begin
 		assert(o_sclk);
-		assert(r_byte == { fv_byte[0], 7'h7f });
+		assert(r_byte == { fv_byte[0], {(7){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+7);
 		assert(o_mosi == fv_byte[1]);
 		assert(!o_cs_n);
@@ -638,7 +731,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h08000: begin
 		assert(!o_sclk);
-		assert(r_byte == { 8'hff });
+		assert(r_byte == { {(8){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_END);
 		assert(o_mosi == fv_byte[0]);
 		assert(!o_cs_n);
@@ -646,7 +739,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h10000: begin
 		assert(o_sclk);
-		assert(r_byte == { 8'hff });
+		assert(r_byte == { {(8){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_END);
 		assert(o_mosi == fv_byte[0]);
 		assert(!o_cs_n);
@@ -671,9 +764,9 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	always @(posedge i_clk)
 	if (i_reset || !i_cs)
 		f_next_seq <= 0;
-	else if ((|f_start_seq[16:17]) && byte_accepted)
+	else if ((|f_start_seq[17:16]) && byte_accepted)
 		f_next_seq <= 1;
-	else if ((|f_next_seq[15:16]) && byte_accepted)
+	else if ((|f_next_seq[16:15]) && byte_accepted)
 		f_next_seq <= 1;
 	else if (r_z_counter)
 	begin
@@ -686,7 +779,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	end
 
 	always @(posedge i_clk)
-	if (f_past_valid && !$fell(o_sclk) && !o_cs_n)
+	if (f_past_valid && !$past(i_reset) && !$fell(o_sclk) && !o_cs_n)
 		assert($stable(o_mosi));
 
 	always @(*)
@@ -699,7 +792,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	case(f_next_seq[16:0])
 	17'h001: begin
 		assert(!o_sclk);
-		assert(r_byte == { fv_byte[6:0], 1'b1 });
+		assert(r_byte == { fv_byte[6:0], {(1){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+1);
 		assert(o_mosi == fv_byte[7]);
 		assert(!o_cs_n);
@@ -707,7 +800,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	17'h002: begin
 		assert(o_sclk);
-		assert(r_byte == { fv_byte[6:0], 1'b1 });
+		assert(r_byte == { fv_byte[6:0], {(1){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+1);
 		assert(o_mosi == fv_byte[7]);
 		assert(!o_cs_n);
@@ -715,7 +808,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	17'h004: begin
 		assert(!o_sclk);
-		assert(r_byte == { fv_byte[5:0], 2'b11 });
+		assert(r_byte == { fv_byte[5:0], {(2){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+2);
 		assert(o_mosi == fv_byte[6]);
 		assert(!o_cs_n);
@@ -723,7 +816,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	17'h008: begin
 		assert(o_sclk);
-		assert(r_byte == { fv_byte[5:0], 2'b11 });
+		assert(r_byte == { fv_byte[5:0], {(2){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+2);
 		assert(o_mosi == fv_byte[6]);
 		assert(!o_cs_n);
@@ -731,7 +824,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	17'h010: begin
 		assert(!o_sclk);
-		assert(r_byte == { fv_byte[4:0], 3'b111 });
+		assert(r_byte == { fv_byte[4:0], {(3){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+3);
 		assert(o_mosi == fv_byte[5]);
 		assert(!o_cs_n);
@@ -739,7 +832,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	17'h020: begin
 		assert(o_sclk);
-		assert(r_byte == { fv_byte[4:0], 3'b111 });
+		assert(r_byte == { fv_byte[4:0], {(3){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+3);
 		assert(o_mosi == fv_byte[5]);
 		assert(!o_cs_n);
@@ -747,7 +840,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	17'h040: begin
 		assert(!o_sclk);
-		assert(r_byte == { fv_byte[3:0], 4'hf });
+		assert(r_byte == { fv_byte[3:0], {(4){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+4);
 		assert(o_mosi == fv_byte[4]);
 		assert(!o_cs_n);
@@ -755,7 +848,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	18'h080: begin
 		assert(o_sclk);
-		assert(r_byte == { fv_byte[3:0], 4'hf });
+		assert(r_byte == { fv_byte[3:0], {(4){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+4);
 		assert(o_mosi == fv_byte[4]);
 		assert(!o_cs_n);
@@ -763,7 +856,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	17'h100: begin
 		assert(!o_sclk);
-		assert(r_byte == { fv_byte[2:0], 5'h1f });
+		assert(r_byte == { fv_byte[2:0], {(5){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+5);
 		assert(o_mosi == fv_byte[3]);
 		assert(!o_cs_n);
@@ -771,7 +864,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	17'h200: begin
 		assert(o_sclk);
-		assert(r_byte == { fv_byte[2:0], 5'h1f });
+		assert(r_byte == { fv_byte[2:0], {(5){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+5);
 		assert(o_mosi == fv_byte[3]);
 		assert(!o_cs_n);
@@ -779,7 +872,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	17'h400: begin
 		assert(!o_sclk);
-		assert(r_byte == { fv_byte[1:0], 6'h3f });
+		assert(r_byte == { fv_byte[1:0], {(6){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+6);
 		assert(o_mosi == fv_byte[2]);
 		assert(!o_cs_n);
@@ -787,7 +880,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	17'h0800: begin
 		assert(o_sclk);
-		assert(r_byte == { fv_byte[1:0], 6'h3f });
+		assert(r_byte == { fv_byte[1:0], {(6){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+6);
 		assert(o_mosi == fv_byte[2]);
 		assert(!o_cs_n);
@@ -795,7 +888,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	17'h1000: begin
 		assert(!o_sclk);
-		assert(r_byte == { fv_byte[0], 7'h7f });
+		assert(r_byte == { fv_byte[0], {(7){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+7);
 		assert(o_mosi == fv_byte[1]);
 		assert(!o_cs_n);
@@ -803,7 +896,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	17'h2000: begin
 		assert(o_sclk);
-		assert(r_byte == { fv_byte[0], 7'h7f });
+		assert(r_byte == { fv_byte[0], {(7){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_START+7);
 		assert(o_mosi == fv_byte[1]);
 		assert(!o_cs_n);
@@ -811,7 +904,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	17'h4000: begin
 		assert(!o_sclk);
-		assert(r_byte == { 8'hff });
+		assert(r_byte == { {(8){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_END);
 		assert(o_mosi == fv_byte[0]);
 		assert(!o_cs_n);
@@ -819,7 +912,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		end
 	17'h8000: begin
 		assert(o_sclk);
-		assert(r_byte == { 8'hff });
+		assert(r_byte == { {(8){MOSI_INACTIVE_VALUE}} });
 		assert(r_state == LLSDSPI_END);
 		assert(o_mosi == fv_byte[0]);
 		assert(!o_cs_n);
@@ -884,11 +977,11 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		assume(i_miso == f_rxdata[7]);
 		end
 	18'h004: begin
-		// assume(i_miso == f_rxdata[7]);
+		assume(i_miso == f_rxdata[7]);
 		assert(r_ireg[0] == f_rxdata[7]);
 		end
 	18'h008: begin
-		// assume(i_miso == f_rxdata[6]);
+		assume(i_miso == f_rxdata[6]);
 		assert(r_ireg[0] == f_rxdata[7]);
 		end
 	18'h010: begin
@@ -965,17 +1058,17 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		assert(!o_stb);
 
 	always @(posedge i_clk)
-	if (o_cs_n)
-		assert(o_mosi);
+	if (o_cs_n || ((f_start_seq == 0) &&(f_next_seq == 0)))
+		assert(o_mosi == MOSI_INACTIVE_VALUE);
 
 	always @(*)
 	if (!f_past_valid)
 	begin
 		if (STARTUP_CLOCKS > 0)
-			assume(startup_hold);
+			`ASSUME(startup_hold);
 		assert(r_z_counter);
 		assert(!r_idle);
-		assert(o_cs_n);
+		assert(o_cs_n == CSN_ON_STARTUP);
 		assert(o_sclk);
 	end
 
@@ -984,18 +1077,17 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 		assert(o_sclk && !o_cs_n);
 
 	always @(*)
-	if (o_cs_n && r_idle)
+	if (!OPT_CONTINUOUS_CLOCK && o_cs_n && r_idle)
 		assert(o_sclk);
 
 	always @(*)
 	if (startup_hold)
-		assert(o_cs_n);
-	else if (o_cs_n)
+		assert(o_cs_n == CSN_ON_STARTUP);
+	else if (!OPT_CONTINUOUS_CLOCK && o_cs_n)
 		assert(o_sclk);
 
 
-`ifndef	VERIFIC
-`else
+`ifdef	VERIFIC
 	always @(*)
 		assert($onehot0(f_next_seq));
 	always @(*)
@@ -1005,10 +1097,24 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	//
 	// Cover checks
 	//
+`ifdef	LLSDSPI
 	(* anyconst *) reg nonzero_speed;
+
+	reg	[2:0]	byte_count;
+
+	always @(posedge i_clk)
+	if (i_reset || !i_cs)
+		byte_count <= 0;
+	else if (i_stb && !o_idle && (!(&byte_count)))
+		byte_count <= byte_count + 1;
+
 	always @(posedge i_clk)
 	if (f_past_valid)
 	begin
+		cover(byte_count == 2 && !o_cs_n &&  nonzero_speed);
+		cover(byte_count == 2 && !o_cs_n && !nonzero_speed);
+
+		/*
 		if (nonzero_speed)
 		begin
 			assume(i_speed > 0);
@@ -1022,21 +1128,53 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 					&& r_state == LLSDSPI_IDLE && (!i_cs));
 			cover($past(f_next_seq[16]) && f_next_seq[0]);
 		end
+		*/
 
 		cover(o_stb && o_byte == 8'haa && $changed(o_byte));
 		cover(o_stb && o_byte == 8'h55 && $changed(o_byte));
 	end
 
+	generate if (OPT_CONTINUOUS_CLOCK)
+	begin
+		always @(*)
+		begin
+			cover(f_next_seq == 2);
+			cover(f_start_seq[3]);
+			cover(f_next_seq[15]);
+			// cover(f_next_seq[16]); // Won't happen anymore
+		end
+	end else begin
+		always @(*)
+			cover(f_next_seq == 1);
+	end endgenerate
+`endif
 	////////////////////////////////////////////////////////////////////////
 	//
 	// "Careless" constraining assumptions
 	//
 	always @(posedge i_clk)
+	if (f_past_valid)
 	begin
-		if (!$past(r_idle))
-			assume($stable(i_cs));
-		if ($past(i_stb))
-			assume(i_cs);
+		if ($past(i_stb && !i_reset))
+			`ASSUME(i_cs);
 	end
+
+	always @(*)
+	if (!CSN_ON_STARTUP && r_state == 0 && !o_cs_n)
+		assume(!i_cs);
+
+	always @(posedge i_clk)
+	if (OPT_CONTINUOUS_CLOCK)
+	begin
+		// if ($past(i_cs && !i_stb))
+		//	assume(!i_stb);
+		assume(i_stb == i_cs);
+
+		if (!o_sclk && r_state == LLSDSPI_IDLE)
+			assume(!i_stb);
+	end
+
+
+
 `endif // FORMAL
 endmodule

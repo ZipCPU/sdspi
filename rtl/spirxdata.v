@@ -67,7 +67,8 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 
 	reg		error_token, start_token, token, received_token, done,
 			lastaddr;
-	reg		all_mem_written;
+	reg		all_mem_written, lastdata;
+
 	reg	[1:0]	crc_byte;
 	reg	[2:0]	r_lgblksz_m4;
 	reg	new_data_byte;
@@ -173,8 +174,10 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 			fill <= { fill[1:0], 1'b1 };
 	end
 
-	reg	lastdata;
 	always @(posedge i_clk)
+	if (!o_busy)
+		lastdata <= 0;
+	else if (!lastdata)
 		lastdata <= (lastaddr && (&fill));
 
 	initial	all_mem_written = 0;
@@ -221,9 +224,10 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		new_data_byte = (i_ll_stb && !all_mem_written);
 
 
-	initial	crc_fill = 0;
+	initial	crc_fill   = 0;
+	initial	crc_active = 0;
 	always @(posedge i_clk)
-	if (i_reset || !o_busy)
+	if (i_reset || !o_busy || !received_token)
 	begin
 		crc_fill <= 0;
 		crc_active <= 0;
@@ -246,22 +250,25 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		crc_gearbox <= { crc_gearbox[8-3:0], 2'b00 };
 
 
+	reg	[15:0]	first_crc_data;
+
 	always @(*)
 	begin
-		next_crc_data = crc_data << 1;;
+		first_crc_data = crc_data << 1;;
 
 		if (crc_data[15] ^ crc_gearbox[7])
-			next_crc_data = next_crc_data ^ CRC_POLYNOMIAL;
+			first_crc_data = first_crc_data ^ CRC_POLYNOMIAL;
 
-		if (next_crc_data[15] ^ crc_gearbox[6])
-			next_crc_data = (next_crc_data << 1) ^ CRC_POLYNOMIAL;
+		if (first_crc_data[15] ^ crc_gearbox[6])
+			next_crc_data = (first_crc_data << 1) ^ CRC_POLYNOMIAL;
 		else
-			next_crc_data = (next_crc_data << 1) ^ CRC_POLYNOMIAL;
+			next_crc_data = (first_crc_data << 1);
 	end
 
+	initial	crc_data = 0;
 	always @(posedge i_clk)
 	if (!o_busy)
-		crc_data <= 1;
+		crc_data <= 0;
 	else if (crc_active)
 		crc_data <= next_crc_data;
 
@@ -352,11 +359,22 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	begin
 		assert(lastaddr);
 		assert(all_mem_written || o_write);
+		assert(lastdata);
 	end
 
 	always @(*)
 	if (o_busy && all_mem_written)
+	begin
 		assert(lastaddr);
+		assert(lastdata);
+	end
+
+	always @(*)
+	if (o_busy && lastdata)
+	begin
+		assert(lastaddr);
+		assert((&fill) || o_write || all_mem_written);
+	end
 
 	always @(posedge i_clk)
 	if (!o_busy)
@@ -417,8 +435,34 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 			assert(fill[2] == 0);
 	end
 
+	////////////////////////////////////////////////////////////////////////
+	//
+	// CRC checks and properties
 	always @(*)
 		assert(crc_fill <= 4);
+
+	always @(*)
+	if (o_busy && !received_token)
+	begin
+		assert(!crc_active);
+		assert(crc_fill == 0);
+		assert(crc_data == 0);
+	end
+
+	always @(*)
+	if (crc_active)
+	begin
+		if (crc_data == 0 && crc_gearbox[7:6] == 0)
+			assert(next_crc_data == 0);
+
+		if ((crc_data[15] ^ crc_gearbox[7])
+			&&((crc_data[14] ^ crc_gearbox[6])==0))
+			assert(next_crc_data == ({ crc_data[13:0], 2'b00 } ^ { CRC_POLYNOMIAL[14:0], 1'b0 }));
+
+		if (((crc_data[15] ^ crc_gearbox[7])==0)
+			&&(crc_data[14] ^ crc_gearbox[6]))
+			assert(next_crc_data == ({ crc_data[13:0], 2'b00 } ^ CRC_POLYNOMIAL[14:0]));
+	end
 
 
 /*

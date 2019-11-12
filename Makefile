@@ -37,7 +37,7 @@
 ##
 ##
 .PHONY: all
-all:	verilated bench
+all:	verilated bench formal
 BENCH := `find bench -name Makefile` `find bench -name "*.cpp"` `find bench -name "*.h"`
 RTL   := `find rtl -name "*.v"` `find rtl -name Makefile`
 NOTES := # `find . -name "*.txt"` `find . -name "*.html"`
@@ -47,6 +47,7 @@ SW=
 #	`find sw -name "*.pl"` `find sw -name Makefile`
 DEVSW=
 YYMMDD:=`date +%Y%m%d`
+SUBMAKE := $(MAKE) --no-print-directory -C
 
 .PHONY: archive
 archive:
@@ -54,7 +55,7 @@ archive:
 
 .PHONY: verilated
 verilated:
-	cd rtl ; $(MAKE) --no-print-directory
+	$(SUBMAKE) rtl
 
 # The documents target does not get, nor should it be, made automatically.  This
 # is because the project is intended to be shipped with the documents
@@ -63,13 +64,22 @@ verilated:
 # and GPL LaTeX documents into their PDF results.
 .PHONY: doc
 doc:
-	cd doc ; $(MAKE) --no-print-directory
+	$(SUBMAKE) doc
+
+.PHONY: formal
+formal:
+	$(SUBMAKE) bench/formal
 
 .PHONY: bench
 bench:
-	cd bench/cpp ; $(MAKE) --no-print-directory
+	$(SUBMAKE) bench/cpp
 
 #.PHONY: sw
 # sw:
 #	cd sw ; $(MAKE) --no-print-directory
-
+.PHONY: clean
+clean:
+	$(SUBMAKE) rtl clean
+	$(SUBMAKE) doc clean
+	$(SUBMAKE) bench/formal clean
+	$(SUBMAKE) bench/cpp    clean

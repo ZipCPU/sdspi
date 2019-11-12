@@ -60,9 +60,18 @@ $(LLSDSPI)_cvra/PASS: $(RTL)/$(LLSDSPI).v $(LLSDSPI).sby
 	sby -f $(LLSDSPI).sby cvra
 
 .PHONY: $(SDSPI)
-$(SDSPI): $(SDSPI)_prf/PASS
-$(SDSPI)_prf/PASS: $(RTL)/$(SDSPI).v $(SDSPI).sby $(LLSDSPI)_prf/PASS $(SPICMD)_prf/PASS $(SDSPITX)_prf/PASS $(SDSPIRX)_prf/PASS
+SDSPIDEP := $(LLSDSPI)_prf/PASS $(SPICMD)_prf/PASS	\
+	$(SDSPITX)_prf/PASS $(SDSPIRX)_prf/PASS
+$(SDSPI): $(SDSPI)_prf/PASS $(SDSPIDEP) #  $(SDSPI)_cvr/PASS
+$(SDSPI)_prf/PASS: $(RTL)/$(SDSPI).v $(SDSPI).sby $(SDSPIDEP)
 	sby -f $(SDSPI).sby prf
+#
+# sdspi_cvr/PASS is a hard target to reach, since the SPI port will take
+# a minimum of 32 clocks per transaction byte.  Hence, a 6-byte command
+# followed by a 16-byte word will be a minimum of 704 clocks before any
+# internal delays are factored in.
+$(SDSPI)_cvr/PASS: $(RTL)/$(SDSPI).v $(SDSPI).sby $(SDSPIDEP)
+	sby -f $(SDSPI).sby cvr
 
 .PHONY: $(SPICMD)
 $(SPICMD): $(SPICMD)_prf/PASS $(SPICMD)_cvr/PASS

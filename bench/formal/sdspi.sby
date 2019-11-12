@@ -1,12 +1,12 @@
 [tasks]
 prf
-# cvr
+cvr
 
 [options]
 prf: mode prove
 prf: depth 20
-# cvr: mode cover
-# cvr: depth 120
+cvr: mode cover
+cvr: depth 900
 
 [engines]
 smtbmc boolector

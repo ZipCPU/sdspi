@@ -49,5 +49,11 @@ rtl: $(VOBJ)/Vsdspi.h
 $(VOBJ)/Vsdspi.h: sdspi.v llsdspi.v
 	$(VERILATOR) $(VFLAGS) sdspi.v
 
-export.v: sdspi.v llsdspi.v
+#
+# Create a single file to encapsulate this whole core
+export.v: sdspi.v spicmd.v spitxdata.v spirxdata.v llsdspi.v
 	$(VOB) $^ > $@
+
+.PHONY: clean
+clean:
+	rm -rf export.v $(VOBJ)

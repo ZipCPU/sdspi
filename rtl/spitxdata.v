@@ -82,7 +82,7 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	reg				token;
 
 	always @(*)
-		token = (data_sent && i_ll_stb && i_ll_byte[0] && !i_ll_byte[4]);
+		token = (data_sent && i_ll_stb && i_ll_byte[0] &&!i_ll_byte[4]);
 
 	initial	o_busy = 0;
 	always @(posedge i_clk)
@@ -98,7 +98,7 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
 		{ received_token, o_rxvalid } <= 0;
-	else if (token)
+	else if (token && !received_token)
 		{ received_token, o_rxvalid } <= 2'b11;
 	else
 		o_rxvalid <= 0;

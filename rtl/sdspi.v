@@ -684,8 +684,7 @@ module	sdspi(i_clk, i_sd_reset,
 	//
 	initial	dbg_trigger = 0;
 	always @(posedge i_clk)
-		dbg_trigger <= (cmd_valid)&&(cmd_response[39:32] != 0);
-		// dbg_trigger <= (ll_cmd_stb)&&(ll_idle);
+		dbg_trigger <= (cmd_valid)&&(cmd_response[38:33] != 0);
 
 	always @(posedge i_clk)
 		o_debug <= { dbg_trigger, ll_cmd_stb,

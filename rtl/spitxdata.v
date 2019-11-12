@@ -227,7 +227,7 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	end else if (o_read && !lastaddr)
 	begin
 		case(r_lgblksz_m3)
-		0: assert(lastaddr);		//   8 bytes
+		0: begin end // assert(lastaddr);		//   8 bytes
 		1: lastaddr <= (&o_addr[1:1]);	//  16 bytes
 		2: lastaddr <= (&o_addr[2:1]);	//  32 bytes
 		3: lastaddr <= (&o_addr[3:1]);	//  64 bytes

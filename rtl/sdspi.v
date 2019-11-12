@@ -793,7 +793,7 @@ module	sdspi(i_clk, i_sd_reset,
 	(* anyseq *)	reg	f_cmd_check_value;
 	reg	[1:0]	f_cmd_seq;
 	reg	[7:0]	f_cmd_byte;
-
+`ifdef	VERIFIC
 	always @(posedge i_clk)
 	if (f_cmd_check_value && f_cmd_seq == 0 && cmd_out_stb && !spicmdi.i_ll_busy)
 		f_cmd_byte <= cmd_out_byte;
@@ -817,6 +817,7 @@ module	sdspi(i_clk, i_sd_reset,
 	2: begin
 		end
 	endcase
+`endif
 
 	////////////////////////////////////////////////////////////////////////
 	//

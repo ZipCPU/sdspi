@@ -339,8 +339,25 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 			f_last_read[0] <= 1;
 	end
 
+`ifdef	VERIFIC
 	always @(*)
 		`ASSUME($onehot0({f_last_read, (o_ll_stb && !i_ll_busy)}));
+`else
+	always @(*)
+	case({f_last_read, (o_ll_stb && !i_ll_busy)})
+	8'h00: begin end
+	8'h01: begin end
+	8'h02: begin end
+	8'h04: begin end
+	8'h08: begin end
+	8'h10: begin end
+	8'h20: begin end
+	8'h40: begin end
+	8'h80: begin end
+	default: `ASSUME(0);
+	endcase
+`endif
+
 
 	always @(*)
 	if (i_start)
@@ -381,7 +398,16 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	if (o_read)
 		assert(rdvalid == 0);
 	else
+`ifdef	VERIFIC
 		assert($onehot0(rdvalid));
+`else
+	begin
+		assert((rdvalid == 0)
+			||(rdvalid == 1)
+			||(rdvalid == 2)
+			||(rdvalid == 4));
+	end
+`endif
 
 	always @(*)
 	if (o_busy && all_idle)
@@ -466,18 +492,15 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	if (o_ll_stb && !data_sent)
 		assert(fill[4]);
 
+	integer	k;
+
 	always @(*)
 	if (fill != 0)
 	begin
-		assert(fill[5]);
-		if (!fill[4])
-			assert(fill[3:0] == 0);
-		else if (!fill[3])
-			assert(fill[2:0] == 0);
-		else if (!fill[2])
-			assert(fill[1:0] == 0);
-		else if (!fill[1])
-			assert(fill[0] == 0);
+		assert(fill[DW/8]);
+		for(k=DW/8; k>0; k=k-1)
+		if (!fill[k])
+			assert(fill[k-1:0]==0);
 	end
 
 	always @(posedge i_clk)
@@ -556,7 +579,13 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		assert(fill[4]);
 		assert(gearbox[8+DW-1:DW] == f_read_data[7:0]);
 		end
-	default: assert($onehot0(f_read_seq));
+	default:
+`ifdef	VERIFIC
+		assert($onehot0(f_read_seq));
+`else
+		if (f_read_seq)
+			assert(0);
+`endif
 	endcase
 `endif
 	////////////////////////////////////////////////////////////////////////

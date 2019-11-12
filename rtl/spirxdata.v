@@ -331,8 +331,24 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 			f_last_read[0] <= 1;
 	end
 
+`ifdef	VERIFIC
 	always @(*)
 		`ASSUME($onehot0({f_last_read, i_ll_stb}));
+`else
+	always @(*)
+	case({f_last_read, i_ll_stb})
+	8'h00: begin end
+	8'h01: begin end
+	8'h02: begin end
+	8'h04: begin end
+	8'h08: begin end
+	8'h10: begin end
+	8'h20: begin end
+	8'h40: begin end
+	8'h80: begin end
+	default: `ASSUME(0);
+	endcase
+`endif
 
 	always @(*)
 	if (!o_busy && i_start)

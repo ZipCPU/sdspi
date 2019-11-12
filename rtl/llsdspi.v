@@ -240,7 +240,7 @@ module	llsdspi(i_clk, i_reset, i_speed, i_cs, i_stb, i_byte,
 	//
 	// Clock divider and speed control
 	//
-	initial	r_clk_counter = 7'h0;
+	initial	r_clk_counter = 0;
 	initial	r_z_counter = 1'b1;
 
 	always @(*)

@@ -183,7 +183,8 @@ module	spicmd(i_clk, i_reset, i_cmd_stb, i_cmd_type, i_cmd, i_cmd_data, o_busy,
 	begin
 		if (!rx_r1_byte)
 			o_response[39:32] <= i_ll_byte;
-		o_response[31:0] <= { o_response[23:0], i_ll_byte };
+		else
+			o_response[31:0] <= { o_response[23:0], i_ll_byte };
 	end
 
 `ifdef	FORMAL
@@ -296,7 +297,9 @@ module	spicmd(i_clk, i_reset, i_cmd_stb, i_cmd_type, i_cmd, i_cmd_data, o_busy,
 	always @(*)
 	if (!o_cmd_sent)
 	begin
-		if (crc_bit_counter > 8)
+		// if (crc_bit_counter > 4)
+		//	`ASSUME(f_send_seq < 3);
+		if (crc_bit_counter > 2)
 			`ASSUME(f_send_seq < 4);
 		if (crc_bit_counter > 0)
 			`ASSUME(f_send_seq < 5);
@@ -309,6 +312,13 @@ module	spicmd(i_clk, i_reset, i_cmd_stb, i_cmd_type, i_cmd, i_cmd_data, o_busy,
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
+	always @(*)
+	if (o_busy && !o_cmd_sent)
+	begin
+		assert(f_rcv_seq == 1);
+		assert(&o_response);
+	end
+
 	initial	f_rcv_seq = 0;
 	always @(posedge i_clk)
 	if (i_reset)
@@ -341,11 +351,12 @@ module	spicmd(i_clk, i_reset, i_cmd_stb, i_cmd_type, i_cmd, i_cmd_data, o_busy,
 	end
 
 	always @(posedge i_clk)
-	if (!i_ll_stb)
+	if (i_ll_stb)
 	begin
 		if (!rx_r1_byte)
 			f_rcv_data[39:32] <= i_ll_byte;
-		f_rcv_data[31:0] <= { f_rcv_data[23:0], i_ll_byte };
+		else
+			f_rcv_data[31:0] <= { f_rcv_data[23:0], i_ll_byte };
 	end
 
 	always @(*)
@@ -357,6 +368,7 @@ module	spicmd(i_clk, i_reset, i_cmd_stb, i_cmd_type, i_cmd, i_cmd_data, o_busy,
 		assert(rx_check_busy == (f_type == 2'b01));
 		assert(!rxvalid);
 		assert(f_send_seq != 0);
+		assert(&o_response[31:0]);
 		end
 	2: begin
 		assert(o_cmd_sent);
@@ -364,6 +376,8 @@ module	spicmd(i_clk, i_reset, i_cmd_stb, i_cmd_type, i_cmd, i_cmd_data, o_busy,
 		assert(rx_counter == 0);
 		assert(rx_check_busy);
 		assert(rxvalid);
+		assert(o_response[39:32] == f_rcv_data[39:32]);
+		// assert(&o_response[31:0]);
 		end
 	3: begin
 		assert(o_cmd_sent);
@@ -371,36 +385,50 @@ module	spicmd(i_clk, i_reset, i_cmd_stb, i_cmd_type, i_cmd, i_cmd_data, o_busy,
 		assert(rx_counter == 0);
 		assert(!rx_check_busy);
 		assert(rxvalid);
+		assert(o_response[39:32] == f_rcv_data[39:32]);
+		// assert(&o_response[31:8]);
 		end
 	4: begin
 		assert(rx_r1_byte);
 		assert(rx_counter == 4);
 		assert(!rx_check_busy);
 		assert(!rxvalid);
+		assert(o_response[39:32] == f_rcv_data[39:32]);
+		assert(&o_response[31:0]);
 		end
 	5: begin
 		assert(rx_r1_byte);
 		assert(rx_counter == 3);
 		assert(!rx_check_busy);
 		assert(!rxvalid);
+		assert(o_response[39:32] == f_rcv_data[39:32]);
+		assert(o_response[7:0] == f_rcv_data[7:0]);
+		assert(&o_response[31:8]);
 		end
 	6: begin
 		assert(rx_r1_byte);
 		assert(rx_counter == 2);
 		assert(!rx_check_busy);
 		assert(!rxvalid);
+		assert(o_response[39:32] == f_rcv_data[39:32]);
+		assert(o_response[15:0] == f_rcv_data[15:0]);
+		assert(&o_response[31:16]);
 		end
 	7: begin
 		assert(rx_r1_byte);
 		assert(rx_counter == 1);
 		assert(!rx_check_busy);
 		assert(!rxvalid);
+		assert(o_response[39:32] == f_rcv_data[39:32]);
+		assert(o_response[23:0] == f_rcv_data[23:0]);
+		assert(&o_response[31:24]);
 		end
 	8: begin
 		assert(rx_r1_byte);
 		assert(rx_counter == 0);
 		assert(!rx_check_busy);
 		assert(rxvalid);
+		assert(o_response[39:32] == f_rcv_data[39:32]);
 		end
 	default: assert(f_rcv_seq <= 8);
 	endcase

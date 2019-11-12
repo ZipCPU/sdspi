@@ -213,25 +213,26 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	else if (data_read && !fill[3] && o_ll_stb && !i_ll_busy)
 		data_sent <= 1'b1;
 
-	reg	[2:0]	r_lgblksz_m4;
+	reg	[2:0]	r_lgblksz_m3;
 
-	initial	r_lgblksz_m4 = 0;
+	initial	r_lgblksz_m3 = 0;
 	initial	lastaddr = 0;
 	always @(posedge i_clk)
 	if (!o_busy)
 	begin
 		lastaddr <= (i_lgblksz < 4);
 		// Verilator lint_off WIDTH
-		r_lgblksz_m4 <= i_lgblksz-4;
+		r_lgblksz_m3 <= i_lgblksz-3;
 		// Verilator lint_on WIDTH
 	end else if (o_read && !lastaddr)
 	begin
-		case(r_lgblksz_m4)
-		0: lastaddr <= (&o_addr[1:1]);	//  16 bytes
-		1: lastaddr <= (&o_addr[2:1]);	//  32 bytes
-		2: lastaddr <= (&o_addr[3:1]);	//  64 bytes
-		3: lastaddr <= (&o_addr[4:1]);	// 128 bytes
-		4: lastaddr <= (&o_addr[5:1]);	// 256 bytes
+		case(r_lgblksz_m3)
+		0: assert(lastaddr);		//   8 bytes
+		1: lastaddr <= (&o_addr[1:1]);	//  16 bytes
+		2: lastaddr <= (&o_addr[2:1]);	//  32 bytes
+		3: lastaddr <= (&o_addr[3:1]);	//  64 bytes
+		4: lastaddr <= (&o_addr[4:1]);	// 128 bytes
+		5: lastaddr <= (&o_addr[5:1]);	// 256 bytes
 		default: lastaddr <= (&o_addr[6:1]);	// 512 bytes
 		endcase
 	end
@@ -294,7 +295,7 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 
 	reg		f_past_valid;
 	reg	[3:0]	f_lgblksz;
-	wire	[3:0]	f_lgblksz_m4;
+	wire	[3:0]	f_lgblksz_m3;
 
 
 	initial	f_past_valid = 0;
@@ -363,7 +364,7 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	if (i_start)
 	begin
 		`ASSUME(i_lgblksz <= 9);
-		`ASSUME(i_lgblksz >= 2);
+		`ASSUME(i_lgblksz  > 2);
 	end
 
 	always @(*)
@@ -376,10 +377,6 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	always @(*)
 	if (o_read || rdvalid != 0)
 		assert(!o_ll_stb || i_ll_busy);
-
-	always @(*)
-	if (!o_busy && i_start)
-		`ASSUME(i_lgblksz >= 4);
 
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -467,24 +464,25 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	if (!o_busy)
 		f_lgblksz <= i_lgblksz;
 
-	assign	f_lgblksz_m4 = f_lgblksz - 4;
+	assign	f_lgblksz_m3 = f_lgblksz - 3;
 
 	always @(*)
 	if(o_busy)
-		assert(f_lgblksz >= 4);
+		assert(f_lgblksz >= 3);
 
 	always @(*)
 	if (o_busy)
-		assert(f_lgblksz_m4[2:0] == r_lgblksz_m4);
+		assert(f_lgblksz_m3[2:0] == r_lgblksz_m3);
 	
 	always @(*)
 	if (o_busy)
-	case(r_lgblksz_m4)
-	0: assert(lastaddr == (&o_addr[1:0]));	//  16 bytes
-	1: assert(lastaddr == (&o_addr[2:0]));	//  32 bytes
-	2: assert(lastaddr == (&o_addr[3:0]));	//  64 bytes
-	3: assert(lastaddr == (&o_addr[4:0]));	// 128 bytes
-	4: assert(lastaddr == (&o_addr[5:0]));	// 256 bytes
+	case(r_lgblksz_m3)
+	3'h0: assert(lastaddr);			//   8 bytes
+	3'h1: assert(lastaddr == (&o_addr[1:0]));	//  16 bytes
+	3'h2: assert(lastaddr == (&o_addr[2:0]));	//  32 bytes
+	3'h3: assert(lastaddr == (&o_addr[3:0]));	//  64 bytes
+	3'h4: assert(lastaddr == (&o_addr[4:0]));	// 128 bytes
+	3'h5: assert(lastaddr == (&o_addr[5:0]));	// 256 bytes
 	default: assert(lastaddr == (&o_addr[AW-2:0]));
 	endcase
 

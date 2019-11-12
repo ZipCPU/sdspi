@@ -70,7 +70,7 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	reg		all_mem_written, lastdata;
 
 	reg	[1:0]	crc_byte;
-	reg	[2:0]	r_lgblksz_m4;
+	reg	[2:0]	r_lgblksz_m3;
 	reg	new_data_byte;
 	reg	[3:0]	crc_fill;
 	reg	[7:0]	crc_gearbox;
@@ -194,23 +194,24 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	else if (i_ll_stb && lastaddr && lastdata)
 		crc_byte <= crc_byte + 1;
 
-	initial	r_lgblksz_m4 = 0;
+	initial	r_lgblksz_m3 = 0;
 	initial	lastaddr = 0;
 	always @(posedge i_clk)
 	if (!o_busy)
 	begin
 		lastaddr <= (i_lgblksz < 4);
 		// Verilator lint_off WIDTH
-		r_lgblksz_m4 <= i_lgblksz-4;
+		r_lgblksz_m3 <= i_lgblksz-3;
 		// Verilator lint_on WIDTH
 	end else if (o_write && !lastaddr)
 	begin
-		case(r_lgblksz_m4)
-		0: lastaddr <= (&o_addr[1:1]);	//  16 bytes
-		1: lastaddr <= (&o_addr[2:1]);	//  32 bytes
-		2: lastaddr <= (&o_addr[3:1]);	//  64 bytes
-		3: lastaddr <= (&o_addr[4:1]);	// 128 bytes
-		4: lastaddr <= (&o_addr[5:1]);	// 256 bytes
+		case(r_lgblksz_m3)
+		0: lastaddr <= 1;		//   8 bytes
+		1: lastaddr <= (&o_addr[1:1]);	//  16 bytes
+		2: lastaddr <= (&o_addr[2:1]);	//  32 bytes
+		3: lastaddr <= (&o_addr[3:1]);	//  64 bytes
+		4: lastaddr <= (&o_addr[4:1]);	// 128 bytes
+		5: lastaddr <= (&o_addr[5:1]);	// 256 bytes
 		default: lastaddr <= (&o_addr[6:1]);	// 512 bytes
 		endcase
 	end
@@ -290,7 +291,7 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 
 	reg		f_past_valid;
 	reg	[3:0]	f_lgblksz;
-	wire	[3:0]	f_lgblksz_m4;
+	wire	[3:0]	f_lgblksz_m3;
 	reg		f_fifo;
 
 
@@ -354,7 +355,7 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	if (!o_busy && i_start)
 	begin
 		`ASSUME(i_lgblksz <= 9);
-		`ASSUME(i_lgblksz >= 4);
+		`ASSUME(i_lgblksz >= 3);
 	end
 
 	////////////////////////////////////////////////////////////////////////
@@ -399,19 +400,19 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		f_fifo <= i_fifo;
 	end
 
-	assign	f_lgblksz_m4 = f_lgblksz - 4;
+	assign	f_lgblksz_m3 = f_lgblksz - 3;
 
 	always @(*)
 	if (o_busy)
 	begin
-		assert(f_lgblksz >= 4);
+		assert(f_lgblksz >= 3);
 		assert(f_lgblksz <= 9);
 
 		assert(o_addr[AW-1] == f_fifo);
 
 		if (!received_token)
 		begin
-			assert(!lastaddr);
+			assert((f_lgblksz == 3) || !lastaddr);
 			assert(o_addr[AW-2:0] == 0);
 			assert(fill == 0);
 		end
@@ -419,27 +420,29 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 
 	always @(*)
 	if (o_busy)
-		assert(f_lgblksz_m4[2:0] == r_lgblksz_m4);
+		assert(f_lgblksz_m3[2:0] == r_lgblksz_m3);
 	
 	always @(*)
 	if (o_busy)
-	case(r_lgblksz_m4)
-	0: assert(lastaddr == (&o_addr[1:0]));	//  16 bytes
-	1: assert(lastaddr == (&o_addr[2:0]));	//  32 bytes
-	2: assert(lastaddr == (&o_addr[3:0]));	//  64 bytes
-	3: assert(lastaddr == (&o_addr[4:0]));	// 128 bytes
-	4: assert(lastaddr == (&o_addr[5:0]));	// 256 bytes
+	case(r_lgblksz_m3)
+	3'h0: assert(lastaddr);			//   8 bytes
+	3'h1: assert(lastaddr == (&o_addr[1:0]));	//  16 bytes
+	3'h2: assert(lastaddr == (&o_addr[2:0]));	//  32 bytes
+	3'h3: assert(lastaddr == (&o_addr[3:0]));	//  64 bytes
+	3'h4: assert(lastaddr == (&o_addr[4:0]));	// 128 bytes
+	3'h5: assert(lastaddr == (&o_addr[5:0]));	// 256 bytes
 	default: assert(lastaddr == (&o_addr[AW-2:0]));
 	endcase
 
 	always @(*)
 	if (o_busy)
-	case(r_lgblksz_m4)
-	0: assert(o_addr[AW-2:2] == 0);	//  16 bytes
-	1: assert(o_addr[AW-2:3] == 0);	//  32 bytes
-	2: assert(o_addr[AW-2:4] == 0);	//  64 bytes
-	3: assert(o_addr[AW-2:5] == 0);	// 128 bytes
-	4: assert(o_addr[AW-2:6] == 0);	// 256 bytes
+	case(r_lgblksz_m3)
+	3'h0: assert(o_addr[AW-2:1] == 0);	//   8 bytes
+	3'h1: assert(o_addr[AW-2:2] == 0);	//  16 bytes
+	3'h2: assert(o_addr[AW-2:3] == 0);	//  32 bytes
+	3'h3: assert(o_addr[AW-2:4] == 0);	//  64 bytes
+	3'h4: assert(o_addr[AW-2:5] == 0);	// 128 bytes
+	3'h5: assert(o_addr[AW-2:6] == 0);	// 256 bytes
 	default: begin end // assert(lastaddr == (&o_addr[AW-2:0]));
 	endcase
 

@@ -529,7 +529,7 @@ module	sdspi(i_clk, i_sd_reset,
 		begin
 			if (r_data_reg[CKDIV_BITS-1:0] != 0)
 				r_sdspi_clk <= r_data_reg[CKDIV_BITS-1:0];
-			if ((r_data_reg[BLKBASE +: 4] >= 4)
+			if ((r_data_reg[BLKBASE +: 4] >= 3)
 				&&(r_data_reg[BLKBASE +: 4] <= max_lgblklen))
 				r_lgblklen <= r_data_reg[BLKBASE +: 4];
 		end
@@ -777,7 +777,7 @@ module	sdspi(i_clk, i_sd_reset,
 
 	always @(*)
 	begin
-		assert(r_lgblklen >= 4);
+		assert(r_lgblklen >= 3);
 		assert(r_lgblklen <= 9);
 	end
 

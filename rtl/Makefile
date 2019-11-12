@@ -36,18 +36,23 @@
 ################################################################################
 ##
 ##
-
-all: rtl export.v
+.PHONY: all
+all:
 VERILATOR:= verilator
 # VOB := $(HOME)/src/verilog/vopro
 VOB := cat
 VOBJ:= obj_dir
 VFLAGS := -MMD -Wall -trace -cc
+SUBMAKE:= $(MAKE) --no-print-directory -C
+all: rtl export.v $(VOBJ)/Vsdspi__ALL.so
 
 .PHONY: rtl
 rtl: $(VOBJ)/Vsdspi.h
 $(VOBJ)/Vsdspi.h: sdspi.v llsdspi.v
 	$(VERILATOR) $(VFLAGS) sdspi.v
+
+$(VOBJ)/Vsdspi__ALL.so: $(VOBJ)/Vsdspi.h
+	$(SUBMAKE) $(VOBJ) -f Vsdspi.mk
 
 #
 # Create a single file to encapsulate this whole core

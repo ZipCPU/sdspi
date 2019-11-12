@@ -37,7 +37,7 @@
 ##
 ##
 .PHONY: all
-all:	verilated bench formal
+all:	verilated test
 BENCH := `find bench -name Makefile` `find bench -name "*.cpp"` `find bench -name "*.h"`
 RTL   := `find rtl -name "*.v"` `find rtl -name Makefile`
 NOTES := # `find . -name "*.txt"` `find . -name "*.html"`
@@ -74,6 +74,9 @@ formal:
 bench:
 	$(SUBMAKE) bench/cpp
 
+.PHONY: test
+test: formal
+	$(SUBMAKE) bench/cpp test
 #.PHONY: sw
 # sw:
 #	cd sw ; $(MAKE) --no-print-directory

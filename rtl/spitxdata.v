@@ -42,7 +42,7 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		o_read, o_addr, i_data,
 		i_ll_busy, o_ll_stb, o_ll_byte,
 		i_ll_stb, i_ll_byte, o_rxvalid, o_response);
-	parameter	DW = 32, AW = 8, RDDELAY = 3;
+	parameter	DW = 32, AW = 8, RDDELAY = 2;
 	localparam	CRC_POLYNOMIAL = 16'h1021;
 	//
 	input	wire	i_clk, i_reset;
@@ -72,13 +72,14 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	reg	[1+(DW/8)-1:0]	fill;
 	reg			crc_flag, crc_stb, data_read, all_mem_read;
 
-	reg			lastaddr, data_sent;
-	reg			crc_active;
+	reg				lastaddr, data_sent, received_token,
+					all_idle;
+	reg				crc_active;
 	reg [$clog2(1+DW/2)-1:0]	crc_fill;
 	(* keep *) reg	[DW-1:0]	crc_gearbox;
-	reg	[15:0]		crc_data;
+	reg	[15:0]			crc_data;
 
-	reg			token;
+	reg				token;
 
 	always @(*)
 		token = (data_sent && i_ll_stb && i_ll_byte[0] && !i_ll_byte[4]);
@@ -89,18 +90,28 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		o_busy <= 0;
 	else if (!o_busy)
 		o_busy <= i_start;
-	else if (token)
+	else if (all_idle && i_ll_stb && (&i_ll_byte))
 		o_busy <= 0;
 
 	initial	o_rxvalid = 0;
+	initial	received_token = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
-		o_rxvalid <= 0;
+		{ received_token, o_rxvalid } <= 0;
 	else if (token)
-		o_rxvalid <= 1;
+		{ received_token, o_rxvalid } <= 2'b11;
+	else
+		o_rxvalid <= 0;
+
+	initial	all_idle = 0;
+	always @(posedge i_clk)
+	if (i_reset || !o_busy)
+		all_idle <= 0;
+	else if (received_token && i_ll_stb && (&i_ll_byte))
+		all_idle <= 1'b1;
 
 	always @(posedge i_clk)
-	if (o_busy && i_ll_stb && i_ll_byte[0] && !i_ll_byte[4])
+	if (token)
 		o_response <= i_ll_byte;
 
 	// o_read & o_addr
@@ -265,12 +276,12 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		if (next_crc_data[15] ^ crc_gearbox[30])
 			next_crc_data = (next_crc_data << 1) ^ CRC_POLYNOMIAL;
 		else
-			next_crc_data = (next_crc_data << 1) ^ CRC_POLYNOMIAL;
+			next_crc_data = (next_crc_data << 1);
 	end
 
 	always @(posedge i_clk)
 	if (!o_busy)
-		crc_data <= 1;
+		crc_data <= 0;
 	else if (crc_active)
 		crc_data <= next_crc_data;
 
@@ -373,6 +384,14 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		assert($onehot0(rdvalid));
 
 	always @(*)
+	if (o_busy && all_idle)
+		assert(received_token);
+
+	always @(*)
+	if (o_busy && received_token)
+		assert(data_sent);
+
+	always @(*)
 	if (o_busy && data_sent)
 	begin
 		assert(data_read);
@@ -465,6 +484,11 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	if (f_past_valid && $past(crc_stb))
 		assert(!crc_stb);
 
+//	always @(posedge i_clk)
+//	if (f_past_valid && !$past(i_reset))
+//		assert($fell(o_busy) || !o_rxvalid);
+
+
 `ifdef	SPITXDATA
 	reg	[5:0]		f_read_seq;
 	(* anyseq *) reg	f_read_check;
@@ -548,6 +572,9 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		cover(o_busy && f_lgblksz == 4 && crc_flag);
 		cover(o_busy && f_lgblksz == 4 && data_read);
 		cover(o_busy && f_lgblksz == 4 && data_sent);
+		cover(o_busy && f_lgblksz == 4 && received_token);
+		cover(o_busy && f_lgblksz == 4 && all_idle);
+		cover(!o_busy && f_lgblksz == 4 && all_idle);
 	end
 
 `endif

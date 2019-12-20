@@ -421,7 +421,7 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	always @(*)
 	if (o_busy)
 		assert(f_lgblksz_m3[2:0] == r_lgblksz_m3);
-	
+
 	always @(*)
 	if (o_busy)
 	case(r_lgblksz_m3)

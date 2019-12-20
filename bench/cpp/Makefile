@@ -6,7 +6,7 @@
 ##
 ## Purpose:	Nothing currently.  Eventually, if I create a proper bench
 ##		test, rather than just running this on real hardware as part of
-##	another project (XuLA2-LX25 SoC), this Makefile will coordinate the 
+##	another project (XuLA2-LX25 SoC), this Makefile will coordinate the
 ##	building of that bench test software.
 ##
 ## Creator:	Dan Gisselquist, Ph.D.

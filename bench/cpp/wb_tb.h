@@ -126,7 +126,7 @@ public:
 		}
 
 		errcount = 0;
-		
+
 		TESTB<VA>::m_core->i_wb_cyc  = 1;
 		TESTB<VA>::m_core->i_wb_stb  = 1;
 		TESTB<VA>::m_core->i_wb_we   = 0;

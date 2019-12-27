@@ -89,7 +89,8 @@ module	sdspi(i_clk, i_sd_reset,
 	//
 	//
 	//
-	localparam	AW = 2, DW = 32;
+	localparam		AW = 2;
+	localparam		DW = 32;
 	localparam [1:0]	SDSPI_CMD_ADDRESS = 2'b00,
 				SDSPI_DAT_ADDRESS = 2'b01,
 				SDSPI_FIFO_A_ADDR = 2'b10,

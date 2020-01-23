@@ -15,7 +15,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Copyright (C) 2015-2019, Gisselquist Technology, LLC
+// Copyright (C) 2015-2020, Gisselquist Technology, LLC
 //
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of  the GNU General Public License as published
@@ -42,6 +42,8 @@
 #ifndef	SDSPISIM_H
 #define	SDSPISIM_H
 
+#include <stdint.h>
+
 typedef enum	eRESET_STATES {
 	SDSPI_POWERUP_RESET,
 	SDSPI_CMD0_IDLE,
@@ -67,13 +69,16 @@ class	SDSPISIM {
 	RESET_STATES	m_reset_state;
 
 	int		m_cmdidx, m_bitpos, m_rspidx, m_rspdly, m_blkdly,
-				m_blklen, m_blkidx, m_last_miso, m_powerup_busy,
-				m_rxloc;
+				m_blklen, m_blkidx, m_last_miso, m_powerup_busy;
+	unsigned	m_rxloc;
 	char		m_cmdbuf[8], m_dat_out, m_dat_in;
 	char		m_rspbuf[SDSPI_RSPLEN];
 	char		m_block_buf[SDSPI_MAXBLKLEN];
-	char		m_csd[SDSPI_CSDLEN], m_cid[SDSPI_CIDLEN];
+	uint8_t		m_csd[SDSPI_CSDLEN], m_cid[SDSPI_CIDLEN];
 
+	void	CID(void);
+	void	CSD(void);
+	unsigned	read_bitfield(int, int, int, const uint8_t *);
 public:
 	SDSPISIM(const bool debug = false);
 	void	load(const char *fname);
@@ -84,6 +89,10 @@ public:
 	bool	check_cmdcrc(char *buf) const;
 	unsigned blockcrc(int ln, char *buf) const;
 	void	add_block_crc(int ln, char *buf) const;
+
+	unsigned	OCR(void);
+	uint8_t	CSD(int index);
+	uint8_t	CID(int index);
 };
 
 #endif

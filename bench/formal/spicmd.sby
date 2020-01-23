@@ -1,0 +1,19 @@
+[tasks]
+prf
+cvr
+
+[options]
+prf: mode prove
+prf: depth 4
+cvr: mode cover
+cvr: depth 60
+
+[engines]
+smtbmc boolector
+
+[script]
+read -formal -D SPICMD spicmd.v
+prep -top spicmd
+
+[files]
+../../rtl/spicmd.v

@@ -1,0 +1,19 @@
+[tasks]
+prf
+cvr
+
+[options]
+prf: mode prove
+prf: depth 7
+cvr: mode cover
+cvr: depth 180
+
+[engines]
+smtbmc boolector
+
+[script]
+read -formal -D SPIRXDATA spirxdata.v
+prep -top spirxdata
+
+[files]
+../../rtl/spirxdata.v

@@ -24,7 +24,7 @@
 %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%
-%% Copyright (C) 2016-2019, Gisselquist Technology, LLC
+%% Copyright (C) 2016-2020, Gisselquist Technology, LLC
 %%
 %% This program is free software (firmware): you can redistribute it and/or
 %% modify it under the terms of  the GNU General Public License as published
@@ -54,7 +54,10 @@
 \title{Specification}
 \author{Dan Gisselquist, Ph.D.}
 \email{dgisselq (at) ieee.org}
-\revision{Rev.~0.1}
+%
+% Revision level.  If you change this, be sure to change the revision history
+% to match it
+\revision{Rev.~0.31}
 \begin{document}
 \pagestyle{gqtekspecplain}
 \titlepage
@@ -75,6 +78,9 @@ You should have received a copy of the GNU General Public License along
 with this program.  If not, see \texttt{http://www.gnu.org/licenses/} for a copy.
 \end{license}
 \begin{revisionhistory}
+% Any changes here need to also be made to the \revision{} in the prologue
+0.31 & 11/29/2019 & Gisselquist & Fixed the bit mapping in Fig.~\ref{fig:CMD}\\\hline
+0.3 & 11/05/2019 & Gisselquist & Major internal rewrite, formal properties\\\hline
 0.2 & 10/21/2019 & Gisselquist & Card detect feature \\\hline
 0.1 & 6/18/2016 & Gisselquist & First Draft \\\hline
 \end{revisionhistory}
@@ -98,10 +104,11 @@ encumbered by any of their licenses--whether it be the GPL or otherwise.  This
 code, and specification document, are therefore completely the product of
 Gisselquist Technology, LLC.
 
-That said, I am indebted to Mr.~Tambe for sharing his interface.  While the
-current work does not use his approach and represents a complete rewrite, his
-approach was valuable in helping me understand what the SD--Card specification
-meant at several points along the way.
+This particular core also maintains an advantage over the OpenRISC core:
+It is a low logic core.  It only supports the SPI interface.  It does not
+have any DMA features, although it will work nicely with a DMA.  In short, it's
+ideal for other low-logic work.  In that line, I think, this core has found
+its niche.
 \end{preface}
 
 \chapter{Introduction}
@@ -151,24 +158,13 @@ single block read and write commands alone.
 This SD Card interface is designed to provide a means of commanding an SD Card,
 via the SPI port, and returning its results.  
 
-The first thing to know about the SDSPI interface is that it is designed to work
-over a shared SPI port.  Hence, when the SDSPI controller lowers the CS line to
-select the SD--Card, the lowered line is only a request to an external
-controller.  Once that external controller grants access to the SPI port to this
-device, it will tell this controller and processing can continue.  If your
-application does not have any contention for the SPI interface, you may simply
-wire this grant line high.  The controller will still work, although it will
-wait one clock more than necessary in that case before starting any transaction.
-Setting the {\tt OPT\_SPI\_ARBITRATION} parameter to zero will remove this
-arbitration logic for those designs that don't need it.
-
-Second, the SDSPI core is completely controlled via the wishbone bus.  In
+It is completely controlled via the wishbone bus.  In
 particular a command register is used to initiate interaction across the bus.
 A separate data register is used to provide an argument to the command, and
 two FIFO registers are used when transferring larger amounts of data to the
 card.  We'll examine each of these interactions in turn.
 
-Writes to the command register (CMD) will initiate actions across the port,
+Writes to the command register (CMD) may initiate actions across the port,
 whether they be reads from or writes to the card.  These writes take the
 form of sending a 48--bit command to the card.  The command sent to the card
 is taken from the lower 8--bits of the command register, and the argument to the
@@ -181,7 +177,7 @@ silently ignored if the device is already busy.
 
 Reads from the CMD register will always return immediately.  In particular, the
 {\tt busy} bit, as returned by the CMD register, can be used to determine if the
-interface is busy.
+interface is still busy with a prior operation.
 
 There is one exception to the rule that writes take many clocks to complete,
 and that is writes which configure the SDSPI port.  Internal to the SDSPI
@@ -201,11 +197,13 @@ followed by up to four bytes, such as the R2, R3, or R7 responses.
 (Expected responses for particular commands may be found in the SD
 Specifications documents.\footnote{This particular interface, and the examples
 using it, were built using the SD Specifications, Part 1: Physical Layer
-Simplified Specification, Version 4.10, dated 22 January, 2013.}
+Simplified Specification, Version 4.10, dated 22 January, 2013, and then later
+updated with the information from Version 5.00, dated 10 August, 2016.}
 
-Individual commands may or may not use the FIFO.  Commands that need
+Individual commands may or may not use the data memories, herein called
+FIFOs.  Commands that need
 use of the FIFO will be specified by the {\tt use\_fifo} bit of the CMD
-register.  Commands writing to the device will also set the {\tt fifo\_wr} bit
+register.  Commands writing to the card will also set the {\tt fifo\_wr} bit
 of the CMD register, whereas commands simply reading from the fifo will set the
 {\tt use\_fifo} bit alone.
 
@@ -214,20 +212,28 @@ argument to the CMD interaction, and second to provide a place to put the
 R2, R3, or R7 response after the transaction has completed.  The register will
 be set to {\tt 0xffffffff} if not set by the response.
 
-This core supports two separate FIFO data sections.  This allows a program to
-fill (or read) one FIFO while the second FIFO can be read/written from the
-SD card.  The FIFO internal address will be cleared and reset to the beginning
+This core supports two separate data memories.  This allows a program to
+fill (or read) one memory segment while the second one is being read from or
+written to by an ongoing SD operation.
+The internal address will be cleared and reset to the beginning
 upon any write to the CMD register.  After clearing, the FIFO may be written
-(read) one value at a time.  Reading both FIFO's in any interleaved fashion,
+(read) one value at a time.  Reading both memories in any interleaved fashion,
 however, is not allowed as they share a common internal address.
 
-Currently, the core will detect two types of errors in the interface.  The
-first is a CRC error, and the second a timeout error.  Either error will set
-an error bit in the CMD register.  Once set, only writing the error bit back
-to the CMD register will clear it.
+Currently, the core will detect a variety of errors in the interface.  Once an
+error is detected, the rest of any remaining command will be aborted.  First,
+the core will detect an external Card reset.  Such a reset is used on the
+NexysVideo board to power down the card.  Second, the core will detect any
+CRC errors in data coming from the card.  Finally, the core has an internal
+watchdog timer and will detect any failure by the card to respond to any
+request.  Any of these errors will set an error bit in the CMD register.
+Once set, the core will refuse to begin further operations.  only writing
+this error bit back to the CMD register will clear it.
 
 Finally, if a card detect bit is present, the core can detect if a card has
-been removed and so notify the driver.  This interface was added to simplify
+been removed and so notify the driver.  A missing card detect signal, however,
+will not reset the core.  Instead, the watchdog timer should catch any missing
+card interactions.  The card detect interface was added to simplify
 FatFS driver interaction.
 
 Now, if this discussion isn't thoroughly confusing, let's move on to the 
@@ -303,18 +309,19 @@ to make things simpler we also create {\tt SD\_CLEARERR} for the same purpose.
 \begin{tabular}{lll}
 {\tt \#define} & {\tt SD\_BUSY}     & {\tt 0x04000} \\
 {\tt \#define} & {\tt SD\_ERROR}    & {\tt 0x08000} \\
-{\tt \#define} & {\tt SD\_CLEARERR} & {\tt 0x08000} \\
-{\tt \#define} & {\tt SD\_CRCERR}   & {\tt 0x10000} \\
-{\tt \#define} & {\tt SD\_ERRTOK}   & {\tt 0x20000}
+{\tt \#define} & {\tt SD\_CLEARERR} & {\tt 0x08000}
 \end{tabular}
 
 The controller offers two means of knowing whether or not the card is present.
 The first is a {\tt SD\_PRESENTN} bit.  This is a debounced version of the
-card detect input, adjusted for negative logic.  If this bit is clear (normal
+card detect input, adjusted so that it will be set if no card is present--to
+make error detection easier.  If this bit is clear (normal
 operation), then a card is present and ready to be set up.  On the other hand,
-if the card detect line ever goes low then the second bit, {\tt SD\_REMOVED},
-will be set.  This bit is sticky.  Once set, it will remain set until explicitly
-written to.  This allows us to clear it on an {\tt SD\_GO\_IDLE} command, and
+if the card detect input ever goes low then the second bit, {\tt SD\_REMOVED},
+will be set.  Unlike the {\tt SD\_PRESENTN} bit which shows the current state
+of whether a card is present or not, the {\tt SD\_REMOVED} bit is sticky.
+Once set, it will remain set until explicitly written to.  This allows us to
+clear it on an {\tt SD\_GO\_IDLE} command, and
 otherwise leave it alone.  If the {\tt SD\_REMOVED} flag ever goes high, then
 the driver knows it's time to restart the interface with a new card.
 \begin{tabular}{lll}
@@ -373,28 +380,29 @@ shouldn't be busy anyway), and we then clear any errors:
 Now that the controller is idle (which it should've been from startup anyway),
 we can now set up our interface.  For this, we'll set our clock rate to 400~KHz.
 The clock division register, sometimes erroneously called the speed, is found
-in the lower eight bits of the soft-core configuration register.  The actual
+in the lower sixteen bits of the soft-core configuration register.  The actual
 SPI clock frequency, given this value, will be:
 \begin{eqnarray}
 f_{\mbox{\tiny SDSPI}} &=& \frac{f_{\mbox{\tiny CLK}}}{2\left(\mbox{\tt CLKDIV}+1\right)}
 \end{eqnarray}
-Hence, since the XuLA2-LX25 SoC runs at an 80~MHz clock, setting this value to
-{\tt 0x63} sets the SPI clock to 400~kHz.
+where $f_{\mbox{\tiny CLK}}$ is the rate of the syste clock provided to the
+core.  Hence, since the XuLA2-LX25 SoC runs at an 80~MHz clock, setting this
+value to {\tt 0x63} sets the SPI clock to 400~kHz.
 \begin{tabbing}
 {\tt DATA} \= {\tt = 0x063}; \\
 {\tt CMD} \> {\tt = SD\_SETAUX};
 \end{tabbing}
 Note that we could have also set the higher order configuration bits to set
-the size of the FIFO.  In particular, the next four bits, bits 8--11, set
-the FIFO length.  Setting these to zero will cause the controller to ignore
+the size of the FIFO.  In particular, the next four bits, bits 16--19, set
+the block length.  Setting these to zero will cause the controller to ignore
 the change, whereas setting the value to three will set the FIFO length to
-$4\cdot2^3$ bytes, and setting it to seven will set the FIFO length to the
-nominal $4\cdot 2^7$ or $512$~bytes.
+$2^3$ bytes, and setting it to nine will set the FIFO length to the
+nominal $2^9$ or $512$~bytes.
 
 The controller is now ready to send commands to the SD card.  The first command
-to the card is always a command zero, with zero data.  This is sometimes
-called the \hbox{\tt GO\_IDLE\_STATE} command.  We then wait for the
-command to complete:
+to the card is always a command zero, with zero data.  This is sometimes called
+the \hbox{\tt GO\_IDLE\_STATE} command.  We then wait for the command to
+complete:
 \begin{tabbing}
 {\tt DATA} \= {\tt = 0;} \\
 {\tt CMD} \> {\tt = SD\_GO\_IDLE;} \\
@@ -403,8 +411,12 @@ command to complete:
 This will also clear any card-inserted {\tt SD\_REMOVED} flag.  Once complete,
 the card should now be in its idle state.
 
-The next part of the negotiation tells the card whether or not we are able to 
-handle high capacity cards.  For this, we send a command one,
+This is also the first command that might have an error.  In particular,
+{\tt SD\_ERR} will be set if the card does not respond to the command.
+
+Some specifications require a CMD1, \hbox{\tt SEND\_OP\_COND}, to be
+sent next.  This is to tell the card whether or not high capacity is supported.
+For this, we send a command one,
 \hbox{\tt SEND\_OP\_COND}, with an argument of {\tt 0x40000000} to tell it
 that we are able to support high capacity cards.  (An argument of zero would
 mean that we could not.)
@@ -414,18 +426,22 @@ mean that we could not.)
 {\tt SD\_WAIT\_WHILE\_BUSY;}
 \end{tabbing}
 
-Then the card needs to know what voltage it will be run at.  We communicate this
-via a \hbox{\tt SEND\_IF\_COND} command, or CMD8.  Since the XuLA2
-only operates the card at 3.3V, we tell the card we wish to run at 3.3V in the
-argument.  The last eight bits of the argument, however, are simply to determine
-whether communication has taken place.  We set these bits to {\tt 0x0a5},
-although they could be anything.  The card will echo this value back in the
-response:
+Not all cards require or accept a CMD1 anymore, and indeed cards in my most
+recent tests would stop responding if given a CMD1.  Further, it appears to have
+been removed from the most recent SD-Card specification.
+
+The card then needs to know what voltage it will be run at.  We communicate this
+via a \hbox{\tt SEND\_IF\_COND} command, or CMD8.  Since most FPGA boards offer
+only fixed 3.3V I/O configurations, we tell the card we wish to run at 3.3V in
+the argument.  The last eight bits of the argument, however, are simply to
+determine whether communication has taken place.  We set these bits to
+{\tt 0x0a5}, although they could be anything.  The card will echo this value
+back in the response:
 \begin{tabbing}
 {\tt DATA} \= {\tt = 0x1a5;} \\
 {\tt CMD} \> {\tt = SD\_CMD+8;} \\
 {\tt SD\_WAIT\_WHILE\_BUSY;} \\
-{\em // assert((DATA\&0x0ff)==0x01a5);}
+{\em // assert(DATA == 0x01a5);}
 \end{tabbing}
 The card will also echo back the voltage range, if it accepts it.  Thus,
 we should receive {\tt 0x01a5} as a response.
@@ -479,15 +495,17 @@ Now let's switch up to a higher speed, and read the 16--byte Card Specific
 Data (CSD) register field from the card.  First, the switch to a 20~MHz clock
 and a 16--byte fifo,
 \begin{tabbing}
-{\tt DATA} \= {\tt = 0x0201}; \\
+{\tt DATA} \= {\tt = 0x040001}; \\
 {\tt CMD} \> {\tt = SD\_SETAUX};
 \end{tabbing}
-Remember that the {\tt 0x0200} switches to a FIFO of length~$2^2$ words, or
-equivalently $4\cdot 2^2=16$ bytes.  Likewise the {\tt 0x01} component switches
-our frequency to 20~MHz.  Now we can issue the {\tt SEND\_CSD\_COND}, or
-CMD9, command itself.  Note that we didn't need to wait for the {\tt SD\_SETAUX}
-command to complete.  Further, since this command is going to read from our
-FIFO, we need to include the {\tt SD\_FIFO\_OP} part of the command:
+Remember that the {\tt 0x040000} switches to a memory length of $2^4$ bytes.
+Likewise the {\tt 0x0001} component of the configuration word switches
+our frequency to $f_{\mbox{\tiny CLK}}/4$ or 20~MHz if starting with an
+$80$~MHz clock.  Now we can issue the {\tt SEND\_CSD\_COND}, or
+CMD9, command itself.  Note that we didn't need to wait for the
+{\tt SD\_SETAUX} command to complete.  Further, since this command is going
+to read from the SD card into our internal memory, we also need to include
+the {\tt SD\_FIFO\_OP} part of the command:
 \begin{tabbing}
 {\tt int CSD[4];}\\
 {\tt DATA} \= {\tt = 0;} \\
@@ -497,17 +515,20 @@ FIFO, we need to include the {\tt SD\_FIFO\_OP} part of the command:
 \> {\tt CSD[i] = FIFO[0];}
 \end{tabbing}
 Once the command is complete, we can read the four 32--bit words of the CSD
-register from the FIFO, as shown above.  Alternatively, we could have issued
-another command first, before reading that FIFO result.
+register from the memory area, as shown above.  Alternatively, we could have
+issued another command first, before reading that FIFO result.
 
-We could read the Card Identification (CID) register as well, but this would've
-been the same sequence as above, save only that we would've written a 
+We could also read the Card Identification (CID) register if we wanted as well.
+Doing so would require the same sequence as above, save only that we would've
+written a 
 {\tt (SD\_READREG|SD\_CMD)+10} to CMD.
 
 Reading the STATUS is similar, only the response to the {\tt SEND\_STATUS}
 command is an 8--bit value from an R2 response, not the 32--bit values of
-the R3 (OCR) or R7 responses.  Still, the R2 response is provided in the
-DATA register, so we only need to send {\tt (SD\_READREG|SD\_CMD)+13} to
+the R3 (OCR) or R7 responses.  The core will still read 32--bits, however,
+and so it will place the R2 response in the upper 32-bits of the status word.
+It's still provided in the DATA register, so we only need to send
+{\tt (SD\_READREG|SD\_CMD)+13} to
 the CMD register in order to read its result from the DATA register.  The status
 register will be returned in the top eight bits of the DATA register (the
 interface still reads 32--bits, even though the other 24 can be ignored), so:
@@ -525,8 +546,8 @@ except that because of its width the FIFO needs to be set for a shorter
 register width:
 \begin{tabbing}
 {\tt int SCR[2];}\\
-{\em // Set the FIFO length to two words, $2^1$.}\\
-{\tt DATA} \= {\tt = 0x0100}; \\
+{\em // Set the FIFO length to 8 bytes, or $2^3$.}\\
+{\tt DATA} \= {\tt = 0x030000}; \\
 {\tt CMD} \> {\tt = SD\_SETAUX};\\
 {\em // Issue an ALT command, to get the other command set.}\\
 {\tt DATA} \= {\tt = 0;} \\
@@ -544,18 +565,17 @@ register width:
 \section{Reading and Writing}
 
 For our first example, let's read the boot sector from our card.  For this,
-we set our FIFO back to 128~words (512~bytes), and then issue a read sector
-command:
+we set our FIFO back to 512~bytes, and then issue a read sector command:
 \begin{tabbing}
 {\tt void} \= {\tt read(int sector\_num, int *buf) \{}\\
-\> {\em // Set the FIFO length to 128 words, $2^7$.}\\
-\> {\tt DATA} \= {\tt = 0x0700}; \\
+\> {\em // Set the FIFO length to 512 bytes, $2^9$.}\\
+\> {\tt DATA} \= {\tt = 0x090000}; \\
 \> {\tt CMD} \> {\tt = SD\_SETAUX};\\
 \> {\em // Read from the requested sector}\\
 \> {\tt DATA} \= {\tt = sector\_num;} \\
 \> {\tt CMD} \> {\tt = SD\_READ\_SECTOR;}\\
 \> {\tt SD\_WAIT\_WHILE\_BUSY;} \\
-\> {\tt for(int i=0; i<128; i++) } \\
+\> {\tt for(int i=0; i<512/4; i++) } \\
 \> \> {\tt buf[i] = FIFO[0];}\\
 {\tt \}}
 \end{tabbing}
@@ -563,11 +583,11 @@ command:
 We could also write to any sector on the card in a very similar fashion:
 \begin{tabbing}
 {\tt void} \= {\tt write(int sector\_num, int *buf) \{}\\
-\> {\em // Set the FIFO length to 128 words, $2^7$.}\\
-\> {\tt DATA} \= {\tt = 0x0700}; \\
+\> {\em // Set the FIFO length to 512 words, $2^9$.}\\
+\> {\tt DATA} \= {\tt = 0x090000}; \\
 \> {\tt CMD} \> {\tt = SD\_SETAUX};\\
 \> {\em // Fill the FIFO with our data}\\
-\> {\tt for(int i=0; i<128; i++) } \\
+\> {\tt for(int i=0; i<512/4; i++) } \\
 \> \> {\tt FIFO[0] = buf[i];}\\
 \> {\em // Issue the write command}\\
 \> {\tt DATA} \= {\tt = sector\_num;} \\
@@ -587,7 +607,7 @@ As mentioned in the last two chapters, the SDSPI core has only four registers,
 and one internal register.  These are shown in Tbl.~\ref{tbl:ioregs}.
 \begin{table}[htbp]
 \begin{center}\begin{reglist}
-CMD     &{\tt 0x00} & 32 & R/W & SDSPI Command register\\\hline
+CMD     &{\tt 0x00} & 32 & R/W & SDSPI Command and status register\\\hline
 DAT     &{\tt 0x01} & 32 & R/W & SDSPI return data/argument register\\\hline
 FIFO[0] &{\tt 0x02} & 32 & R/W & FIFO[0] data\\\hline
 FIFO[1] &{\tt 0x03} & 32 & R/W & FIFO[1] data\\\hline
@@ -605,11 +625,10 @@ composed of several packed bit fields, as shown in Fig.~\ref{fig:CMD}.
 \begin{figure}\begin{center}
 \begin{bytefield}[endianness=big]{32}
 \bitheader{0-31}\\
-\bitbox{15}{Unused}
+\bitbox{12}{Unused}
 \bitbox{1}{P}	% PRESENTn,0x80000
 \bitbox{1}{R}	% REMOVED, 0x40000
-\bitbox{1}{T}	% TOKERR,  0x20000
-\bitbox{1}{C}	% CRCERR,  0x10000
+\bitbox{2}{}	% Reserved,  0x20000
 \bitbox{1}{E}	% ERROR,   0x08000
 \bitbox{1}{B}	% BUSY,    0x04000
 \bitbox{1}{0}	% Unused
@@ -621,13 +640,13 @@ composed of several packed bit fields, as shown in Fig.~\ref{fig:CMD}.
 \end{bytefield}
 \caption{CMD Register fields}\label{fig:CMD}
 \end{center}\end{figure}
-Perhaps the most important of these is the R1/CMD field.  If bits 7--6 are
-the two bits 2'b01, then the write is a command and the bottom six bits
-specify the rest of the 8--bit command identifier.  Once the command is
-complete, these 8--bits represent the R1 response from the device.  R1
-should be one while the device is still starting, or zero in the case of no
-error.  Further interpretation of this value may be found in the SD--Card
-Specification.
+Perhaps the most important of these is the R1/CMD field.  On any write, if
+bits 7--6 are the two bits 2'b01 and if the card is idle, then the command
+contained in the rest of the R1/CMD field is sent to the card.  Once the
+command is complete, these 8--bits represent the R1 response from the device.
+According to the SD specification, R1 should be one while the device is still
+starting, or zero in the case of no error.  Further interpretation of this
+value may be found in the SD--Card Specification.
 
 Of next importance is the $R$ field.  This specifies the response the
 controller should expect from the card given the command that was issued
@@ -636,21 +655,23 @@ the controller should expect an R1 response, $2'b01$, meaning the controller
 should expect an R1b response, and $2'b10$ meaning the controller should
 expect an R2/R3/R7 32--bit response.
 
-The $F$, or FIFO, field should be set if the command being given requires the
-use of the FIFO.  $W$ should be set at the same time if the controller will be
+The $F$, or FIFO, field should be set if the command being given requires a
+data transmission to accompany it, either coming from or going to the internal
+memories (FIFOs).  $W$ should be set at the same time if the controller will be
 writing to the card from the FIFO, and cleared if the controller will be
-reading from the card into the FIFO.  Finally, $I$ specifies which FIFO will
-be used: 0 for the primary, or 1 for the alternate.
+reading from the card into the FIFO.  Finally, $I$ specifies which data memory
+will be used: 0 for the primary, or 1 for the alternate.
 
 While the command is running, the BUSY or $B$ bit will be set.
 
 Once the command has completed, the $E$ bit may be set if either the command 
-timed out, or a CRC error was noted while reading from the card.  On an
-incoming CRC read error, the $C$RCERR bit will be set.  To detect a CRC error
-when writing to the card, check the R1 response according to the
-SD Card specification.  The $T$ bit indicates a token error.
+timed out, a card reset was received, or a CRC error was noted while reading
+from the card.  It will also be set if the R1 response indicates an error
+of some type has occurred, such as a CRC error when writing to the card.
 Errors may be cleared by writing a 1 to the $E$ bit.
-Error conditions will persist until cleared.
+Error conditions will persist until cleared.  While an error condition is
+present, the data memories sub-components be held in reset preventing any
+data transactions.
 
 The $R$ register is used to detect if a card is ever removed.  This bit is
 cleared by writing a `1' to it--typically as part of the {\tt SD\_GO\_IDLE}
@@ -667,13 +688,14 @@ CMD register, the DATA register may only be written when the interface is
 idle.  When issuing a command to the device, the 32--bit argument for the
 command is taken from the DATA register.  When reading the results of a device
 command, the DATA register will contain the R2 response in the upper 8--bits,
-or an R3 or R7 response in the full 32--bits.  
+or any R3 or R7 response in the full 32--bits.  Following a memory block write
+command, the DATA register will contain the token acknowledging the command.
 
 \section{FIFO Registers}
-The SDSPI controller maintains two 128~word (512~byte) FIFOs.  Reads from the 
-card will read data into one of the two FIFO's, whereas writes to the card will
-write data out from one of the FIFO's.  Which FIFO the card uses is determined
-by the $I$ bit in the CMD register (above).
+The SDSPI controller maintains two 128~word (512~byte) memory areas called
+FIFOs.  Reads from the card will write data into one of the two FIFO's, whereas
+writes to the card will read data out from one of the FIFO's.  Which FIFO the
+card uses is determined by the $I$ bit in the CMD register (above).
 
 Further, upon any write to the CMD register, the FIFO address will be set
 to point to the beginning of the FIFO.
@@ -708,11 +730,12 @@ CRC.  The fields of this register are shown in Fig.~\ref{fig:CONFIG}.
 \begin{figure}\begin{center}
 \begin{bytefield}[endianness=big]{32}
 \bitheader{0-31}\\
-\bitbox{8}{Rsrvd}
-\bitbox{8}{Max LgFIFO}
-\bitbox{8}{LgFIFO}
-\bitbox{1}{0}
-\bitbox{7}{CLKDIV}
+\bitbox{4}{Rsrvd}
+\bitbox{4}{MaxLgF}
+\bitbox{4}{Rsrvd}
+\bitbox{4}{LgFIFO}
+\bitbox{7}{0}
+\bitbox{9}{CLKDIV}
 \end{bytefield}
 \caption{CONFIG Register fields}\label{fig:CONFIG}
 \end{center}\end{figure}
@@ -725,16 +748,18 @@ original clock to be divided by $2(1+{\tt CLKDIV})$ or $4$.  Thus an 80~MHz
 input clock will become a 20~MHz SPI clock.  Attempts to set this value to
 zero will be quietly ignored.
 
-The LgFIFO field sets the log, base two, of the FIFO size.  The actual FIFO
-size used will be $2^{\mbox{\tiny LGFIFO}}$ words.  The maximum size the
-device will support is returned by the {\tt Max LgFIFO} field, which is
-currently set to $7$ for a 128~word (512~byte) FIFO.
+The LgFIFO field sets the log, base two, of the any memory transfer size.  The
+actual transfer length will be
+will be $2^{\mbox{\tiny LGFIFO}}$ bytes.  The maximum size the
+device will support is returned by the {\tt MaxLgF} field, which is
+currently set to $9$ for a 512~byte memory area.  This matches the current
+specification, which limits sectors to only ever being 512~bytes.
 
 To set the CONFIG register, first set the DATA register to the new config
 value (or zero for the fields that will not change), and then write
 {\tt 0x0ff} to the CMD register.  Likewise, to read the CONFIG register
 write a {\tt 0x0bf} to the CMD register and read the CONFIG register from the
-DATA register.
+DATA register.  (Only the upper two bits of these commands are ever checked.)
 
 \chapter{Wishbone Datasheet}\label{ch:wb}
 Tbl.~\ref{tbl:wishbone}
@@ -775,13 +800,8 @@ the limits the card can handle.
 
 \chapter{Clocks}\label{ch:clk}
 
-This core is based upon the XuLA2-LX25 SoC design.  The XuLA2 development board
-contains one external 12~MHz clock, which is internally boosted within the SoC
-to 80~MHz.  This clock is divided by a programmable divider, often set to 
-four, to create the 20~MHz clock used to drive the device.  (Maximum device
-speed is usually, although some devices can run at 50~MHz.)   This
-controller does not support setting the SPI clock frequency any faster than
-one half of the input clock rate.
+This core has been tested on a Spartan 6 using an 80~MHz system clock, as well
+as on an Artix~7 using a 100~MHz system clock.
 
 \chapter{I/O Ports}\label{ch:io}
 
@@ -790,6 +810,7 @@ Table.~\ref{tbl:ioports}
 \begin{center}
 \begin{portlist}
 i\_clk & 1 & Input & Clock\\\hline\hline
+i\_sd\_reset & 1 & Input & SD-Card reset, active high\\\hline\hline
 i\_wb\_cyc & 1 & Output & Wishbone bus cycle active\\\hline
 i\_wb\_stb & 1 & Output & Wishbone Strobe, true one clock only for each interaction\\\hline
 i\_wb\_we & 1 & Output & Wishbone Write-Enable line\\\hline

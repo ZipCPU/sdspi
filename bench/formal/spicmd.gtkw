@@ -1,0 +1,81 @@
+[*]
+[*] GTKWave Analyzer v3.3.86 (w)1999-2017 BSI
+[*] Fri Nov  8 03:34:23 2019
+[*]
+[dumpfile] "(null)"
+[timestart] 422
+[size] 1920 1021
+[pos] -1 -1
+*-3.795382 470 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 270
+[signals_width] 230
+[sst_expanded] 1
+[sst_vpaned_height] 291
+@28
+spicmd.i_reset
+spicmd.i_clk
+@200
+-
+@28
+spicmd.i_cmd_stb
+@22
+spicmd.i_cmd[5:0]
+spicmd.i_cmd_data[31:0]
+@28
+spicmd.i_cmd_type[1:0]
+@200
+-
+@28
+spicmd.i_ll_busy
+spicmd.i_ll_stb
+@22
+spicmd.i_ll_byte[7:0]
+@200
+-
+@28
+spicmd.o_busy
+spicmd.o_ll_stb
+@22
+spicmd.o_ll_byte[7:0]
+@200
+-
+@28
+spicmd.o_cmd_sent
+spicmd.o_rxvalid
+@22
+spicmd.o_response[39:0]
+@200
+-
+@28
+spicmd.f_send_seq[2:0]
+@22
+spicmd.f_rcv_seq[3:0]
+@200
+-
+@22
+spicmd.shift_data[39:0]
+spicmd.crc_valid_sreg[4:0]
+@29
+spicmd.almost_sent
+@200
+-
+@28
+spicmd.rx_check_busy
+spicmd.rx_counter[2:0]
+spicmd.rx_r1_byte
+spicmd.rxvalid
+@200
+-
+@22
+spicmd.crc_bit_counter[5:0]
+@28
+spicmd.crc_busy
+@22
+spicmd.crc_byte[7:0]
+spicmd.f_cmd[5:0]
+spicmd.f_data[31:0]
+@28
+spicmd.f_past_valid
+spicmd.f_type[1:0]
+[pattern_trace] 1
+[pattern_trace] 0

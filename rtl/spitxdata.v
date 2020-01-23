@@ -12,7 +12,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Copyright (C) 2016-2019, Gisselquist Technology, LLC
+// Copyright (C) 2016-2020, Gisselquist Technology, LLC
 //
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of  the GNU General Public License as published
@@ -490,16 +490,18 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	if (o_ll_stb && !data_sent)
 		assert(fill[4]);
 
-	integer	k;
-
 	always @(*)
 	if (fill != 0)
-	begin
 		assert(fill[DW/8]);
-		for(k=DW/8; k>0; k=k-1)
-		if (!fill[k])
+
+	genvar	k;
+
+	generate for(k=DW/8; k>0; k=k-1)
+	begin
+		always @(*)
+		if ((fill != 0) && !fill[k])
 			assert(fill[k-1:0]==0);
-	end
+	end endgenerate
 
 	always @(posedge i_clk)
 	if (f_past_valid && $past(crc_stb))

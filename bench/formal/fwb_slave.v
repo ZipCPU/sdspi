@@ -37,7 +37,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Copyright (C) 2017-2019, Gisselquist Technology, LLC
+// Copyright (C) 2017-2020, Gisselquist Technology, LLC
 //
 // This file is part of the pipelined Wishbone to AXI converter project, a
 // project that contains multiple bus bridging designs and formal bus property
@@ -87,7 +87,7 @@ module	fwb_slave(i_clk, i_reset,
 	// If true, allow the bus to issue multiple discontinuous requests.
 	// Unlike F_OPT_RMW_BUS_OPTION, these requests may be issued while other
 	// requests are outstanding
-	parameter	[0:0]	F_OPT_DISCONTINUOUS = 0;
+	parameter	[0:0]	F_OPT_DISCONTINUOUS = 1;
 	//
 	//
 	// If true, insist that there be a minimum of a single clock delay
@@ -237,6 +237,15 @@ module	fwb_slave(i_clk, i_reset,
 		`SLAVE_ASSUME(i_wb_we == $past(i_wb_we));
 
 	// Write requests must also set one (or more) of i_wb_sel
+	//
+	// This test has been removed since down-sizers (taking bus from width
+	// DW to width dw < DW) might actually create empty requests that this
+	// would prevent.  Re-enabling it would also complicate AXI to WB
+	// transfers, since AXI explicitly allows WSTRB == 0.  Finally, this
+	// criteria isn't found in the WB spec--so while it might be a good
+	// idea to check, in hind sight there are too many exceptions to be
+	// dogmatic about it.
+	//
 	// always @(*)
 	// if ((i_wb_stb)&&(i_wb_we))
 	//	`SLAVE_ASSUME(|i_wb_sel);
@@ -391,6 +400,10 @@ module	fwb_slave(i_clk, i_reset,
 			// created before the request gets through
 			`SLAVE_ASSERT((!i_wb_err)||((i_wb_stb)&&(!i_wb_stall)));
 		end
+	end else if (!i_wb_cyc && f_nacks == f_nreqs)
+	begin
+		`SLAVE_ASSERT(!i_wb_ack);
+		`SLAVE_ASSERT(!i_wb_err);
 	end
 
 	generate if (!F_OPT_RMW_BUS_OPTION)

@@ -215,7 +215,7 @@ fprintf(stderr, "LGLEN = %d, LN = %d\n", lglen, ln);
 				v = (v<<8) | m_sdspi->CID(k*4+i);
 
 			TBASSERT((*this), v == data[k]);
-		}
+		} return r;
 	}
 
 };

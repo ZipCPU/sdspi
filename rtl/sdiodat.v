@@ -6,6 +6,10 @@
 //
 // Purpose:	
 //
+// Status:
+//	This is the beginnings of a (near) top-level SDIO controller.
+//	It is far from working, and likely even far fom synthesizing.
+//
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
 //

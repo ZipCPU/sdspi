@@ -1,0 +1,110 @@
+[*]
+[*] GTKWave Analyzer v3.3.66 (w)1999-2015 BSI
+[*] Tue Nov 12 20:01:32 2019
+[*]
+[timestart] 4385000
+[size] 1920 1054
+[pos] -1 -1
+*-17.791178 5726460 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] TOP.
+[treeopen] TOP.sdspi.
+[treeopen] TOP.sdspi.lowlevel.
+[sst_width] 196
+[signals_width] 182
+[sst_expanded] 1
+[sst_vpaned_height] 315
+@28
+TOP.i_bus_grant
+TOP.i_sd_reset
+TOP.i_card_detect
+TOP.i_clk
+@200
+-
+@28
+[color] 2
+TOP.o_cs_n
+[color] 2
+TOP.o_sck
+[color] 2
+TOP.o_mosi
+[color] 3
+TOP.i_miso
+@200
+-
+@28
+TOP.sdspi.r_cmd_busy
+TOP.sdspi.ll_out_stb
+@22
+TOP.sdspi.ll_out_dat[7:0]
+@200
+-
+@28
+[color] 3
+TOP.i_wb_cyc
+[color] 3
+TOP.i_wb_stb
+[color] 3
+TOP.i_wb_we
+[color] 3
+TOP.i_wb_addr[1:0]
+@22
+[color] 3
+TOP.i_wb_data[31:0]
+[color] 3
+TOP.i_wb_sel[3:0]
+@28
+[color] 2
+TOP.o_wb_stall
+[color] 2
+TOP.o_wb_ack
+@22
+[color] 2
+TOP.o_wb_data[31:0]
+TOP.sdspi.r_data_reg[31:0]
+TOP.sdspi.spicmdi.o_response[39:0]
+TOP.sdspi.r_lgblklen[3:0]
+@200
+-
+@28
+TOP.o_int
+@200
+-
+@28
+TOP.sdspi.dbg_trigger
+@22
+TOP.o_debug[31:0]
+@201
+-
+@28
+TOP.sdspi.lowlevel.powerup_hold
+TOP.sdspi.lowlevel.startup_hold
+TOP.sdspi.card_removed
+@22
+TOP.sdspi.card_status[31:0]
+@28
+TOP.sdspi.card_present
+TOP.sdspi.card_removed
+@200
+-
+@28
+TOP.sdspi.r_cmd_err
+TOP.sdspi.spicmdi.i_reset
+TOP.sdspi.spicmdi.i_cmd_stb
+TOP.sdspi.cmd_busy
+TOP.sdspi.cmd_valid
+@22
+TOP.sdspi.cmd_response[39:0]
+@28
+TOP.sdspi.spicmdi.rx_r1_byte
+TOP.sdspi.spicmdi.rxvalid
+TOP.sdspi.rx_busy
+TOP.sdspi.tx_busy
+@22
+TOP.sdspi.spi_write_addr[7:0]
+TOP.sdspi.spi_read_addr[7:0]
+TOP.sdspi.spi_read_data[31:0]
+@28
+TOP.sdspi.spi_read_from_fifo
+TOP.sdspi.tx_stb
+[pattern_trace] 1
+[pattern_trace] 0

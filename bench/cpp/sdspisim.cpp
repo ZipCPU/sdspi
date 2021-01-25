@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Filename: 	sdspisim.cpp
-//
+// {{{
 // Project:	Wishbone Controlled SD-Card Controller over SPI port
 //
 // Purpose:	This library simulates the operation of a SPI commanded SD-Card,
@@ -14,9 +14,9 @@
 //		Gisselquist Technology, LLC
 //
 ////////////////////////////////////////////////////////////////////////////////
-//
-// Copyright (C) 2015-2020, Gisselquist Technology, LLC
-//
+// }}}
+// Copyright (C) 2015-2021, Gisselquist Technology, LLC
+// {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of  the GNU General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or (at
@@ -31,14 +31,14 @@
 // with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
-//
+// }}}
 // License:	GPL, v3, as defined and found on www.gnu.org,
+// {{{
 //		http://www.gnu.org/licenses/gpl.html
-//
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-//
+// }}}
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
@@ -57,6 +57,7 @@ static	const	unsigned
 	CCS = 1; // 0: SDSC card, 1: SDHC or SDXC card
 
 SDSPISIM::SDSPISIM(const bool debug) {
+	// {{{
 	m_dev = NULL;
 	m_last_sck = 1;
 	m_block_address = (CCS==1);
@@ -78,9 +79,11 @@ SDSPISIM::SDSPISIM(const bool debug) {
 	m_reading_data = false;
 	m_have_token = false;
 	m_debug = debug;
+	// }}}
 }
 
 void	SDSPISIM::load(const char *fname) {
+	// {{{
 	m_dev = fopen(fname, "r+b");
 
 	if (m_dev) {
@@ -93,6 +96,7 @@ void	SDSPISIM::load(const char *fname) {
 
 		if (m_debug) printf("SDCARD: NBLOCKS = %ld\n", m_devblocks);
 	}
+	// }}}
 }
 
 unsigned	SDSPISIM::read_bitfield(int offset, int bits,
@@ -103,6 +107,7 @@ unsigned	SDSPISIM::read_bitfield(int offset, int bits,
 }
 
 unsigned	SDSPISIM::OCR(void) {
+	// {{{
 	unsigned	ocr = 0x00ff80;
 
 	if (CCS)
@@ -111,9 +116,11 @@ unsigned	SDSPISIM::OCR(void) {
 		ocr |= 0x800000;
 
 	return ocr;
+	// }}}
 }
 
 void	SDSPISIM::CSD(void) {
+	// {{{
 	static const uint8_t __attribute__((unused)) SYNTHETIC_CSD[] = {
 		// Normal SD Card, not high capacity
 		0x00,
@@ -168,6 +175,7 @@ void	SDSPISIM::CSD(void) {
 	// Now make the CRC match
 
 	m_csd[15] = cmdcrc(15, (char *)m_csd);
+	// }}}
 }
 
 uint8_t	SDSPISIM::CSD(int index) {
@@ -177,6 +185,7 @@ uint8_t	SDSPISIM::CSD(int index) {
 }
 
 void	SDSPISIM::CID(void) {
+	// {{{
 	// CID Reg
 	static const uint8_t __attribute__((unused)) SYNTHETIC_CID[] = {
 		0xba, 0xd0, 0xda, 0xdd,
@@ -202,16 +211,19 @@ void	SDSPISIM::CID(void) {
 	for(int k=0; k<15; k++)
 		m_cid[k] = DEFAULT_CID[k];
 	m_cid[15] = cmdcrc(15, (char *)m_cid);
+	// }}}
 };
 
 uint8_t	SDSPISIM::CID(int index) {
+	// {{{
 	assert(index >= 0);
 	assert(index < SDSPI_CIDLEN);
 	return m_cid[index];
+	// }}}
 }
 
-
 int	SDSPISIM::operator()(const int csn, const int sck, const int mosi) {
+	// {{{
 	// Keep track of a timer to determine when page program and erase
 	// cycles complete.
 
@@ -226,6 +238,7 @@ int	SDSPISIM::operator()(const int csn, const int sck, const int mosi) {
 		m_powerup_busy--;
 
 	if (csn) {
+		// {{{
 		m_delay = 0;
 		m_cmdidx= 0;
 		m_rspidx= 0;
@@ -238,15 +251,20 @@ int	SDSPISIM::operator()(const int csn, const int sck, const int mosi) {
 		m_dat_out = 0x0ff;
 		// Reset everything when not selected
 		return 0;
+		// }}}
 	} else if (sck == m_last_sck) {
+		// {{{
 		m_last_sck = sck;
 		return m_last_miso;
+		// }}}
 	} else if (!m_last_sck) {
+		// {{{
 		// Register our input on the rising edge
 		m_mosi = mosi;
 		m_syncd= true;
 		m_last_sck = sck;
 		return m_last_miso;
+		// }}}
 	} if (!m_syncd) {
 		m_last_sck = sck;
 		return m_last_miso;
@@ -265,10 +283,13 @@ int	SDSPISIM::operator()(const int csn, const int sck, const int mosi) {
 	// if (m_debug) printf("(bitpos=%d,dat_in=%02x)\n", m_bitpos&7, m_dat_in&0x0ff);
 
 	if ((m_bitpos&7)==0) {
+		// {{{
 		// if (m_debug) printf("SDSPI--RX BYTE %02x\n", m_dat_in&0x0ff);
 		m_dat_out = 0xff;
 		if (m_reading_data) {
+			// {{{
 			if (m_have_token) {
+				// {{{
 				m_block_buf[m_rxloc++] = m_dat_in;
 				// if (m_debug) printf("SDSPI: WR[%3d] = %02x\n", m_rxloc-1,
 				//	m_dat_in&0x0ff);
@@ -296,23 +317,30 @@ int	SDSPISIM::operator()(const int csn, const int sck, const int mosi) {
 						assert(rxcrc == crc);
 					}
 				}
+				// }}}
 			} else {
+				// {{{
 				if ((m_dat_in&0x0ff) == 0x0fe) {
 					if (m_debug) printf("SDSPI: TOKEN!!\n");
 					m_have_token = true;
 					m_rxloc = 0;
 				} else if (m_debug)
 					printf("SDSPI: waiting on token\n");
+				// }}}
 			}
+			// }}}
 		} else if (m_cmdidx < 6) {
-			// if (m_debug) printf("SDSPI: CMDIDX = %d\n", m_cmdidx);
+			// {{{
+			// if (m_debug) printf("SDSPI: CMDIDX = %d\n",m_cmdidx);
 			// All commands *must* start with a 01... pair of bits.
 			if (m_cmdidx == 0)
 				assert((m_dat_in&0xc0)==0x40);
 
 			// Record the command for later processing
 			m_cmdbuf[m_cmdidx++] = m_dat_in;
-		} else if (m_cmdidx == 6) {
+			// }}}
+		} else if (m_cmdidx == 6) { // Command processing
+			// {{{
 			// We're going to start a response from here ...
 			m_rspidx = 0;
 			m_blkdly = 0;
@@ -335,7 +363,8 @@ int	SDSPISIM::operator()(const int csn, const int sck, const int mosi) {
 				assert(0 && "BAD CRC");
 				m_rspbuf[0] = 0x09;
 				m_rspdly = 1;
-			} else if (m_altcmd_flag) {
+			} else if (m_altcmd_flag) { // Alternate commands
+				// {{{
 				switch(m_cmdbuf[0]&0x03f) {
 				case 41: // ACMD41 -- SD_SEND_OP_COND
 					// and start initialization sequence
@@ -371,7 +400,9 @@ int	SDSPISIM::operator()(const int csn, const int sck, const int mosi) {
 					fprintf(stderr, "SDSPI ERR: Alt command ACMD%d not implemented!\n", m_cmdbuf[0]&0x03f);
 					assert(0 && "Not Implemented");
 				} m_altcmd_flag = false;
-			} else {
+				// }}}
+			} else { // Regular command processing
+				// {{{
 				m_altcmd_flag = false;
 				memset(m_rspbuf, 0x0ff, SDSPI_RSPLEN);
 				if (m_debug) printf("SDSPI: Received a command 0x%02x (%d)\n",
@@ -527,28 +558,39 @@ fprintf(stderr, "WRITE: Seek to sector %d\n", arg);
 					fflush(stdout);
 					assert(0 && "Not Implemented");
 				}
+				// }}}
 			} m_cmdidx++;
 
 			// If we are using blocks, add bytes for the start
 			// token and the two CRC bytes
 			m_blklen += 3;
+			// }}}
 		} else if (m_rspdly > 0) {
+			// {{{
 			assert((m_dat_in&0x0ff) == 0x0ff);
 			// A delay until a response is given
 			if (m_busy)
 				m_dat_out = 0;
 			m_rspdly--;
+			// }}}
 		} else if (m_rspidx < SDSPI_RSPLEN) {
+			// {{{
 			assert((m_dat_in&0x0ff) == 0x0ff);
 			m_dat_out = m_rspbuf[m_rspidx++];
+			// }}}
 		} else if (m_blkdly > 0) {
+			// {{{
 			assert((m_dat_in&0x0ff) == 0x0ff);
 			m_blkdly--;
+			// }}}
 		} else if (m_blkidx < SDSPI_MAXBLKLEN) {
+			// {{{
 			assert((m_dat_in&0x0ff) == 0x0ff);
 			m_dat_out = m_block_buf[m_blkidx++];
+			// }}}
 		}
 			// else m_dat_out = 0x0ff; // So set already above
+		// }}}
 	}
 
 	int result = (m_dat_out&0x80)?1:0;
@@ -557,9 +599,11 @@ fprintf(stderr, "WRITE: Seek to sector %d\n", arg);
 	m_last_miso = result;
 	fflush(stdout);
 	return result;
+	// }}}
 }
 
 unsigned SDSPISIM::cmdcrc(int len, char *buf) const {
+	// {{{
 	unsigned int fill = 0, taps = 0x12;
 
 	for(int i=0; i<len; i++) {
@@ -574,17 +618,21 @@ unsigned SDSPISIM::cmdcrc(int len, char *buf) const {
 
 	fill &= 0x0fe; fill |= 1;
 	return fill;
+	// }}}
 }
 
 bool	SDSPISIM::check_cmdcrc(char *buf) const {
+	// {{{
 	unsigned fill = cmdcrc(5, buf);
 	if (m_debug && (fill != (buf[5]&0x0ff)))
 		printf("SDSPI: CRC-CHECK ERR: should have a CRC of %02x, not %02x\n",
 			fill, buf[5] & 0x0ff);
 	return (fill == (buf[5]&0x0ff));
+	// }}}
 }
 
 unsigned SDSPISIM::blockcrc(int len, char *buf) const {
+	// {{{
 	unsigned int fill = 0, taps = 0x1021;
 	bool	dbg = false; // (len == SECTOR_SIZE)&&(m_debug);
 
@@ -614,12 +662,15 @@ unsigned SDSPISIM::blockcrc(int len, char *buf) const {
 	fill &= 0x0ffff;
 	if (dbg) { printf("BLOCKCRC(%d,...) = %04x\n", len, fill); }
 	return fill;
+	// }}}
 }
 
 void	SDSPISIM::add_block_crc(int len, char *buf) const {
+	// {{{
 	unsigned fill = blockcrc(len, &buf[1]);
 
 	buf[len+1] = (fill >> 8)&0x0ff;
 	buf[len+2] = (fill     )&0x0ff;
+	// }}}
 }
 

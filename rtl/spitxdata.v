@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Filename: 	spitxdata.v
-//
+// {{{
 // Project:	SD-Card controller, using a shared SPI interface
 //
 // Purpose:	To handle all of the processing associated with sending data
@@ -11,9 +11,9 @@
 //		Gisselquist Technology, LLC
 //
 ////////////////////////////////////////////////////////////////////////////////
-//
-// Copyright (C) 2016-2020, Gisselquist Technology, LLC
-//
+// }}}
+// Copyright (C) 2016-2021, Gisselquist Technology, LLC
+// {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of  the GNU General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or (at
@@ -28,49 +28,53 @@
 // with this program.  (It's in the $(ROOT)/doc directory, run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
-//
+// }}}
 // License:	GPL, v3, as defined and found on www.gnu.org,
+// {{{
 //		http://www.gnu.org/licenses/gpl.html
-//
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
 //
 `default_nettype none
-//
-module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
-		o_read, o_addr, i_data,
-		i_ll_busy, o_ll_stb, o_ll_byte,
-		i_ll_stb, i_ll_byte, o_rxvalid, o_response);
-	parameter	DW = 32, AW = 8, RDDELAY = 2;
-	localparam	CRC_POLYNOMIAL = 16'h1021;
-	//
-	input	wire	i_clk, i_reset;
-	//
-	input	wire		i_start;
-	input	wire	[3:0]	i_lgblksz;
-	input	wire		i_fifo;
-	output	reg		o_busy;
-	//
-	output	reg 		o_read;
-	output	reg [AW-1:0]	o_addr;
-	input	wire [DW-1:0]	i_data;
-	//
-	input	wire		i_ll_busy;
-	output	reg		o_ll_stb;
-	output	wire [7:0]	o_ll_byte;
-	//
-	input	wire		i_ll_stb;
-	input	wire [7:0]	i_ll_byte;
-	//
-	output	reg 		o_rxvalid;
-	output	reg [7:0]	o_response;
+// }}}
+module spitxdata #(
+		// {{{
+		parameter	DW = 32, AW = 8, RDDELAY = 2,
+		localparam	CRC_POLYNOMIAL = 16'h1021
+		// }}}
+	) (
+		// {{{
+		input	wire	i_clk, i_reset,
+		//
+		input	wire		i_start,
+		input	wire	[3:0]	i_lgblksz,
+		input	wire		i_fifo,
+		output	reg		o_busy,
+		//
+		output	reg 		o_read,
+		output	reg [AW-1:0]	o_addr,
+		input	wire [DW-1:0]	i_data,
+		//
+		input	wire		i_ll_busy,
+		output	reg		o_ll_stb,
+		output	wire [7:0]	o_ll_byte,
+		//
+		input	wire		i_ll_stb,
+		input	wire [7:0]	i_ll_byte,
+		//
+		output	reg 		o_rxvalid,
+		output	reg [7:0]	o_response
+		// }}}
+	);
 
-
-	reg	[RDDELAY-1:0]	rdvalid;
-	reg	[8+DW-1:0]	gearbox;
-	reg	[1+(DW/8)-1:0]	fill;
-	reg			crc_flag, crc_stb, data_read, all_mem_read;
+	// Signal declarations
+	// {{{
+	reg	[RDDELAY-1:0]		rdvalid;
+	reg	[8+DW-1:0]		gearbox;
+	reg	[1+(DW/8)-1:0]		fill;
+	reg				crc_flag, crc_stb, data_read,
+					all_mem_read;
 
 	reg				lastaddr, data_sent, received_token,
 					all_idle;
@@ -80,10 +84,18 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	reg	[15:0]			crc_data;
 
 	reg				token;
+	reg	[2:0]			r_lgblksz_m3;
+	reg	[15:0]			next_crc_data;
+	// }}}
 
+	// token
+	// {{{
 	always @(*)
 		token = (data_sent && i_ll_stb && i_ll_byte[0] &&!i_ll_byte[4]);
+	// }}}
 
+	// o_busy
+	// {{{
 	initial	o_busy = 0;
 	always @(posedge i_clk)
 	if (i_reset)
@@ -92,7 +104,10 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		o_busy <= i_start;
 	else if (all_idle && i_ll_stb && (&i_ll_byte))
 		o_busy <= 0;
+	// }}}
 
+	// o_rxvalid, received_token
+	// {{{
 	initial	o_rxvalid = 0;
 	initial	received_token = 0;
 	always @(posedge i_clk)
@@ -102,29 +117,42 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		{ received_token, o_rxvalid } <= 2'b11;
 	else
 		o_rxvalid <= 0;
+	// }}}
 
+	// all_idle
+	// {{{
 	initial	all_idle = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
 		all_idle <= 0;
 	else if (received_token && i_ll_stb && (&i_ll_byte))
 		all_idle <= 1'b1;
+	// }}}
 
+	// o_response
+	// {{{
 	always @(posedge i_clk)
 	if (token)
 		o_response <= i_ll_byte;
+	// }}}
 
 	// o_read & o_addr
 	// 0: arbited read request
 	// 1: read data
 	// 2: muxed read data
+
+	// rdvalid
+	// {{{
 	initial	rdvalid = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
 		rdvalid <= 0;
 	else
 		rdvalid <= { rdvalid[RDDELAY-2:0], o_read };
+	// }}}
 
+	// o_ll_stb
+	// {{{
 	initial	o_ll_stb = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
@@ -133,7 +161,10 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		o_ll_stb <= 1;
 	else if (data_read && !fill[4])
 		o_ll_stb <= 0;
+	// }}}
 
+	// fill
+	// {{{
 	initial	fill = 0;
 	always @(posedge i_clk)
 	begin
@@ -163,9 +194,12 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		else if (!o_busy)
 			fill <= (i_start) ? 5'h10 : 0;
 	end
+	// }}}
 
 	assign	o_ll_byte = gearbox[39:32];
 
+	// crc_stb, o_read
+	// {{{
 	initial	{ crc_stb, o_read } = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
@@ -182,39 +216,55 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		end
 	end else
 		{ crc_stb, o_read } <= 0;
+	// }}}
 
+	// o_addr
+	// {{{
 	always @(posedge i_clk)
 	if (!o_busy)
 		o_addr <= { i_fifo, {(AW-1){1'b0}} };
 	else if (o_read && !lastaddr)
 		o_addr[AW-2:0] <= o_addr[AW-2:0] + 1;
+	// }}}
 
+	// all_mem_read
+	// {{{
 	initial	all_mem_read = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
 		all_mem_read <= 0;
 	else if (o_read && lastaddr)
 		all_mem_read <= 1;
+	// }}}
 
+	// crc_flag
+	// {{{
 	initial	crc_flag = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
 		crc_flag <= 0;
 	else if (crc_stb)
 		crc_flag <= 1;
+	// }}}
 
+	// data_read
+	// {{{
 	always @(*)
 		data_read = crc_flag;
+	// }}}
 
+	// data_sent
+	// {{{
 	initial	data_sent = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
 		data_sent <= 1'b0;
 	else if (data_read && !fill[3] && o_ll_stb && !i_ll_busy)
 		data_sent <= 1'b1;
+	// }}}
 
-	reg	[2:0]	r_lgblksz_m3;
-
+	// r_lgblksz_m3, lastaddr
+	// {{{
 	initial	r_lgblksz_m3 = 0;
 	initial	lastaddr = 0;
 	always @(posedge i_clk)
@@ -236,11 +286,18 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		default: lastaddr <= (&o_addr[6:1]);	// 512 bytes
 		endcase
 	end
+	// }}}
 
 	////////////////////////////////////////////////////////////////////////
 	//
 	// CRC calculation
+	// {{{
+	////////////////////////////////////////////////////////////////////////
 	//
+	//
+
+	// crc_fill
+	// {{{
 	initial	crc_fill = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
@@ -258,15 +315,19 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		else
 			crc_active <= (crc_fill > 1);
 	end
+	// }}}
 
+	// crc_gearbox
+	// {{{
 	always @(posedge i_clk)
 	if (!crc_active)
 		crc_gearbox <= i_data;
 	else
 		crc_gearbox <= { crc_gearbox[DW-3:0], 2'b00 };
+	// }}}
 
-	reg	[15:0]	next_crc_data;
-
+	// next_crc_data
+	// {{{
 	always @(*)
 	begin
 		next_crc_data = crc_data << 1;;
@@ -279,13 +340,26 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		else
 			next_crc_data = (next_crc_data << 1);
 	end
+	// }}}
 
+	// crc_data
+	// {{{
 	always @(posedge i_clk)
 	if (!o_busy)
 		crc_data <= 0;
 	else if (crc_active)
 		crc_data <= next_crc_data;
-
+	// }}}
+	// }}}
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+//
+// Formal properties
+// {{{
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
 `ifdef	SPITXDATA
 `define	ASSUME	assume
@@ -609,6 +683,6 @@ module spitxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		cover(o_busy && f_lgblksz == 4 && all_idle);
 		cover(!o_busy && f_lgblksz == 4 && all_idle);
 	end
-
 `endif
+// }}}
 endmodule

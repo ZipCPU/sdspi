@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Filename: 	spirxdata.v
-//
+// {{{
 // Project:	SD-Card controller, using a shared SPI interface
 //
 // Purpose:	To handle all of the processing associated with receiving data
@@ -13,9 +13,9 @@
 //		Gisselquist Technology, LLC
 //
 ////////////////////////////////////////////////////////////////////////////////
-//
-// Copyright (C) 2019-2020, Gisselquist Technology, LLC
-//
+// }}}
+// Copyright (C) 2019-2021, Gisselquist Technology, LLC
+// {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of  the GNU General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or (at
@@ -30,41 +30,44 @@
 // with this program.  (It's in the $(ROOT)/doc directory, run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
-//
+// }}}
 // License:	GPL, v3, as defined and found on www.gnu.org,
+// {{{
 //		http://www.gnu.org/licenses/gpl.html
-//
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
 //
 `default_nettype none
-//
-module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
-		i_ll_stb, i_ll_byte,
-		o_write, o_addr, o_data,
-		o_rxvalid, o_response);
-	parameter	DW = 32, AW = 8;
-	localparam	CRC_POLYNOMIAL = 16'h1021;
-	//
-	input	wire		i_clk, i_reset;
-	//
-	input	wire		i_start;
-	input	wire	[3:0]	i_lgblksz;
-	input	wire		i_fifo;
-	output	reg		o_busy;
-	//
-	input	wire		i_ll_stb;
-	input	wire [7:0]	i_ll_byte;
-	//
-	output	reg 		o_write;
-	output	reg [AW-1:0]	o_addr;
-	output	reg [DW-1:0]	o_data;
-	//
-	output	reg 		o_rxvalid;
-	output	reg [7:0]	o_response;
+// }}}
+module spirxdata #(
+		// {{{
+		parameter	DW = 32, AW = 8,
+		localparam	CRC_POLYNOMIAL = 16'h1021
+		// }}}
+	) (
+		// {{{
+		input	wire		i_clk, i_reset,
+		//
+		input	wire		i_start,
+		input	wire	[3:0]	i_lgblksz,
+		input	wire		i_fifo,
+		output	reg		o_busy,
+		//
+		input	wire		i_ll_stb,
+		input	wire [7:0]	i_ll_byte,
+		//
+		output	reg 		o_write,
+		output	reg [AW-1:0]	o_addr,
+		output	reg [DW-1:0]	o_data,
+		//
+		output	reg 		o_rxvalid,
+		output	reg [7:0]	o_response
+		// }}}
+	);
 
-
+	// Signal declarations
+	// {{{
 	reg		error_token, start_token, token, received_token, done,
 			lastaddr;
 	reg		all_mem_written, lastdata;
@@ -79,8 +82,11 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	reg		crc_err, crc_active;
 	reg	[2:0]	fill;
 	reg	[23:0]	gearbox;
+	reg	[15:0]	first_crc_data;
+	// }}}
 
-
+	// error_token
+	// {{{
 	always @(*)
 	begin
 		error_token = 0;
@@ -90,7 +96,10 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		if (!i_ll_stb || received_token)
 			error_token = 0;
 	end
+	// }}}
 
+	// start_token
+	// {{{
 	always @(*)
 	begin
 		start_token = 0;
@@ -100,21 +109,32 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		if (!i_ll_stb || received_token)
 			start_token = 0;
 	end
+	// }}}
 
+	// token
+	// {{{
 	always @(*)
 		token = (start_token || error_token);
+	// }}}
 
+	// done
+	// {{{
 	always @(*)
 		done = (i_ll_stb && (crc_byte>1));
+	// }}}
 
-
+	// received_token
+	// {{{
 	initial	received_token = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
 		received_token <= 0;
 	else if (token)
 		received_token <= 1;
+	// }}}
 
+	// o_busy
+	// {{{
 	initial	o_busy = 0;
 	always @(posedge i_clk)
 	if (i_reset)
@@ -123,14 +143,20 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		o_busy <= i_start;
 	else if (error_token || done)
 		o_busy <= 0;
+	// }}}
 
+	// o_rxvalid
+	// {{{
 	initial	o_rxvalid = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
 		o_rxvalid <= 0;
 	else if (error_token || done)
 		o_rxvalid <= 1;
+	// }}}
 
+	// o_response
+	// {{{
 	initial	o_response = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
@@ -139,7 +165,10 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		o_response <= i_ll_byte;
 	else if (done)
 		o_response <= (crc_err || (crc_data[7:0] != i_ll_byte)) ? 8'h10 : 0;
+	// }}}
 
+	// o_write
+	// {{{
 	initial	o_write = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
@@ -148,18 +177,27 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		o_write <= (&fill) && i_ll_stb;
 	else
 		o_write <= 0;
+	// }}}
 
-	initial	o_write = 0;
+	// o_data
+	// {{{
+	initial	o_data = 0;
 	always @(posedge i_clk)
 	if (received_token && !all_mem_written)
 		o_data <= { gearbox, i_ll_byte };
+	// }}}
 
+	// o_addr
+	// {{{
 	always @(posedge i_clk)
 	if (!o_busy)
 		o_addr <= { i_fifo, {(AW-1){1'b0}} };
 	else if (o_write && !lastaddr)
 		o_addr <= o_addr + 1;
+	// }}}
 
+	// fill
+	// {{{
 	initial	fill = 0;
 	always @(posedge i_clk)
 	begin
@@ -173,27 +211,39 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		else if (i_ll_stb)
 			fill <= { fill[1:0], 1'b1 };
 	end
+	// }}}
 
+	// lastdata
+	// {{{
 	always @(posedge i_clk)
 	if (!o_busy)
 		lastdata <= 0;
 	else if (!lastdata)
 		lastdata <= (lastaddr && (&fill));
+	// }}}
 
+	// all_mem_written
+	// {{{
 	initial	all_mem_written = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
 		all_mem_written <= 0;
 	else if (o_write && lastaddr)
 		all_mem_written <= 1;
+	// }}}
 
+	// crc_byte
+	// {{{
 	initial	crc_byte = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
 		crc_byte <= 0;
 	else if (i_ll_stb && lastaddr && lastdata)
 		crc_byte <= crc_byte + 1;
+	// }}}
 
+	// lastaddr, r_lgblksz_m3
+	// {{{
 	initial	r_lgblksz_m3 = 0;
 	initial	lastaddr = 0;
 	always @(posedge i_clk)
@@ -215,16 +265,24 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		default: lastaddr <= (&o_addr[6:1]);	// 512 bytes
 		endcase
 	end
+	// }}}
 
 	////////////////////////////////////////////////////////////////////////
 	//
 	// CRC calculation
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
 	//
 
+	// new_data_byte
+	// {{{
 	always @(*)
 		new_data_byte = (i_ll_stb && !all_mem_written);
+	// }}}
 
-
+	// crc_fill, crc_active
+	// {{{
 	initial	crc_fill   = 0;
 	initial	crc_active = 0;
 	always @(posedge i_clk)
@@ -243,16 +301,20 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		else
 			crc_active <= (crc_fill > 1);
 	end
+	// }}}
 
+	// crc_gearbox
+	// {{{
 	always @(posedge i_clk)
 	if (!crc_active)
 		crc_gearbox <= i_ll_byte;
 	else
 		crc_gearbox <= { crc_gearbox[8-3:0], 2'b00 };
+	// }}}
 
 
-	reg	[15:0]	first_crc_data;
-
+	// first_crc_data, next_crc_data
+	// {{{
 	always @(*)
 	begin
 		first_crc_data = crc_data << 1;;
@@ -265,14 +327,20 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		else
 			next_crc_data = (first_crc_data << 1);
 	end
+	// }}}
 
+	// crc_data
+	// {{{
 	initial	crc_data = 0;
 	always @(posedge i_clk)
 	if (!o_busy)
 		crc_data <= 0;
 	else if (crc_active)
 		crc_data <= next_crc_data;
+	// }}}
 
+	// crc_err
+	// {{{
 	initial	crc_err = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
@@ -281,7 +349,17 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		crc_err <= (crc_data[15:8] != i_ll_byte);
 	// else if (i_ll_stb && (crc_byte == 2)
 	//	crc_err <= (crc_data[7:0] != i_ll_byte);
-
+	// }}}
+	// }}}
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+//
+// Formal properties
+// {{{
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
 `ifdef	SPIRXDATA
 `define	ASSUME	assume
@@ -321,6 +399,9 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Data assumptions
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
 	//
 	reg	[6:0]	f_last_read;
 
@@ -357,10 +438,13 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		`ASSUME(i_lgblksz <= 9);
 		`ASSUME(i_lgblksz >= 3);
 	end
-
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Induction assertions
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
 	//
 
 	always @(*)
@@ -453,10 +537,14 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 		if (!fill[1])
 			assert(fill[2] == 0);
 	end
-
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// CRC checks and properties
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
 	always @(*)
 		assert(crc_fill <= 4);
 
@@ -545,11 +633,15 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 	default: assert($onehot0(f_read_seq));
 	endcase
 */
-
+	// }}}
 `ifdef	SPIRXDATA
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Cover properties
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
 	//
 	reg	cvr_packet_received;
 
@@ -586,6 +678,8 @@ module spirxdata(i_clk, i_reset, i_start, i_lgblksz, i_fifo, o_busy,
 
 		cover(cvr_packet_received && !o_busy);
 	end
+	// }}}
 `endif	// SPIRXDATA
+// }}}
 `endif	// FORMAL
 endmodule

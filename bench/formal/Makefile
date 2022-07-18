@@ -1,7 +1,7 @@
 ################################################################################
 ##
 ## Filename: 	Makefile
-##
+## {{{
 ## Project:	SD-Card controller, using a shared SPI interface
 ##
 ## Purpose:	
@@ -10,9 +10,9 @@
 ##		Gisselquist Technology, LLC
 ##
 ################################################################################
-##
-## Copyright (C) 2019-2020, Gisselquist Technology, LLC
-##
+## }}}
+## Copyright (C) 2019-2022, Gisselquist Technology, LLC
+## {{{
 ## This program is free software (firmware): you can redistribute it and/or
 ## modify it under the terms of  the GNU General Public License as published
 ## by the Free Software Foundation, either version 3 of the License, or (at
@@ -27,14 +27,14 @@
 ## with this program.  (It's in the $(ROOT)/doc directory, run make with no
 ## target there if the PDF file isn't present.)  If not, see
 ## <http://www.gnu.org/licenses/> for a copy.
-##
+## }}}
 ## License:	GPL, v3, as defined and found on www.gnu.org,
+## {{{
 ##		http://www.gnu.org/licenses/gpl.html
-##
 ##
 ################################################################################
 ##
-##
+## }}}
 .PHONY: all
 all:	sdspi llsdspi spicmd spitxdata spirxdata
 
@@ -46,6 +46,7 @@ SDSPIRX := spirxdata
 SPICMD  := spicmd
 
 .PHONY: $(LLSDSPI)
+## {{{
 $(LLSDSPI): $(LLSDSPI)_prf/PASS  $(LLSDSPI)_cvr/PASS $(LLSDSPI)_prfc/PASS
 $(LLSDSPI): $(LLSDSPI)_prfa/PASS $(LLSDSPI)_cvra/PASS
 $(LLSDSPI)_prf/PASS: $(RTL)/$(LLSDSPI).v $(LLSDSPI).sby
@@ -58,8 +59,10 @@ $(LLSDSPI)_cvr/PASS: $(RTL)/$(LLSDSPI).v $(LLSDSPI).sby
 	sby -f $(LLSDSPI).sby cvr
 $(LLSDSPI)_cvra/PASS: $(RTL)/$(LLSDSPI).v $(LLSDSPI).sby
 	sby -f $(LLSDSPI).sby cvra
+## }}}
 
 .PHONY: $(SDSPI)
+## {{{
 SDSPIDEP := $(LLSDSPI)_prf/PASS $(SPICMD)_prf/PASS	\
 	$(SDSPITX)_prf/PASS $(SDSPIRX)_prf/PASS
 $(SDSPI): $(SDSPI)_prf/PASS $(SDSPIDEP) #  $(SDSPI)_cvr/PASS
@@ -72,32 +75,41 @@ $(SDSPI)_prf/PASS: $(RTL)/$(SDSPI).v $(SDSPI).sby $(SDSPIDEP)
 # internal delays are factored in.
 $(SDSPI)_cvr/PASS: $(RTL)/$(SDSPI).v $(SDSPI).sby $(SDSPIDEP)
 	sby -f $(SDSPI).sby cvr
+## }}}
 
 .PHONY: $(SPICMD)
+## {{{
 $(SPICMD): $(SPICMD)_prf/PASS $(SPICMD)_cvr/PASS
 $(SPICMD)_prf/PASS: $(RTL)/$(SPICMD).v $(SPICMD).sby
 	sby -f $(SPICMD).sby prf
 $(SPICMD)_cvr/PASS: $(RTL)/$(SPICMD).v $(SPICMD).sby
 	sby -f $(SPICMD).sby cvr
+## }}}
 
 .PHONY: $(SDSPITX)
+## {{{
 $(SDSPITX): $(SDSPITX)_prf/PASS $(SDSPITX)_cvr/PASS
 $(SDSPITX)_prf/PASS: $(RTL)/$(SDSPITX).v $(SDSPITX).sby
 	sby -f $(SDSPITX).sby prf
 $(SDSPITX)_cvr/PASS: $(RTL)/$(SDSPITX).v $(SDSPITX).sby
 	sby -f $(SDSPITX).sby cvr
+## }}}
 
 .PHONY: $(SDSPIRX)
+## {{{
 $(SDSPIRX): $(SDSPIRX)_prf/PASS $(SDSPIRX)_cvr/PASS
 $(SDSPIRX)_prf/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
 	sby -f $(SDSPIRX).sby prf
 $(SDSPIRX)_cvr/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
 	sby -f $(SDSPIRX).sby cvr
+## }}}
 
 .PHONY: clean
+## {{{
 clean:
 	rm -rf $(LLSDSPI)_*/
 	rm -rf $(SPICMD)_*/
 	rm -rf $(SDSPIRX)_*/
 	rm -rf $(SDSPITX)_*/
 	rm -rf $(SDSPI)_*/
+## }}}

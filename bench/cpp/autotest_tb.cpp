@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Filename: 	autotest_tb.cpp
-//
+// {{{
 // Project:	SD-Card controller, using a shared SPI interface
 //
 // Purpose:	Exercise all of the functionality contained within the Verilog
@@ -11,9 +11,9 @@
 //		Gisselquist Technology, LLC
 //
 ////////////////////////////////////////////////////////////////////////////////
-//
-// Copyright (C) 2016-2020, Gisselquist Technology, LLC
-//
+// }}}
+// Copyright (C) 2016-2022, Gisselquist Technology, LLC
+// {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of  the GNU General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or (at
@@ -28,14 +28,16 @@
 // with this program.  (It's in the $(ROOT)/doc directory, run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
-//
+// }}}
 // License:	GPL, v3, as defined and found on www.gnu.org,
+// {{{
 //		http://www.gnu.org/licenses/gpl.html
-//
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-//
+// }}}
+// Include files
+// {{{
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -44,7 +46,10 @@
 #include "testb.h"
 #include "wb_tb.h"
 #include "sdspisim.h"
+// }}}
 
+// MACRO definitions
+// {{{
 #define	SDSPI_CMD_ADDR	0
 #define	SDSPI_DATA_ADDR	1
 #define	SDSPI_FIFO_A	2
@@ -69,6 +74,7 @@
 #define	SDSPI_GO_IDLE		((SDSPI_REMOVED|SDSPI_CLEARERR|SDSPI_CMD)+0)
 #define	SDSPI_READ_SECTOR	((SDSPI_CMD|SDSPI_CLEARERR|SDSPI_FIFO_OP)+17)
 #define	SDSPI_WRITE_SECTOR	((SDSPI_CMD|SDSPI_CLEARERR|SDSPI_WRITEOP)+24)
+// }}}
 
 class	SDSPI_TB : public WB_TB<Vsdspi> {
 	SDSPISIM	*m_sdspi;
@@ -76,6 +82,7 @@ public:
 	unsigned	OCR(void) { return m_sdspi->OCR(); }
 
 	SDSPI_TB(const char *sdcard_image) {
+		// {{{
 		if (0 != access(sdcard_image, R_OK)) {
 			fprintf(stderr, "Cannoot open %s for reading\n", sdcard_image);
 			exit(EXIT_FAILURE);
@@ -86,13 +93,16 @@ public:
 
 		m_sdspi = new SDSPISIM(true);
 		m_sdspi->load(sdcard_image);
+		// }}}
 	}
 
 	virtual	void	tick(void) {
+		// {{{
 		TESTB<Vsdspi>::tick();
 
 		core()->i_miso = (*m_sdspi)(core()->o_cs_n,
 				core()->o_sck, core()->o_mosi);
+		// }}}
 	}
 
 	Vsdspi *core(void) {
@@ -100,30 +110,39 @@ public:
 	}
 
 	unsigned	read_aux(void) {
+		// {{{
 		wb_write(SDSPI_CMD_ADDR, READAUX);
 		return wb_read(SDSPI_DATA_ADDR);
+		// }}}
 	}
 
 	unsigned	set_aux(unsigned aux) {
+		// {{{
 		wb_write(SDSPI_DATA_ADDR, aux);
 		wb_write(SDSPI_CMD_ADDR, SETAUX);
 		return wb_read(SDSPI_DATA_ADDR);
+		// }}}
 	}
 
 	void	wait_while_busy(void) {
+		// {{{
 		while(!core()->o_int)
 			tick();
+		// }}}
 	}
 
 	unsigned	sdcmd(int cmd, unsigned arg = 0) {
+		// {{{
 		wb_write(SDSPI_DATA_ADDR, arg);
 		wb_write(SDSPI_CMD_ADDR, cmd);
 
 		wait_while_busy();
 		return wb_read(SDSPI_CMD_ADDR);
+		// }}}
 	}
 
 	unsigned	read(int cmd, unsigned arg, int ln, unsigned *data) {
+		// {{{
 		unsigned	fifo_addr;
 		unsigned	lglen, r;
 
@@ -149,9 +168,11 @@ fprintf(stderr, "LGLEN = %d, LN = %d\n", lglen, ln);
 		wb_read(fifo_addr, (1<<(lglen-2)), data, 0);
 
 		return	r;
+		// }}}
 	}
 
 	unsigned	write(int cmd, unsigned arg, int ln, unsigned *data) {
+		// {{{
 		unsigned	fifo_addr;
 		unsigned	lglen;
 
@@ -174,11 +195,13 @@ fprintf(stderr, "LGLEN = %d, LN = %d\n", lglen, ln);
 		wb_write(SDSPI_CMD_ADDR, cmd);
 		wait_while_busy();
 		return	wb_read(SDSPI_CMD_ADDR);
+		// }}}
 	}
 
 	////////////////////////////////////////////////////////////////////////
 	//
 	unsigned read_ocr(void) {
+		// {{{
 		unsigned	r;
 		r = sdcmd(SDSPI_READREG | SDSPI_CLEARERR | SDSPI_CMD + 58,0);
 		TBASSERT((*this),r == 0);
@@ -187,9 +210,11 @@ fprintf(stderr, "LGLEN = %d, LN = %d\n", lglen, ln);
 		fprintf(stderr, "R   : 0x%08x\nOCR: 0x%08x\n", r, m_sdspi->OCR());
 		TBASSERT((*this), (r == m_sdspi->OCR()));
 		return r;
+		// }}}
 	}
 
 	unsigned read_csd(unsigned *data) {
+		// {{{
 		unsigned	r;
 		r = read(SDSPI_CLEARERR|SDSPI_FIFO_OP|SDSPI_CMD+9, 0,
 				16, data);
@@ -202,9 +227,11 @@ fprintf(stderr, "LGLEN = %d, LN = %d\n", lglen, ln);
 			TBASSERT((*this), v == data[k]);
 		}
 		return r;
+		// }}}
 	}
 
 	unsigned read_cid(unsigned *data) {
+		// {{{
 		unsigned	r;
 		r = read(SDSPI_CLEARERR|SDSPI_FIFO_OP|SDSPI_CMD+10, 0,
 				16, data);
@@ -215,7 +242,8 @@ fprintf(stderr, "LGLEN = %d, LN = %d\n", lglen, ln);
 				v = (v<<8) | m_sdspi->CID(k*4+i);
 
 			TBASSERT((*this), v == data[k]);
-		}
+		} return r;
+		// }}}
 	}
 
 };

@@ -1,7 +1,7 @@
 ################################################################################
 ##
 ## Filename: 	Makefile
-##
+## {{{
 ## Project:	SD-Card controller, using a shared SPI interface
 ##
 ## Purpose:	Nothing currently.  Eventually, if I create a proper bench
@@ -13,9 +13,9 @@
 ##		Gisselquist Technology, LLC
 ##
 ################################################################################
-##
-## Copyright (C) 2019-2020, Gisselquist Technology, LLC
-##
+## }}}
+## Copyright (C) 2019-2022, Gisselquist Technology, LLC
+## {{{
 ## This program is free software (firmware): you can redistribute it and/or
 ## modify it under the terms of  the GNU General Public License as published
 ## by the Free Software Foundation, either version 3 of the License, or (at
@@ -30,14 +30,15 @@
 ## with this program.  (It's in the $(ROOT)/doc directory, run make with no
 ## target there if the PDF file isn't present.)  If not, see
 ## <http://www.gnu.org/licenses/> for a copy.
-##
+## }}}
 ## License:	GPL, v3, as defined and found on www.gnu.org,
+## {{{
 ##		http://www.gnu.org/licenses/gpl.html
 ##
 ##
 ################################################################################
 ##
-##
+## }}}
 .PHONY: all
 all:
 CXX:= g++
@@ -64,6 +65,8 @@ VLSRCS  := verilated.cpp verilated_vcd_c.cpp
 VLOBJS  := $(addprefix $(OBJDIR)/,$(subst .cpp,.o,$(VLSRCS)))
 VLIBS   := $(RTLD)/obj_dir/Vsdspi__ALL.a
 
+## Build patterns: .cpp to .o
+## {{{
 $(OBJDIR)/%.o: %.cpp
 	$(mk-objdir)
 	$(CXX) $(CFLAGS) $(INCS) -c $< -o $@
@@ -71,15 +74,38 @@ $(OBJDIR)/%.o: %.cpp
 $(OBJDIR)/%.o: $(VROOT)/include/%.cpp
 	$(mk-objdir)
 	$(CXX) $(CFLAGS) $(INCS) -c $< -o $@
+## }}}
 
+## autotest_tb
+## {{{
 autotest_tb: $(OBJECTS) $(VLIBS) $(VLOBJS)
 	$(CXX) $(CFLAGS) $(OBJECTS) $(VLIBS) $(VLOBJS) -o $@
+## }}}
 
+## test
+## {{{
 test: autotest_tb
 	dd if=/dev/zero of=sdcard.img bs=512 count=131072
 	mkfs.fat -F 16 sdcard.img
 	./autotest_tb
+## }}}
 
+define	mk-objdir
+	@bash -c "if [ ! -e $(OBJDIR) ]; then mkdir -p $(OBJDIR)/; fi"
+endef
+
+tags: $(SOURCES) $(HEADERS)
+	@ctags $(SOURCES)
+
+.PHONY: clean
+## {{{
+clean:
+	rm -rf $(OBJDIR)/ $(PROGRAMS)
+	rm -f *.vcd
+## }}}
+
+## Dependency handling
+## {{{
 define	build-depends
 	@echo "Building dependencies"
 	$(mk-objdir)
@@ -88,20 +114,9 @@ define	build-depends
 	@rm $(OBJDIR)/xdepends.txt
 endef
 
-tags: $(SOURCES) $(HEADERS)
-	@ctags $(SOURCES)
-
 .PHONY: depends
 depends: tags $(OBJDIR)/
 	$(build-depends)
 
-define	mk-objdir
-	@bash -c "if [ ! -e $(OBJDIR) ]; then mkdir -p $(OBJDIR)/; fi"
-endef
-
-.PHONY: clean
-clean:
-	rm -rf $(OBJDIR)/ $(PROGRAMS)
-	rm -f *.vcd
-
 -include $(OBJDIR)/depends.txt
+## }}}

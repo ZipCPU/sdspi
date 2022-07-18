@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Filename: 	sdspi.v
-//
+// {{{
 // Project:	SD-Card controller, using a shared SPI interface
 //
 // Purpose:	SD Card controller, using SPI interface with the card and
@@ -13,9 +13,9 @@
 //		Gisselquist Technology, LLC
 //
 ////////////////////////////////////////////////////////////////////////////////
-//
-// Copyright (C) 2016-2020, Gisselquist Technology, LLC
-//
+// }}}
+// Copyright (C) 2016-2022, Gisselquist Technology, LLC
+// {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of  the GNU General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or (at
@@ -30,110 +30,111 @@
 // with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
-//
+// }}}
 // License:	GPL, v3, as defined and found on www.gnu.org,
+// {{{
 //		http://www.gnu.org/licenses/gpl.html
-//
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-//
 `default_nettype	none
-//
-module	sdspi(i_clk, i_sd_reset,
+// }}}
+module	sdspi #(
+		// {{{
+		parameter [0:0]	OPT_CARD_DETECT = 1'b1,
+		//
+		// LGFIFOLN
+		// {{{
+		// LGFIFOLN defines the size of the internal memory in words.
+		// An LGFIFOLN of 7 is appropriate for a 2^(7+2)=512 byte FIFO
+		parameter			LGFIFOLN = 7,
+		// }}}
+		parameter			POWERUP_IDLE = 1000,
+		// STARTUP_CLOCKS
+		// {{{
+		// Many SD-Cards require a minimum number of SPI clocks to get
+		// them started.  STARTUP_CLOCKS defines this number.  Set this
+		// to zero if you don't want to use this initialization
+		// sequence.
+		parameter			STARTUP_CLOCKS = 75,
+		// }}}
+		// CKDIV_BITS
+		// {{{
+		// For my first design, using an 80MHz clock, 7 bits to the
+		// clock divider was plenty.  Now that I'm starting to use
+		// faster and faster designs, it becomes important to
+		// parameterize the number of bits in the clock divider.  More
+		// than 8, however, and the interface will need to change.
+		parameter			CKDIV_BITS = 8,
+		// }}}
+		// INITIAL_CLKDIV
+		// {{{
+		// The SPI frequency is given by the system clock frequency
+		// divided by a (clock_divider + 1).  INITIAL_CLKDIV provides
+		// an initial value for this clock divider.
+		parameter [CKDIV_BITS-1:0]	INITIAL_CLKDIV = 8'h7c,
+		// }}}
+		// OPT_SPI_ARBITRATION
+		// {{{
+		// When I originally built this SDSPI controller, it was for an
+		// environment where the SPI was shared.  Doing this requires
+		// feedback from an arbiter, to know when one SPI device has
+		// the bus or not.  This feedback is provided in i_bus_grant.
+		// If you don't have an arbiter, just set i_bus_grant to the
+		// constant 1'b1 and set OPT_SPI_ARBITRATION to 1'b0 to remove
+		// this extra logic.
+		parameter [0:0]			OPT_SPI_ARBITRATION = 1'b0,
+		// }}}
+		//
+		//
+		parameter [0:0]		OPT_EXTRA_WB_CLOCK = 1'b0,
+		//
+		//
+		//
+		localparam	AW = 2, DW = 32
+		// }}}
+	) (
+		// {{{
+		input	wire		i_clk, i_sd_reset,
 		// Wishbone interface
-		i_wb_cyc, i_wb_stb, i_wb_we, i_wb_addr, i_wb_data, i_wb_sel,
-			o_wb_stall, o_wb_ack, o_wb_data,
+		// {{{
+		input	wire		i_wb_cyc, i_wb_stb, i_wb_we,
+		input	wire [AW-1:0]	i_wb_addr,
+		input	wire [DW-1:0]	i_wb_data,
+		input	wire [DW/8-1:0]	i_wb_sel,
+		output	wire		o_wb_stall,
+		output	reg		o_wb_ack,
+		output	reg [DW-1:0]	o_wb_data,
+		// }}}
 		// SDCard interface
-		o_cs_n, o_sck, o_mosi, i_miso, i_card_detect,
+		// {{{
+		output	wire		o_cs_n, o_sck, o_mosi,
+		input	wire		i_miso, i_card_detect,
+		// }}}
 		// Our interrupt
-		o_int,
-		// And whether or not we own the bus
-		i_bus_grant,
+		output	reg		o_int,
+		// .. and whether or not we can use the SPI port
+		input	wire		i_bus_grant,
 		// And some wires for debugging it all
-		o_debug);
-	parameter [0:0]	OPT_CARD_DETECT = 1'b1;
-	//
-	// LGFIFOLN defines the size of the internal memory in words.  An
-	// LGFIFOLN of 7 is appropriate for a 2^(7+2)=512 byte FIFO
-	parameter			LGFIFOLN = 7;
-	parameter			POWERUP_IDLE = 1000;
-	//
-	// Many SD-Cards require a minimum number of SPI clocks to get them
-	// started.  STARTUP_CLOCKS defines this number.  Set this to zero
-	// if you don't want to use this initialization sequence.
-	parameter			STARTUP_CLOCKS = 75;
-	//
-	// For my first design, using an 80MHz clock, 7 bits to the clock
-	// divider was plenty.  Now that I'm starting to use faster and faster
-	// designs, it becomes important to parameterize the number of bits
-	// in the clock divider.  More than 8, however, and the interface
-	// will need to change.
-	parameter			CKDIV_BITS = 8;
-	//
-	// The SPI frequency is given by the system clock frequency divided
-	// by a (clock_divider + 1).  INITIAL_CLKDIV provides an initial value
-	// for this clock divider.
-	parameter [CKDIV_BITS-1:0]	INITIAL_CLKDIV = 8'h7c;
-	//
-	// When I originally built this SDSPI controller, it was for an
-	// environment where the SPI was shared.  Doing this requires feedback
-	// from an arbiter, to know when one SPI device has the bus or not.
-	// This feedback is provided in i_bus_grant.  If you don't have an
-	// arbiter, just set i_bus_grant to the constant 1'b1 and set
-	// OPT_SPI_ARBITRATION to 1'b0 to remove this extra logic.
-	parameter [0:0]			OPT_SPI_ARBITRATION = 1'b0;
-	//
-	//
-	parameter [0:0]		OPT_EXTRA_WB_CLOCK = 1'b0;
-	//
-	//
-	//
-	localparam	AW = 2, DW = 32;
+		//
+		output	reg [DW-1:0]	o_debug
+		// }}}
+	);
+
+	// Signal / parameter declarations
+	// {{{
 	localparam [1:0]	SDSPI_CMD_ADDRESS = 2'b00,
 				SDSPI_DAT_ADDRESS = 2'b01,
 				SDSPI_FIFO_A_ADDR = 2'b10,
 				SDSPI_FIFO_B_ADDR = 2'b11;
 
-	localparam [1:0]	SDSPI_EXPECT_R1   = 2'b00,
-				SDSPI_EXPECT_R1B  = 2'b01,
-				SDSPI_EXPECT_R3   = 2'b10;
-
-	localparam [2:0]	SDSPI_RSP_NONE	    = 3'h0,	// No response yet from device
-				SDSPI_RSP_BSYWAIT   = 3'h1,	// R1b, wait for device to send nonzero
-				SDSPI_RSP_GETWORD   = 3'h2,	// Get 32-bit data word from device
-				SDSPI_RSP_GETTOKEN  = 3'h4, // Write to device, read from FIFO, wait for completion token
-				SDSPI_RSP_WAIT_WHILE_BUSY =3'h5,// Read from device
-				SDSPI_RSP_RDCOMPLETE = 3'h6,
-				SDSPI_RSP_WRITING    = 3'h7; // Read from device, write into FIFO
 	localparam	BLKBASE = 16;
-	//
-	//
-	input	wire		i_clk, i_sd_reset;
-	//
-	input	wire		i_wb_cyc, i_wb_stb, i_wb_we;
-	input	wire [AW-1:0]	i_wb_addr;
-	input	wire [DW-1:0]	i_wb_data;
-	input	wire [DW/8-1:0]	i_wb_sel;
-	output	wire		o_wb_stall;
-	output	reg		o_wb_ack;
-	output	reg [DW-1:0]	o_wb_data;
-	//
-	output	wire		o_cs_n, o_sck, o_mosi;
-	input	wire		i_miso, i_card_detect;
-	// The interrupt
-	output	reg		o_int;
-	// .. and whether or not we can use the SPI port
-	input	wire		i_bus_grant;
-	//
-	output	reg [DW-1:0]	o_debug;
-	reg			dbg_trigger;
 
 	//
 	// Command register bit definitions
 	//
 	localparam	CARD_REMOVED_BIT= 18,
-			CRCERR_BIT	= 16,
+			// CRCERR_BIT	= 16,
 			ERR_BIT		= 15,
 			FIFO_ID_BIT	= 12,
 			USE_FIFO_BIT	= 11,
@@ -143,15 +144,78 @@ module	sdspi(i_clk, i_sd_reset,
 	//
 	reg		r_cmd_busy;
 
+	reg			dbg_trigger;
+
 	wire		wb_stb, write_stb, wb_cmd_stb, new_data;
 	wire	[AW-1:0]	wb_addr;
 	wire	[DW-1:0]	wb_data;
 	reg	[1:0]	pipe_addr;
 	reg		dly_stb;
 
+	reg	[31:0]	fifo_a	[0:((1<<LGFIFOLN)-1)];
+	reg	[31:0]	fifo_b	[0:((1<<LGFIFOLN)-1)];
+	reg	[(LGFIFOLN-1):0]	fifo_wb_addr;
+	reg	[(LGFIFOLN-1):0]	write_fifo_a_addr, write_fifo_b_addr,
+					read_fifo_a_addr, read_fifo_b_addr;
+	wire	[LGFIFOLN:0]	spi_read_addr, spi_write_addr;
+	// reg	[3:0]		write_fifo_a_mask, write_fifo_b_mask;
+	reg	[31:0]		write_fifo_a_data, write_fifo_b_data,
+				fifo_a_word, fifo_b_word, spi_read_data;
+	wire	[31:0]		spi_write_data;
+	reg			write_fifo_a, write_fifo_b;
+	reg	[31:0]		r_data_reg;
+	reg			r_cmd_err;
+	reg	[7:0]		r_last_r_one;
+
+	//
+	//
+	reg		card_removed, card_present;
+	//
+	reg	[3:0]	r_lgblklen;
+	wire	[3:0]	max_lgblklen;
+	reg	[25:0]	r_watchdog;
+	reg		r_watchdog_err;
+
+	reg	[DW-1:0]	card_status;
+	wire		ll_advance;
+
+	reg	[CKDIV_BITS-1:0]	r_sdspi_clk;
+	reg		ll_cmd_stb;
+	reg	[7:0]	ll_cmd_dat;
+	wire		ll_out_stb, ll_idle;
+	wire	[7:0]	ll_out_dat;
+
+	reg		r_fifo_id, r_use_fifo, write_to_card;
+
+	wire	w_reset;
+
+	wire		cmd_out_stb;
+	wire	[7:0]	cmd_out_byte;
+	wire		cmd_sent, cmd_valid, cmd_busy;
+	wire	[39:0]	cmd_response;
+
+	reg		rx_start;
+	wire		spi_write_to_fifo;
+	wire		rx_valid, rx_busy;
+	wire	[7:0]	rx_response;
+
+	reg		tx_start;
+	wire		spi_read_from_fifo;
+	wire		tx_stb;
+	wire	[7:0]	tx_byte;
+	wire		tx_valid, tx_busy;
+	wire	[7:0]	tx_response;
+
+	reg	last_busy;
+
+
+	// }}}
+
+	// Take an extra wishbone clock?
+	// {{{
 	generate if (!OPT_EXTRA_WB_CLOCK)
 	begin : EXTRA_WB_PASSTHROUGH
-
+		// {{{
 		assign	wb_stb    = ((i_wb_stb)&&(!o_wb_stall));
 		assign	write_stb = ((wb_stb)&&( i_wb_we));
 	// assign	read_stb  = ((wb_stb)&&(!i_wb_we));
@@ -161,9 +225,9 @@ module	sdspi(i_clk, i_sd_reset,
 		assign	wb_data = i_wb_data;
 		assign	new_data = (i_wb_stb)&&(!o_wb_stall)&&(i_wb_we)
 				&&(i_wb_addr == SDSPI_DAT_ADDRESS);
-
+		// }}}
 	end else begin : GEN_EXTRA_WB_CLOCK
-
+		// {{{
 		reg		r_wb_stb, r_write_stb, r_wb_cmd_stb, r_new_data;
 		reg	[AW-1:0]	r_wb_addr;
 		reg	[DW-1:0]	r_wb_data;
@@ -197,106 +261,106 @@ module	sdspi(i_clk, i_sd_reset,
 		assign	new_data = r_new_data;
 		assign	wb_addr  = r_wb_addr;
 		assign	wb_data  = r_wb_data;
-
+		// }}}
 	end endgenerate
-
-	reg	[31:0]	fifo_a	[0:((1<<LGFIFOLN)-1)];
-	reg	[31:0]	fifo_b	[0:((1<<LGFIFOLN)-1)];
-	reg	[(LGFIFOLN-1):0]	fifo_wb_addr;
-	reg	[(LGFIFOLN-1):0]	write_fifo_a_addr, write_fifo_b_addr,
-					read_fifo_a_addr, read_fifo_b_addr;
-	wire	[LGFIFOLN:0]	spi_read_addr, spi_write_addr;
-	// reg	[3:0]		write_fifo_a_mask, write_fifo_b_mask;
-	reg	[31:0]		write_fifo_a_data, write_fifo_b_data,
-				fifo_a_word, fifo_b_word, spi_read_data;
-	wire	[31:0]		spi_write_data;
-	reg			write_fifo_a, write_fifo_b;
-	reg	[31:0]		r_data_reg;
-	reg			r_cmd_err;
-	reg	[7:0]		r_last_r_one;
-
+	// }}}
+	////////////////////////////////////////////////////////////////////////
 	//
-	//
-	reg		card_removed, card_present;
-	//
-	reg	[3:0]	r_lgblklen;
-	wire	[3:0]	max_lgblklen;
-	reg	[25:0]	r_watchdog;
-	reg		r_watchdog_err;
-
-	reg	[DW-1:0]	card_status;
-	wire		ll_advance;
-
-
-
-
+	// Lower-level SDSPI driver
+	// {{{
+	////////////////////////////////////////////////////////////////////////
 	//
 	// Access to our lower-level SDSPI driver, the one that actually
 	// uses/sets the SPI ports
 	//
-	reg	[CKDIV_BITS-1:0]	r_sdspi_clk;
-	reg		ll_cmd_stb;
-	reg	[7:0]	ll_cmd_dat;
-	wire		ll_out_stb, ll_idle;
-	wire	[7:0]	ll_out_dat;
 
-	llsdspi #(.SPDBITS(CKDIV_BITS),
+	llsdspi #(
+		// {{{
+		.SPDBITS(CKDIV_BITS),
 		.STARTUP_CLOCKS(STARTUP_CLOCKS),
 		.POWERUP_IDLE(POWERUP_IDLE),
-		.OPT_SPI_ARBITRATION(OPT_SPI_ARBITRATION))
-	lowlevel(i_clk, i_sd_reset, r_sdspi_clk, r_cmd_busy, ll_cmd_stb,
-			ll_cmd_dat, o_cs_n, o_sck, o_mosi, i_miso,
-			ll_out_stb, ll_out_dat, ll_idle,
-			i_bus_grant);
+		.OPT_SPI_ARBITRATION(OPT_SPI_ARBITRATION)
+		// }}}
+	) lowlevel(
+		// {{{
+		i_clk, i_sd_reset, r_sdspi_clk, r_cmd_busy, ll_cmd_stb,
+		ll_cmd_dat, o_cs_n, o_sck, o_mosi, i_miso,
+		ll_out_stb, ll_out_dat, ll_idle,
+		i_bus_grant
+		// }}}
+	);
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Command controller
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
 
-	reg		r_fifo_id, r_use_fifo, write_to_card;
-
-	wire	w_reset;
 	assign	w_reset = i_sd_reset || r_watchdog_err;
 
-	wire		cmd_out_stb;
-	wire	[7:0]	cmd_out_byte;
-	wire		cmd_sent, cmd_valid, cmd_busy;
-	wire	[39:0]	cmd_response;
-
 	spicmd
-	spicmdi(i_clk, w_reset, (wb_cmd_stb && wb_data[7:6] == 2'b01),
+	spicmdi(
+		// {{{
+		i_clk, w_reset, (wb_cmd_stb && wb_data[7:6] == 2'b01),
 			wb_data[9:8], wb_data[5:0], r_data_reg, cmd_busy,
 		cmd_out_stb, cmd_out_byte, !ll_advance,
 		ll_out_stb, ll_out_dat,
 		cmd_sent,
-		cmd_valid, cmd_response);
-
-	reg		rx_start;
-	wire		spi_write_to_fifo;
-	wire		rx_valid, rx_busy;
-	wire	[7:0]	rx_response;
+		cmd_valid, cmd_response
+		// }}}
+	);
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Receive data (not commands)
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
 
 	spirxdata
-	spirxdatai(i_clk, w_reset | r_cmd_err, rx_start,
-				r_lgblklen, r_fifo_id, rx_busy,
-			ll_out_stb && !cmd_busy, ll_out_dat,
-			spi_write_to_fifo, spi_write_addr, spi_write_data,
-			rx_valid, rx_response);
-
-	reg		tx_start;
-	wire		spi_read_from_fifo;
-	wire		tx_stb;
-	wire	[7:0]	tx_byte;
-	wire		tx_valid, tx_busy;
-	wire	[7:0]	tx_response;
+	spirxdatai(
+		// {{{
+		i_clk, w_reset | r_cmd_err, rx_start,
+			r_lgblklen, r_fifo_id, rx_busy,
+		ll_out_stb && !cmd_busy, ll_out_dat,
+		spi_write_to_fifo, spi_write_addr, spi_write_data,
+		rx_valid, rx_response
+		// }}}
+	);
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Transmit/send data (not commands) to the SD card
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
 
 	spitxdata #(.RDDELAY(2))
-	spitxdatai(i_clk, w_reset | r_cmd_err, tx_start,
-				r_lgblklen, r_fifo_id, tx_busy,
-			spi_read_from_fifo, spi_read_addr, spi_read_data,
-			!ll_advance || cmd_busy, tx_stb, tx_byte,
-			ll_out_stb && !cmd_busy, ll_out_dat,
-			tx_valid, tx_response);
+	spitxdatai(
+		// {{{
+		i_clk, w_reset | r_cmd_err, tx_start,
+			r_lgblklen, r_fifo_id, tx_busy,
+		spi_read_from_fifo, spi_read_addr, spi_read_data,
+		!ll_advance || cmd_busy, tx_stb, tx_byte,
+		ll_out_stb && !cmd_busy, ll_out_dat,
+		tx_valid, tx_response
+		// }}}
+	);
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Internal FIFO memory
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
 
 	//
 	// Let's work with our FIFO memory here ...
-	//
 	//
 	always @(posedge i_clk)
 	begin
@@ -314,10 +378,14 @@ module	sdspi(i_clk, i_sd_reset,
 		end
 	end
 
+	////////////////////////////////////////////////////////////////////////
 	//
 	// Writes to the FIFO
+	// {{{
+	////////////////////////////////////////////////////////////////////////
 	//
 	//
+
 	initial	write_fifo_a = 0;
 	always @(posedge i_clk)
 	if (r_use_fifo && rx_busy && !spi_write_addr[LGFIFOLN])
@@ -355,10 +423,12 @@ module	sdspi(i_clk, i_sd_reset,
 	always @(posedge i_clk)
 	if (write_fifo_b)
 		fifo_b[write_fifo_b_addr] <= write_fifo_b_data;
-
-
+	// }}}
+	////////////////////////////////////////////////////////////////////////
 	//
 	// Reads from the FIFO
+	// {{{
+	////////////////////////////////////////////////////////////////////////
 	//
 	//
 	always @(*)
@@ -389,19 +459,25 @@ module	sdspi(i_clk, i_sd_reset,
 	always @(posedge i_clk)
 	if (!r_cmd_busy && wb_cmd_stb)
 		r_fifo_id  <= wb_data[FIFO_ID_BIT];
+	// }}}
 
+	// r_cmd_busy, tx_start, rx_start, r_use_fifo, write_to_card
+	// {{{
 	initial	r_cmd_busy = 0;
 	initial	tx_start = 0;
 	initial	rx_start = 0;
 	always @(posedge i_clk)
 	if (i_sd_reset)
 	begin
+		// {{{
 		r_cmd_busy <= 0;
 		r_use_fifo <= 0;
 		tx_start <= 0;
 		rx_start <= 0;
+		// }}}
 	end else if (!r_cmd_busy)
 	begin
+		// {{{
 		r_cmd_busy <= wb_cmd_stb && (wb_data[7:6] == 2'b01);
 		tx_start <= 0;
 		rx_start <= 0;
@@ -421,7 +497,9 @@ module	sdspi(i_clk, i_sd_reset,
 			tx_start <= 0;
 			rx_start <= 0;
 		end
+		// }}}
 	end else begin
+		// {{{
 		if (ll_idle && !ll_cmd_stb && !cmd_busy && !rx_busy && !tx_busy)
 		begin
 			r_cmd_busy <= 0;
@@ -440,8 +518,12 @@ module	sdspi(i_clk, i_sd_reset,
 			tx_start <= 0;
 			rx_start <= 0;
 		end
+		// }}}
 	end
+	// }}}
 
+	// r_cmd_err
+	// {{{
 	initial	r_cmd_err = 0;
 	always @(posedge i_clk)
 	if (r_watchdog_err)
@@ -465,7 +547,10 @@ module	sdspi(i_clk, i_sd_reset,
 			r_cmd_err <= r_cmd_err || rx_response[3];
 	end else if (wb_cmd_stb)
 		r_cmd_err <= (r_cmd_err)&&(!wb_data[ERR_BIT]);
+	// }}}
 
+	// r_data_reg
+	// {{{
 	always @(posedge i_clk)
 	if (!r_cmd_busy)
 	begin
@@ -488,9 +573,12 @@ module	sdspi(i_clk, i_sd_reset,
 		else if (rx_valid)
 			r_data_reg   <= { 24'h0, rx_response[7:0] };
 	end
+	// }}}
 
 	assign	ll_advance = (!ll_cmd_stb || ll_idle);
 
+	// ll_cmd_stb, ll_cmd_dat
+	// {{{
 	initial	ll_cmd_stb = 0;
 	always @(posedge i_clk)
 	begin
@@ -512,9 +600,12 @@ module	sdspi(i_clk, i_sd_reset,
 		if (!r_cmd_busy || i_sd_reset)
 			ll_cmd_stb <= 1'b0;
 	end
+	// }}}
 
 	assign	max_lgblklen = LGFIFOLN+2;
 
+	// r_sdspi_clk, r_lgblklen
+	// {{{
 	initial	r_sdspi_clk = INITIAL_CLKDIV;
 	initial	r_lgblklen = 9;
 	always @(posedge i_clk)
@@ -539,11 +630,11 @@ module	sdspi(i_clk, i_sd_reset,
 		if (!card_present)
 			r_sdspi_clk <= INITIAL_CLKDIV;
 	end
-
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Wishbone return logic
-	//
+	// {{{
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
@@ -585,13 +676,13 @@ module	sdspi(i_clk, i_sd_reset,
 		o_wb_ack <= dly_stb;
 
 	assign	o_wb_stall = 1'b0;
-
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Interrupt generation
+	// {{{
+	////////////////////////////////////////////////////////////////////////
 	//
-	reg	last_busy;
-
 	initial	last_busy = 0;
 	always @(posedge i_clk)
 		last_busy <= r_cmd_busy;
@@ -600,15 +691,17 @@ module	sdspi(i_clk, i_sd_reset,
 	always @(posedge i_clk)
 		o_int <= (!r_cmd_busy)&&(last_busy)
 			||(!card_removed && !card_present);
-
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Card detection logic --- is the card even present?
+	// {{{
+	////////////////////////////////////////////////////////////////////////
 	//
+	//
+
 	// Depends upon the i_card_detect signal.  Set this signal to 1'b1 if
 	// you your device doesn't have it.
-	//
-	////////////////////////////////////////////////////////////////////////
 	//
 	//
 	generate if (OPT_CARD_DETECT)
@@ -652,11 +745,11 @@ module	sdspi(i_clk, i_sd_reset,
 			card_removed = 1'b0;
 
 	end endgenerate
-
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Watchdog protection logic
-	//
+	// {{{
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Some watchdog logic for us.  This way, if we are waiting for the
@@ -677,10 +770,13 @@ module	sdspi(i_clk, i_sd_reset,
 		r_watchdog <= 26'h3fffff;
 	else if (|r_watchdog)
 		r_watchdog <= r_watchdog - 26'h1;
-
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Debug signals
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
 	//
 	initial	dbg_trigger = 0;
 	always @(posedge i_clk)
@@ -694,22 +790,22 @@ module	sdspi(i_clk, i_sd_reset,
 			3'b000, r_cmd_busy,	// 4'h
 			ll_cmd_dat,		// 8'b
 			ll_out_dat };		// 8'b
+	// }}}
 
 	// Make verilator happy
+	// {{{
 	// verilator lint_off UNUSED
 	wire	unused;
 	assign	unused = &{ 1'b0, i_wb_cyc, i_wb_sel, cmd_sent,
 			spi_read_from_fifo };
 	// verilator lint_on  UNUSED
-
+	// }}}
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-//
 //
 // Formal verification properties
-//
-//
+// {{{
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -914,4 +1010,5 @@ module	sdspi(i_clk, i_sd_reset,
 	// always @(*)
 	//	assume(!r_watchdog_err);
 `endif
+// }}}
 endmodule

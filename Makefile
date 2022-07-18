@@ -12,7 +12,7 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2016-2021, Gisselquist Technology, LLC
+## Copyright (C) 2016-2022, Gisselquist Technology, LLC
 ## {{{
 ## This program is free software (firmware): you can redistribute it and/or
 ## modify it under the terms of  the GNU General Public License as published
@@ -38,6 +38,8 @@
 ## }}}
 .PHONY: all
 all:	verilated test
+## Some definitions
+## {{{
 BENCH := `find bench -name Makefile` `find bench -name "*.cpp"` `find bench -name "*.h"`
 RTL   := `find rtl -name "*.v"` `find rtl -name Makefile`
 NOTES := # `find . -name "*.txt"` `find . -name "*.html"`
@@ -48,19 +50,24 @@ SW=
 DEVSW=
 YYMMDD:=`date +%Y%m%d`
 SUBMAKE := $(MAKE) --no-print-directory -C
+## }}}
 
 .PHONY: archive
+## {{{
 archive:
 	tar --transform s,^,$(YYMMDD)-sdspi/, -chjf $(YYMMDD)-sdspi.tjz $(BENCH) $(SW) $(RTL) $(NOTES)
+## }}}
 
 .PHONY: verilated
+## {{{
 verilated:
 	$(SUBMAKE) rtl
+## }}}
 
 .PHONY: doc
 ## {{{
-# The documents target does not get, nor should it be, made automatically.  This
-# is because the project is intended to be shipped with the documents
+# The documents target does not get, nor should it be, made automatically.
+# This is because the project is intended to be shipped with the documents
 # automatically built, and I don't necessarily expect all those who download
 # this "core" to have LaTeX distribution necessary to rebuild the specification
 # and GPL LaTeX documents into their PDF results.
@@ -89,8 +96,8 @@ test: formal
 # sw:
 #	cd sw ; $(MAKE) --no-print-directory
 
-## {{{
 .PHONY: clean
+## {{{
 clean:
 	$(SUBMAKE) rtl clean
 	$(SUBMAKE) doc clean

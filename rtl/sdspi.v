@@ -14,7 +14,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2021, Gisselquist Technology, LLC
+// Copyright (C) 2016-2022, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of  the GNU General Public License as published
@@ -36,7 +36,6 @@
 //		http://www.gnu.org/licenses/gpl.html
 //
 ////////////////////////////////////////////////////////////////////////////////
-//
 //
 `default_nettype	none
 // }}}
@@ -92,18 +91,13 @@ module	sdspi #(
 		//
 		//
 		//
-		localparam	AW = 2, DW = 32,
-		localparam [1:0]	SDSPI_CMD_ADDRESS = 2'b00,
-					SDSPI_DAT_ADDRESS = 2'b01,
-					SDSPI_FIFO_A_ADDR = 2'b10,
-					SDSPI_FIFO_B_ADDR = 2'b11,
-
-		localparam	BLKBASE = 16
+		localparam	AW = 2, DW = 32
 		// }}}
 	) (
 		// {{{
 		input	wire		i_clk, i_sd_reset,
 		// Wishbone interface
+		// {{{
 		input	wire		i_wb_cyc, i_wb_stb, i_wb_we,
 		input	wire [AW-1:0]	i_wb_addr,
 		input	wire [DW-1:0]	i_wb_data,
@@ -111,13 +105,15 @@ module	sdspi #(
 		output	wire		o_wb_stall,
 		output	reg		o_wb_ack,
 		output	reg [DW-1:0]	o_wb_data,
-		//
+		// }}}
 		// SDCard interface
+		// {{{
 		output	wire		o_cs_n, o_sck, o_mosi,
 		input	wire		i_miso, i_card_detect,
+		// }}}
 		// Our interrupt
 		output	reg		o_int,
-		// And whether or not we own the bus and so can use the SPI port
+		// .. and whether or not we can use the SPI port
 		input	wire		i_bus_grant,
 		// And some wires for debugging it all
 		//
@@ -127,6 +123,13 @@ module	sdspi #(
 
 	// Signal / parameter declarations
 	// {{{
+	localparam [1:0]	SDSPI_CMD_ADDRESS = 2'b00,
+				SDSPI_DAT_ADDRESS = 2'b01,
+				SDSPI_FIFO_A_ADDR = 2'b10,
+				SDSPI_FIFO_B_ADDR = 2'b11;
+
+	localparam	BLKBASE = 16;
+
 	//
 	// Command register bit definitions
 	//
@@ -176,7 +179,6 @@ module	sdspi #(
 	reg	[DW-1:0]	card_status;
 	wire		ll_advance;
 
-
 	reg	[CKDIV_BITS-1:0]	r_sdspi_clk;
 	reg		ll_cmd_stb;
 	reg	[7:0]	ll_cmd_dat;
@@ -186,6 +188,7 @@ module	sdspi #(
 	reg		r_fifo_id, r_use_fifo, write_to_card;
 
 	wire	w_reset;
+
 	wire		cmd_out_stb;
 	wire	[7:0]	cmd_out_byte;
 	wire		cmd_sent, cmd_valid, cmd_busy;
@@ -212,7 +215,7 @@ module	sdspi #(
 	// {{{
 	generate if (!OPT_EXTRA_WB_CLOCK)
 	begin : EXTRA_WB_PASSTHROUGH
-
+		// {{{
 		assign	wb_stb    = ((i_wb_stb)&&(!o_wb_stall));
 		assign	write_stb = ((wb_stb)&&( i_wb_we));
 	// assign	read_stb  = ((wb_stb)&&(!i_wb_we));
@@ -222,9 +225,9 @@ module	sdspi #(
 		assign	wb_data = i_wb_data;
 		assign	new_data = (i_wb_stb)&&(!o_wb_stall)&&(i_wb_we)
 				&&(i_wb_addr == SDSPI_DAT_ADDRESS);
-
+		// }}}
 	end else begin : GEN_EXTRA_WB_CLOCK
-
+		// {{{
 		reg		r_wb_stb, r_write_stb, r_wb_cmd_stb, r_new_data;
 		reg	[AW-1:0]	r_wb_addr;
 		reg	[DW-1:0]	r_wb_data;
@@ -258,7 +261,7 @@ module	sdspi #(
 		assign	new_data = r_new_data;
 		assign	wb_addr  = r_wb_addr;
 		assign	wb_data  = r_wb_data;
-
+		// }}}
 	end endgenerate
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -271,14 +274,21 @@ module	sdspi #(
 	// uses/sets the SPI ports
 	//
 
-	llsdspi #(.SPDBITS(CKDIV_BITS),
+	llsdspi #(
+		// {{{
+		.SPDBITS(CKDIV_BITS),
 		.STARTUP_CLOCKS(STARTUP_CLOCKS),
 		.POWERUP_IDLE(POWERUP_IDLE),
-		.OPT_SPI_ARBITRATION(OPT_SPI_ARBITRATION))
-	lowlevel(i_clk, i_sd_reset, r_sdspi_clk, r_cmd_busy, ll_cmd_stb,
-			ll_cmd_dat, o_cs_n, o_sck, o_mosi, i_miso,
-			ll_out_stb, ll_out_dat, ll_idle,
-			i_bus_grant);
+		.OPT_SPI_ARBITRATION(OPT_SPI_ARBITRATION)
+		// }}}
+	) lowlevel(
+		// {{{
+		i_clk, i_sd_reset, r_sdspi_clk, r_cmd_busy, ll_cmd_stb,
+		ll_cmd_dat, o_cs_n, o_sck, o_mosi, i_miso,
+		ll_out_stb, ll_out_dat, ll_idle,
+		i_bus_grant
+		// }}}
+	);
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -291,12 +301,16 @@ module	sdspi #(
 	assign	w_reset = i_sd_reset || r_watchdog_err;
 
 	spicmd
-	spicmdi(i_clk, w_reset, (wb_cmd_stb && wb_data[7:6] == 2'b01),
+	spicmdi(
+		// {{{
+		i_clk, w_reset, (wb_cmd_stb && wb_data[7:6] == 2'b01),
 			wb_data[9:8], wb_data[5:0], r_data_reg, cmd_busy,
 		cmd_out_stb, cmd_out_byte, !ll_advance,
 		ll_out_stb, ll_out_dat,
 		cmd_sent,
-		cmd_valid, cmd_response);
+		cmd_valid, cmd_response
+		// }}}
+	);
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -307,11 +321,15 @@ module	sdspi #(
 	//
 
 	spirxdata
-	spirxdatai(i_clk, w_reset | r_cmd_err, rx_start,
-				r_lgblklen, r_fifo_id, rx_busy,
-			ll_out_stb && !cmd_busy, ll_out_dat,
-			spi_write_to_fifo, spi_write_addr, spi_write_data,
-			rx_valid, rx_response);
+	spirxdatai(
+		// {{{
+		i_clk, w_reset | r_cmd_err, rx_start,
+			r_lgblklen, r_fifo_id, rx_busy,
+		ll_out_stb && !cmd_busy, ll_out_dat,
+		spi_write_to_fifo, spi_write_addr, spi_write_data,
+		rx_valid, rx_response
+		// }}}
+	);
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -322,12 +340,16 @@ module	sdspi #(
 	//
 
 	spitxdata #(.RDDELAY(2))
-	spitxdatai(i_clk, w_reset | r_cmd_err, tx_start,
-				r_lgblklen, r_fifo_id, tx_busy,
-			spi_read_from_fifo, spi_read_addr, spi_read_data,
-			!ll_advance || cmd_busy, tx_stb, tx_byte,
-			ll_out_stb && !cmd_busy, ll_out_dat,
-			tx_valid, tx_response);
+	spitxdatai(
+		// {{{
+		i_clk, w_reset | r_cmd_err, tx_start,
+			r_lgblklen, r_fifo_id, tx_busy,
+		spi_read_from_fifo, spi_read_addr, spi_read_data,
+		!ll_advance || cmd_busy, tx_stb, tx_byte,
+		ll_out_stb && !cmd_busy, ll_out_dat,
+		tx_valid, tx_response
+		// }}}
+	);
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -359,8 +381,11 @@ module	sdspi #(
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Writes to the FIFO
+	// {{{
+	////////////////////////////////////////////////////////////////////////
 	//
 	//
+
 	initial	write_fifo_a = 0;
 	always @(posedge i_clk)
 	if (r_use_fifo && rx_busy && !spi_write_addr[LGFIFOLN])
@@ -398,11 +423,12 @@ module	sdspi #(
 	always @(posedge i_clk)
 	if (write_fifo_b)
 		fifo_b[write_fifo_b_addr] <= write_fifo_b_data;
-
-
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Reads from the FIFO
+	// {{{
+	////////////////////////////////////////////////////////////////////////
 	//
 	//
 	always @(*)
@@ -433,19 +459,25 @@ module	sdspi #(
 	always @(posedge i_clk)
 	if (!r_cmd_busy && wb_cmd_stb)
 		r_fifo_id  <= wb_data[FIFO_ID_BIT];
+	// }}}
 
+	// r_cmd_busy, tx_start, rx_start, r_use_fifo, write_to_card
+	// {{{
 	initial	r_cmd_busy = 0;
 	initial	tx_start = 0;
 	initial	rx_start = 0;
 	always @(posedge i_clk)
 	if (i_sd_reset)
 	begin
+		// {{{
 		r_cmd_busy <= 0;
 		r_use_fifo <= 0;
 		tx_start <= 0;
 		rx_start <= 0;
+		// }}}
 	end else if (!r_cmd_busy)
 	begin
+		// {{{
 		r_cmd_busy <= wb_cmd_stb && (wb_data[7:6] == 2'b01);
 		tx_start <= 0;
 		rx_start <= 0;
@@ -465,7 +497,9 @@ module	sdspi #(
 			tx_start <= 0;
 			rx_start <= 0;
 		end
+		// }}}
 	end else begin
+		// {{{
 		if (ll_idle && !ll_cmd_stb && !cmd_busy && !rx_busy && !tx_busy)
 		begin
 			r_cmd_busy <= 0;
@@ -484,6 +518,7 @@ module	sdspi #(
 			tx_start <= 0;
 			rx_start <= 0;
 		end
+		// }}}
 	end
 	// }}}
 
@@ -542,7 +577,7 @@ module	sdspi #(
 
 	assign	ll_advance = (!ll_cmd_stb || ll_idle);
 
-	// ll_cmd_stb
+	// ll_cmd_stb, ll_cmd_dat
 	// {{{
 	initial	ll_cmd_stb = 0;
 	always @(posedge i_clk)
@@ -646,6 +681,8 @@ module	sdspi #(
 	//
 	// Interrupt generation
 	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
 	initial	last_busy = 0;
 	always @(posedge i_clk)
 		last_busy <= r_cmd_busy;
@@ -754,6 +791,7 @@ module	sdspi #(
 			ll_cmd_dat,		// 8'b
 			ll_out_dat };		// 8'b
 	// }}}
+
 	// Make verilator happy
 	// {{{
 	// verilator lint_off UNUSED

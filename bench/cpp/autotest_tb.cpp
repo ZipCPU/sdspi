@@ -12,7 +12,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2021, Gisselquist Technology, LLC
+// Copyright (C) 2016-2022, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of  the GNU General Public License as published
@@ -36,6 +36,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 // }}}
+// Include files
+// {{{
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -44,7 +46,10 @@
 #include "testb.h"
 #include "wb_tb.h"
 #include "sdspisim.h"
+// }}}
 
+// MACRO definitions
+// {{{
 #define	SDSPI_CMD_ADDR	0
 #define	SDSPI_DATA_ADDR	1
 #define	SDSPI_FIFO_A	2
@@ -69,6 +74,7 @@
 #define	SDSPI_GO_IDLE		((SDSPI_REMOVED|SDSPI_CLEARERR|SDSPI_CMD)+0)
 #define	SDSPI_READ_SECTOR	((SDSPI_CMD|SDSPI_CLEARERR|SDSPI_FIFO_OP)+17)
 #define	SDSPI_WRITE_SECTOR	((SDSPI_CMD|SDSPI_CLEARERR|SDSPI_WRITEOP)+24)
+// }}}
 
 class	SDSPI_TB : public WB_TB<Vsdspi> {
 	SDSPISIM	*m_sdspi;

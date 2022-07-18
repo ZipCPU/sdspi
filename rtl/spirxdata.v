@@ -14,7 +14,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2019-2021, Gisselquist Technology, LLC
+// Copyright (C) 2019-2022, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of  the GNU General Public License as published
@@ -36,7 +36,6 @@
 //		http://www.gnu.org/licenses/gpl.html
 //
 ////////////////////////////////////////////////////////////////////////////////
-//
 //
 `default_nettype none
 // }}}
@@ -680,6 +679,6 @@ module spirxdata #(
 	end
 	// }}}
 `endif	// SPIRXDATA
-// }}}
 `endif	// FORMAL
+// }}}
 endmodule

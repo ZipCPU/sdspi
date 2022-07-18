@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Filename: 	sdspisim.h
-//
+// {{{
 // Project:	Wishbone Controlled SD-Card Controller over SPI port
 //
 // Purpose:	This library simulates the operation of a SPI commanded SD-Card,
@@ -14,11 +14,11 @@
 //		Gisselquist Technology, LLC
 //
 ////////////////////////////////////////////////////////////////////////////////
-//
-// Copyright (C) 2015-2019, Gisselquist Technology, LLC
-//
+// }}}
+// Copyright (C) 2015-2022, Gisselquist Technology, LLC
+// {{{
 // This program is free software (firmware): you can redistribute it and/or
-// modify it under the terms of  the GNU General Public License as published
+// modify it under the terms of the GNU General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or (at
 // your option) any later version.
 //
@@ -31,16 +31,18 @@
 // with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
-//
+// }}}
 // License:	GPL, v3, as defined and found on www.gnu.org,
+// {{{
 //		http://www.gnu.org/licenses/gpl.html
-//
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-//
+// }}}
 #ifndef	SDSPISIM_H
 #define	SDSPISIM_H
+
+#include <stdint.h>
 
 typedef enum	eRESET_STATES {
 	SDSPI_POWERUP_RESET,
@@ -67,13 +69,16 @@ class	SDSPISIM {
 	RESET_STATES	m_reset_state;
 
 	int		m_cmdidx, m_bitpos, m_rspidx, m_rspdly, m_blkdly,
-				m_blklen, m_blkidx, m_last_miso, m_powerup_busy,
-				m_rxloc;
+				m_blklen, m_blkidx, m_last_miso, m_powerup_busy;
+	unsigned	m_rxloc;
 	char		m_cmdbuf[8], m_dat_out, m_dat_in;
 	char		m_rspbuf[SDSPI_RSPLEN];
 	char		m_block_buf[SDSPI_MAXBLKLEN];
-	char		m_csd[SDSPI_CSDLEN], m_cid[SDSPI_CIDLEN];
+	uint8_t		m_csd[SDSPI_CSDLEN], m_cid[SDSPI_CIDLEN];
 
+	void	CID(void);
+	void	CSD(void);
+	unsigned	read_bitfield(int, int, int, const uint8_t *);
 public:
 	SDSPISIM(const bool debug = false);
 	void	load(const char *fname);
@@ -84,6 +89,10 @@ public:
 	bool	check_cmdcrc(char *buf) const;
 	unsigned blockcrc(int ln, char *buf) const;
 	void	add_block_crc(int ln, char *buf) const;
+
+	unsigned	OCR(void);
+	uint8_t	CSD(int index);
+	uint8_t	CID(int index);
 };
 
 #endif

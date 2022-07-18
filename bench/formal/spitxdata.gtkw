@@ -1,0 +1,82 @@
+[*]
+[*] GTKWave Analyzer v3.3.66 (w)1999-2015 BSI
+[*] Fri Nov  8 17:00:17 2019
+[*]
+[dumpfile_mtime] "Fri Nov  8 16:43:56 2019"
+[dumpfile_size] 81860
+[timestart] 586
+[size] 1920 1029
+[pos] -1 -1
+*-7.190785 1440 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 196
+[signals_width] 166
+[sst_expanded] 1
+[sst_vpaned_height] 306
+@28
+spitxdata.f_past_valid
+spitxdata.i_reset
+spitxdata.i_clk
+spitxdata.i_start
+spitxdata.o_busy
+@22
+spitxdata.i_lgblksz[3:0]
+@200
+-
+@28
+spitxdata.i_fifo
+@22
+spitxdata.i_data[31:0]
+@200
+-
+@28
+spitxdata.o_read
+@22
+spitxdata.o_addr[7:0]
+@200
+-
+@28
+spitxdata.o_ll_stb
+@22
+spitxdata.o_ll_byte[7:0]
+@28
+spitxdata.i_ll_busy
+@200
+-
+@28
+spitxdata.i_ll_stb
+@22
+spitxdata.i_ll_byte[7:0]
+@200
+-
+@28
+spitxdata.o_rxvalid
+@22
+spitxdata.o_response[7:0]
+@200
+-
+@22
+spitxdata.fill[4:0]
+@200
+-
+@28
+spitxdata.crc_active
+@22
+spitxdata.crc_data[15:0]
+spitxdata.crc_fill[4:0]
+@200
+-
+@28
+spitxdata.lastaddr
+spitxdata.all_mem_read
+spitxdata.crc_flag
+spitxdata.data_read
+spitxdata.crc_stb
+@29
+spitxdata.data_sent
+@200
+-
+@28
+spitxdata.r_lgblksz_m4[2:0]
+spitxdata.rdvalid[2:0]
+[pattern_trace] 1
+[pattern_trace] 0

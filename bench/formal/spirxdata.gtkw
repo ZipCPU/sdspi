@@ -1,0 +1,105 @@
+[*]
+[*] GTKWave Analyzer v3.3.66 (w)1999-2015 BSI
+[*] Fri Nov  8 19:31:52 2019
+[*]
+[dumpfile] "(null)"
+[timestart] 0
+[size] 1920 1029
+[pos] -1 -1
+*-6.031004 500 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 196
+[signals_width] 166
+[sst_expanded] 1
+[sst_vpaned_height] 306
+@28
+spirxdata.f_past_valid
+spirxdata.i_reset
+spirxdata.i_clk
+@200
+-
+@28
+spirxdata.i_start
+spirxdata.i_fifo
+@22
+spirxdata.i_lgblksz[3:0]
+@200
+-
+@28
+spirxdata.i_ll_stb
+@22
+spirxdata.i_ll_byte[7:0]
+@200
+-
+@28
+spirxdata.o_busy
+@200
+-
+@28
+[color] 2
+spirxdata.o_write
+@22
+[color] 2
+spirxdata.o_addr[7:0]
+[color] 2
+spirxdata.o_data[31:0]
+@200
+-
+@22
+spirxdata.o_response[7:0]
+@28
+spirxdata.o_rxvalid
+@200
+-
+@28
+spirxdata.token
+spirxdata.error_token
+spirxdata.start_token
+spirxdata.received_token
+@200
+-
+@29
+[color] 3
+spirxdata.fill[2:0]
+@23
+[color] 3
+spirxdata.gearbox[23:0]
+@200
+-
+@28
+spirxdata.lastaddr
+spirxdata.all_mem_written
+spirxdata.crc_byte[1:0]
+@200
+-
+@28
+[color] 2
+spirxdata.new_data_byte
+[color] 2
+spirxdata.crc_active
+@22
+[color] 2
+spirxdata.crc_data[15:0]
+@28
+[color] 2
+spirxdata.crc_err
+@22
+[color] 2
+spirxdata.crc_fill[3:0]
+[color] 2
+spirxdata.crc_gearbox[7:0]
+@28
+[color] 2
+spirxdata.done
+@200
+-
+@28
+spirxdata.f_fifo
+@22
+spirxdata.f_lgblksz[3:0]
+@28
+spirxdata.r_lgblksz_m4[2:0]
+spirxdata.f_lgblksz_m4[2:0]
+@22
+spirxdata.f_last_read[6:0]
+[pattern_trace] 1
+[pattern_trace] 0

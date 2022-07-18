@@ -1,0 +1,32 @@
+[tasks]
+prf
+cvr
+
+[options]
+prf: mode prove
+prf: depth 20
+cvr: mode cover
+cvr: depth 900
+
+[engines]
+smtbmc boolector
+
+[script]
+read -formal fwb_slave.v
+read -formal llsdspi.v
+read -formal spicmd.v
+read -formal spirxdata.v
+read -formal spitxdata.v
+read -formal sdspi.v
+hierarchy -top sdspi -chparam POWERUP_IDLE 3 -chparam INITIAL_CLKDIV 1
+# -chparam STARTUP_CLOCKS 2
+# hierarchy -top sdspi -chparam STARTUP_CLOCKS 2 -chparam POWERUP_IDLE 3 -chparam INITIAL_CLKDIV 1
+prep -top sdspi
+
+[files]
+fwb_slave.v
+../../rtl/llsdspi.v
+../../rtl/spicmd.v
+../../rtl/spirxdata.v
+../../rtl/spitxdata.v
+../../rtl/sdspi.v

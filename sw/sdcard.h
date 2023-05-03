@@ -47,7 +47,7 @@
 
 #define	SDERR_READ	0x001
 #define	SDERR_WRITE	0x002
-#define	SDERR_INIT	0x010
+// #define	SDERR_INIT	0x010
 
 #define	SPEED_25MHZ	0x01
 #define	SPEED_17MHZ	0x02

@@ -58,8 +58,9 @@ archive:
 	tar --transform s,^,$(YYMMDD)-sdspi/, -chjf $(YYMMDD)-sdspi.tjz $(BENCH) $(SW) $(RTL) $(NOTES)
 ## }}}
 
-.PHONY: verilated
+.PHONY: verilated rtl
 ## {{{
+rtl: verilated
 verilated:
 	$(SUBMAKE) rtl
 ## }}}

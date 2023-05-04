@@ -84,13 +84,13 @@ formal:
 
 .PHONY: bench
 ## {{{
-bench:
+bench: rtl
 	$(SUBMAKE) bench/cpp
 ## }}}
 
 .PHONY: test
 ## {{{
-test: formal
+test: formal rtl
 	$(SUBMAKE) bench/cpp test
 ## }}}
 #.PHONY: sw

@@ -61,7 +61,7 @@ all: $(PROGRAMS)
 SOURCES := autotest_tb.cpp sdspisim.cpp
 HEADERS := sdspisim.h wb_tb.h testb.h
 OBJECTS := $(addprefix $(OBJDIR)/,$(subst .cpp,.o,$(SOURCES)))
-VLSRCS  := verilated.cpp verilated_vcd_c.cpp
+VLSRCS  := verilated.cpp verilated_vcd_c.cpp verilated_threads.cpp
 VLOBJS  := $(addprefix $(OBJDIR)/,$(subst .cpp,.o,$(VLSRCS)))
 VLIBS   := $(RTLD)/obj_dir/Vsdspi__ALL.a
 
@@ -79,7 +79,7 @@ $(OBJDIR)/%.o: $(VROOT)/include/%.cpp
 ## autotest_tb
 ## {{{
 autotest_tb: $(OBJECTS) $(VLIBS) $(VLOBJS)
-	$(CXX) $(CFLAGS) $(OBJECTS) $(VLIBS) $(VLOBJS) -o $@
+	$(CXX) $(CFLAGS) $(OBJECTS) $(VLIBS) $(VLOBJS) -lpthread -o $@
 ## }}}
 
 ## test

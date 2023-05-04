@@ -42,6 +42,7 @@
 module spirxdata #(
 		// {{{
 		parameter	DW = 32, AW = 8,
+		parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,
 		localparam	CRC_POLYNOMIAL = 16'h1021
 		// }}}
 	) (
@@ -183,7 +184,12 @@ module spirxdata #(
 	initial	o_data = 0;
 	always @(posedge i_clk)
 	if (received_token && !all_mem_written)
-		o_data <= { gearbox, i_ll_byte };
+	begin
+		if (OPT_LITTLE_ENDIAN)
+			o_data <= { i_ll_byte, gearbox };
+		else
+			o_data <= { gearbox, i_ll_byte };
+	end
 	// }}}
 
 	// o_addr
@@ -201,7 +207,12 @@ module spirxdata #(
 	always @(posedge i_clk)
 	begin
 		if (i_ll_stb)
-			gearbox <= { gearbox[15:0], i_ll_byte };
+		begin
+			if (OPT_LITTLE_ENDIAN)
+				gearbox <= { i_ll_byte, gearbox[15:0] };
+			else
+				gearbox <= { gearbox[15:0], i_ll_byte };
+		end
 
 		if (!o_busy || !received_token)
 			fill <= 0;

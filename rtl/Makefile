@@ -67,3 +67,15 @@ export.v: sdspi.v spicmd.v spitxdata.v spirxdata.v llsdspi.v
 clean:
 	rm -rf export.v $(VOBJ)
 ## }}}
+
+## Including dependencies
+## {{{
+DEPS := $(wildcard $(VOBJ)/*.d)
+
+ifneq ($(MAKECMDGOALS),clean)
+ifneq ($(DEPS),)
+include $(DEPS)
+endif
+endif
+## }}}
+

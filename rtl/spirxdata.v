@@ -209,7 +209,7 @@ module spirxdata #(
 		if (i_ll_stb)
 		begin
 			if (OPT_LITTLE_ENDIAN)
-				gearbox <= { i_ll_byte, gearbox[15:0] };
+				gearbox <= { i_ll_byte, gearbox[23:8] };
 			else
 				gearbox <= { gearbox[15:0], i_ll_byte };
 		end

@@ -344,8 +344,12 @@ module spitxdata #(
 	// {{{
 	always @(posedge i_clk)
 	if (!crc_active)
-		crc_gearbox <= i_data;
-	else
+	begin
+		if (OPT_LITTLE_ENDIAN)
+			crc_gearbox <= { i_data[7:0], i_data[15:8], i_data[23:16], i_data[31:24] };
+		else
+			crc_gearbox <= i_data;
+	end else
 		crc_gearbox <= { crc_gearbox[DW-3:0], 2'b00 };
 	// }}}
 

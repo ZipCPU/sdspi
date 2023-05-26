@@ -15,7 +15,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2021, Gisselquist Technology, LLC
+// Copyright (C) 2016-2022, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of  the GNU General Public License as published
@@ -47,7 +47,7 @@
 
 #define	SDERR_READ	0x001
 #define	SDERR_WRITE	0x002
-#define	SDERR_INIT	0x010
+// #define	SDERR_INIT	0x010
 
 #define	SPEED_25MHZ	0x01
 #define	SPEED_17MHZ	0x02

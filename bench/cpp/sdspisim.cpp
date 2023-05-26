@@ -15,10 +15,10 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2015-2021, Gisselquist Technology, LLC
+// Copyright (C) 2015-2022, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
-// modify it under the terms of  the GNU General Public License as published
+// modify it under the terms of the GNU General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or (at
 // your option) any later version.
 //
@@ -79,8 +79,8 @@ SDSPISIM::SDSPISIM(const bool debug) {
 	m_reading_data = false;
 	m_have_token = false;
 	m_debug = debug;
-	// }}}
 }
+// }}}
 
 void	SDSPISIM::load(const char *fname) {
 	// {{{
@@ -96,15 +96,17 @@ void	SDSPISIM::load(const char *fname) {
 
 		if (m_debug) printf("SDCARD: NBLOCKS = %ld\n", m_devblocks);
 	}
-	// }}}
 }
+// }}}
 
 unsigned	SDSPISIM::read_bitfield(int offset, int bits,
 				int ln, const uint8_t *bitfield) {
+	// {{{
 	// unsigned	total = 8*ln;
 	// unsigned	index = total-offset;
 	return 0;
 }
+// }}}
 
 unsigned	SDSPISIM::OCR(void) {
 	// {{{
@@ -116,8 +118,8 @@ unsigned	SDSPISIM::OCR(void) {
 		ocr |= 0x800000;
 
 	return ocr;
-	// }}}
 }
+// }}}
 
 void	SDSPISIM::CSD(void) {
 	// {{{
@@ -175,14 +177,16 @@ void	SDSPISIM::CSD(void) {
 	// Now make the CRC match
 
 	m_csd[15] = cmdcrc(15, (char *)m_csd);
-	// }}}
 }
+// }}}
 
 uint8_t	SDSPISIM::CSD(int index) {
+	// {{{
 	assert(index >= 0);
 	assert(index < SDSPI_CSDLEN);
 	return m_csd[index];
 }
+// }}}
 
 void	SDSPISIM::CID(void) {
 	// {{{
@@ -211,16 +215,16 @@ void	SDSPISIM::CID(void) {
 	for(int k=0; k<15; k++)
 		m_cid[k] = DEFAULT_CID[k];
 	m_cid[15] = cmdcrc(15, (char *)m_cid);
-	// }}}
 };
+// }}}
 
 uint8_t	SDSPISIM::CID(int index) {
 	// {{{
 	assert(index >= 0);
 	assert(index < SDSPI_CIDLEN);
 	return m_cid[index];
-	// }}}
 }
+// }}}
 
 int	SDSPISIM::operator()(const int csn, const int sck, const int mosi) {
 	// {{{
@@ -599,8 +603,8 @@ fprintf(stderr, "WRITE: Seek to sector %d\n", arg);
 	m_last_miso = result;
 	fflush(stdout);
 	return result;
-	// }}}
 }
+// }}}
 
 unsigned SDSPISIM::cmdcrc(int len, char *buf) const {
 	// {{{
@@ -618,8 +622,8 @@ unsigned SDSPISIM::cmdcrc(int len, char *buf) const {
 
 	fill &= 0x0fe; fill |= 1;
 	return fill;
-	// }}}
 }
+// }}}
 
 bool	SDSPISIM::check_cmdcrc(char *buf) const {
 	// {{{
@@ -628,8 +632,8 @@ bool	SDSPISIM::check_cmdcrc(char *buf) const {
 		printf("SDSPI: CRC-CHECK ERR: should have a CRC of %02x, not %02x\n",
 			fill, buf[5] & 0x0ff);
 	return (fill == (buf[5]&0x0ff));
-	// }}}
 }
+// }}}
 
 unsigned SDSPISIM::blockcrc(int len, char *buf) const {
 	// {{{
@@ -662,8 +666,8 @@ unsigned SDSPISIM::blockcrc(int len, char *buf) const {
 	fill &= 0x0ffff;
 	if (dbg) { printf("BLOCKCRC(%d,...) = %04x\n", len, fill); }
 	return fill;
-	// }}}
 }
+// }}}
 
 void	SDSPISIM::add_block_crc(int len, char *buf) const {
 	// {{{
@@ -671,6 +675,5 @@ void	SDSPISIM::add_block_crc(int len, char *buf) const {
 
 	buf[len+1] = (fill >> 8)&0x0ff;
 	buf[len+2] = (fill     )&0x0ff;
-	// }}}
 }
-
+// }}}

@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 // Filename: 	llsdcmd.v
-//
+// {{{
 // Project:	SD-Card controller, using a shared SPI interface
 //
 // Purpose:	This is the first component of an SDIO interface, the component
@@ -41,9 +41,9 @@
 //		Gisselquist Technology, LLC
 //
 ////////////////////////////////////////////////////////////////////////////////
-//
-// Copyright (C) 2019-2020, Gisselquist Technology, LLC
-//
+// }}}
+// Copyright (C) 2019-2023, Gisselquist Technology, LLC
+// {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or (at
@@ -58,97 +58,116 @@
 // with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
-//
+// }}}
 // License:	GPL, v3, as defined and found on www.gnu.org,
+// {{{
 //		http://www.gnu.org/licenses/gpl.html
-//
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-//
 `default_nettype none
-//
-module	llsdcmd(i_clk, i_reset,
-		i_pedge, i_stb, i_cmd, i_data, o_busy,
-		i_nedge, o_stb, o_cmd, o_data, o_crc, o_err,
-		o_bstb, o_byte,
-		i_sd_cmd, o_sd_cmd);	
-	parameter [6:0]	CRC_POLYNOMIAL = 7'h09;
-	input	wire	i_clk, i_reset, i_pedge;
-	//
-	input	wire		i_stb;
-	input	wire	[7:0]	i_cmd;
-	input	wire	[31:0]	i_data;
-	output	reg		o_busy;
-	//
-	input	wire		i_nedge;
-	output	reg		o_stb;
-	output	reg	[7:0]	o_cmd;
-	output	reg	[31:0]	o_data;
-	output	wire	[7:0]	o_crc;
-	output	reg		o_err;
-	//
-	output	reg		o_bstb;
-	output	reg	[7:0]	o_byte;
-	//
-	input	wire		i_sd_cmd;
-	output	reg		o_sd_cmd;
+// }}}
+module	llsdcmd #(
+		parameter [6:0]	CRC_POLYNOMIAL = 7'h09;
+	) (
+		// {{{
+		input	wire		i_clk, i_reset, i_pedge,
+		input	wire		i_stb,
+		input	wire	[7:0]	i_cmd,
+		input	wire	[31:0]	i_data,
+		output	wire		o_busy,
+		//
+		input	wire		i_nedge,
+		output	reg		o_stb,
+		output	reg	[7:0]	o_cmd,
+		output	reg	[31:0]	o_data,
+		output	wire	[7:0]	o_crc,
+		output	reg		o_err,
+		//
+		output	reg		o_bstb,
+		output	reg	[7:0]	o_byte,
+		//
+		input	wire		i_sd_cmd,
+		output	wire		o_sd_cmd
+		// }}}
+	);
 
-	//
-	//
-	//
-
-
+	// Local declarations
+	// {{{
 	reg	[3:0]	r_rxstate;
 	integer	ik;
 
 	reg	[39:0]	tx_cmd_sreg;
 	reg	[6:0]	r_txcrc;
-	reg	[47:0]	tx_busy_sreg, rx_sreg;
-	reg		last_busy, tx_busy;
+	reg	[47:0]	rx_sreg;	// tx_busy_sreg
+	reg	[5:0]	tx_busy_counter;
+	reg		last_busy;
+	reg		tx_busy;
 	reg	[5:0]	r_rxpkt_count;
+	//
+	reg	[6:0]	r_rxcrc;
+	reg		r_err;
 
-	//
-	//
 	//
 	wire	write_cmd = (i_stb && !o_busy && !i_cmd[7]);
-	wire	read_cmd  = (i_nedge && !i_sd_cmd && r_rxstate == 1 && !tx_busy);
-
+	wire	read_cmd  = (i_nedge&& !i_sd_cmd && r_rxstate == 1 && !tx_busy);
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Transmit/command logic
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
 	//
 
-	initial	tx_busy_sreg =  0;
+	// tx_busy, tx_busy_counter, tx_cmd_sreg
+	// {{{
+	initial	tx_busy_counter =  0;
 	initial	tx_cmd_sreg  = -1;
 	always @(posedge i_clk)
 	if (i_reset)
 	begin
-		tx_busy_sreg <= 0;
-		tx_cmd_sreg  <= -1;
+		tx_busy_counter <= 0;
+		tx_cmd_sreg     <= -1;
+		tx_busy <= 0;
 	end else if (write_cmd)
 	begin
 		tx_cmd_sreg <= { i_cmd, i_data };
-		tx_busy_sreg <= -1;
+		tx_busy_counter <= 48;
+		tx_busy <= 1;
 	end else if (i_pedge)
 	begin
 		tx_cmd_sreg  <= { tx_cmd_sreg[38:0], 1'b1 };
-		if (tx_busy_sreg[39:38] == 2'b10)
+		// if (tx_busy_sreg[39:38] == 2'b10)
+		if (tx_busy_counter == 9)
 			tx_cmd_sreg[39:33] <= r_txcrc;
-		tx_busy_sreg <= tx_busy_sreg << 1;
+		if (!tx_busy)
+			tx_busy_counter <= tx_busy_counter - 1;
+		tx_busy <= (tx_busy_counter > 1);
 	end
-
+`ifdef	FORMAL
 	always @(*)
 	begin
-		tx_busy = tx_busy_sreg[47];
-		o_busy = tx_busy || !i_pedge;
+		assert(tx_busy == (tx_busy_counter > 0));
+		assert(tx_busy_counter <= 48);
 	end
+`endif
+	// }}}
 
-	always @(*)
-		o_sd_cmd = tx_cmd_sreg[39];
+	// tx_busy, o_busy
+	// {{{
+	assign	o_busy = tx_busy || !i_pedge;
+	// }}}
 
+	// o_sd_cmd
+	// {{{
+	assign	o_sd_cmd = tx_cmd_sreg[39];
+	// }}}
+
+	// r_txcrc
+	// {{{
 	always @(posedge i_clk)
-	if (write_cmd)
+	if (!tx_busy)
 		r_txcrc <= 0; // (i_cmd[6]) ? 8'h12 : 8'h0;
 	else if (i_pedge)
 	begin
@@ -157,18 +176,29 @@ module	llsdcmd(i_clk, i_reset,
 		else
 			r_txcrc <= { r_txcrc[5:0], 1'b0 };
 	end
+	// }}}
 
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Receiver/response logic
+	// {{{
+	////////////////////////////////////////////////////////////////////////
 	//
+	//
+
+	// last_busy
+	// {{{
 	initial	last_busy = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset)
 		last_busy <= 1'b0;
 	else if (i_pedge)
 		last_busy <= tx_busy;
+	// }}}
 
+	// r_rxstate
+	// {{{
 	initial	r_rxstate = 0;
 	always @(posedge i_clk)
 	if (i_reset || (write_cmd))
@@ -184,21 +214,30 @@ module	llsdcmd(i_clk, i_reset,
 		else
 			r_rxstate <= 4'h2;
 	end
+	// }}}
 
+	// o_bstb
+	// {{{
 	initial	o_bstb = 0;
 	always @(posedge i_clk)
 	if (i_reset || write_cmd)
 		o_bstb <= 0;
 	else
 		o_bstb <= i_nedge && (r_rxstate == 4'h8);
+	// }}}
 
+	// o_byte
+	// {{{
 	initial	o_byte = -1;
 	always @(posedge i_clk)
 	if (i_reset || (write_cmd))
 		o_byte <= -1;
 	else if (i_nedge && r_rxstate == 4'h8)
 		o_byte <= { rx_sreg[6:0], i_sd_cmd };
+	// }}}
 
+	// rx_sreg
+	// {{{
 	initial	rx_sreg = -1;
 	always @(posedge i_clk)
 	if (i_reset || (write_cmd))
@@ -207,25 +246,52 @@ module	llsdcmd(i_clk, i_reset,
 		rx_sreg <= { {(47){1'b1}}, 1'b0 };
 	else if (i_nedge && r_rxstate > 1)
 		rx_sreg <= { rx_sreg[46:0], i_sd_cmd };
+	// }}}
 
+	// o_cmd, o_data, o_crc
+	// {{{
 	always @(posedge i_clk)
 	if (i_nedge && r_rxpkt_count == 6'd47)
 		{ o_cmd, o_data, o_crc } = { rx_sreg[46:0], i_sd_cmd };
+	// }}}
 
+	// r_rxpkt_count
+	// {{{
 	initial	r_rxpkt_count = 0;
+	initial	rx_busy = 0;
 	always @(posedge i_clk)
 	if (i_reset || write_cmd || tx_busy)
+	begin
 		r_rxpkt_count <= 0;
-	else if (read_cmd)
+		rx_busy <= 1'b0;
+	end else if (read_cmd)
+	begin
 		r_rxpkt_count <= 1;
-	else if (i_nedge && (r_rxpkt_count != 0) && (r_rxpkt_count < 6'h3f))
-		r_rxpkt_count <= r_rxpkt_count + 1;
+		rx_busy <= 1'b1;
+	end else if (i_nedge && (r_rxpkt_count != 0))
+	begin
+		if (r_rxpkt_count < 6'd47)
+		begin
+			r_rxpkt_count <= r_rxpkt_count + 1;
+			rx_busy <= 1'b1;
+		end else begin
+			r_rxpkt_count <= 0;
+			rx_busy <= 1'b0;
+		end
+	end
+`ifdef	FORMAL
+	always @(*)
+	begin
+		assert(rx_busy == (r_rxpkt_count > 0));
+		assert(r_rxpkt_count <= 6'd47);
+	end
+`endif
+	// }}}
 
-	reg	[6:0]	r_rxcrc;
-	reg		r_err;
-
+	// r_rxcrc, r_err
+	// {{{
 	always @(posedge i_clk)
-	if (read_cmd)
+	if (!rx_busy)
 	begin
 		r_rxcrc <= 0;
 		r_err <= 0;
@@ -244,7 +310,10 @@ module	llsdcmd(i_clk, i_reset,
 			r_err  <= r_err || (r_rxcrc[6] != i_sd_cmd);
 		end
 	end
+	// }}}}
 
+	// o_stb
+	// {{{
 	initial	o_stb = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || write_cmd)
@@ -253,7 +322,10 @@ module	llsdcmd(i_clk, i_reset,
 		o_stb <= 1'b1;
 	else
 		o_stb <= 1'b0;
+	// }}}
 
+	// o_err
+	// {{{
 	initial	o_err = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || write_cmd)
@@ -262,16 +334,19 @@ module	llsdcmd(i_clk, i_reset,
 		o_err <= r_err || (r_rxcrc[6] != i_sd_cmd);
 	else
 		o_err <= 1'b0;
+	// }}}
 
+	// }}}
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+//
+// Formal properties
+// {{{
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
-always @(*)
-begin
-	cover(i_nedge && r_rxpkt_count == 6'd8);
-	cover(i_nedge && r_rxpkt_count == 6'd16);
-	cover(i_nedge && r_rxpkt_count == 6'd24);
-	cover(i_nedge && r_rxpkt_count == 6'd48);
-end
-
 	reg	f_past_valid;
 
 	reg	[47:0]	f_txcmd, f_txcmdnow;
@@ -285,6 +360,9 @@ end
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Interface assumptions
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
 	//
 
 	always @(posedge i_clk)
@@ -303,18 +381,18 @@ end
 		assume($stable(i_cmd));
 		assume($stable(i_data));
 	end
-		
-
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Initial property checks
-	//
+	// {{{
 	////////////////////////////////////////////////////////////////////////
+	//
 	//
 	always @(posedge i_clk)
 	if (!f_past_valid || $past(i_reset))
 	begin
-		assert(tx_busy_sreg == 0);
+		assert(tx_busy_counter == 0);
 		assert(&tx_cmd_sreg);
 		//
 		assert(last_busy == 1'b0);
@@ -334,10 +412,13 @@ end
 		assert(&f_rxseq);
 		assert(&f_rxbyte_count);
 	end
-
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Transmitter checks
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
 	//
 	always @(*)
 		f_txcrc = f_gencrc({ i_cmd, i_data });
@@ -376,11 +457,11 @@ end
 		assert(o_sd_cmd == f_txcmdnow[47]);
 		assert(f_txcmd[7:0] == f_gencrc({ f_txcmd[47:8] }));
 		assert(o_busy);
-		assert((~tx_busy_sreg[31:0] & ~tx_cmd_sreg[31:0])==0);
+		assert(((-48'd1 << tx_busy_counter) & ~tx_cmd_sreg[31:0])==0);
 		if ((f_txseq > 3)&&(f_txseq < 6'd40))
 		begin
 			assert(r_txcrc == f_checktxcrc[7:1]);
-			assert(tx_busy_sreg == ({(48){1'b1}} << f_txseq));
+			assert(tx_busy_counter == 48-f_txseq);
 			if (f_txseq == 6'd8)
 				assert(tx_cmd_sreg[39:0] == { f_txcmd[39:8], 8'hff});
 			if (f_txseq == 6'd16)
@@ -392,14 +473,14 @@ end
 		end
 	end else begin
 		assert(o_sd_cmd);
-		assert(tx_busy_sreg == 0);
+		assert(tx_busy_counter == 0);
 		assert(&tx_cmd_sreg);
 	end
-
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Receiver checks
-	//
+	// {{{
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
@@ -441,7 +522,7 @@ end
 	//
 	// The generic byte interface
 	//
-	initial	f_rxbyte_count = 4'hf;	
+	initial	f_rxbyte_count = 4'hf;
 	always @(posedge i_clk)
 	if (i_reset || write_cmd)
 		f_rxbyte_count <= 4'hf;
@@ -538,14 +619,21 @@ end
 		assert(f_rxseq >= 6'd48);
 	else if (r_rxpkt_count < 6'd48)
 		assert(f_rxcheckstate == r_rxpkt_count[2:0]);
-
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Cover properties
-	//
+	// {{{
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
+	always @(*)
+	begin
+		cover(i_nedge && r_rxpkt_count == 6'd8);
+		cover(i_nedge && r_rxpkt_count == 6'd16);
+		cover(i_nedge && r_rxpkt_count == 6'd24);
+		cover(i_nedge && r_rxpkt_count == 6'd48);
+	end
 
 	always @(posedge i_clk)
 		cover(f_past_valid && !$past(i_reset) && $fell(o_busy));
@@ -558,7 +646,7 @@ end
 
 	always @(posedge i_clk)
 		cover(o_stb && o_err);
-
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
@@ -612,4 +700,5 @@ end
 	//		assume(i_cmd[6]);
 
 `endif
+// }}}
 endmodule

@@ -1,0 +1,241 @@
+################################################################################
+##
+## Filename: 	sdspi.txt
+## {{{
+## Project:	SD-Card controller, using a shared SPI interface
+##
+## Purpose:	Describes how to connect an SD-SPI peripheral to a wishbone
+##		bus, as used by autofpga.  Note how the description requires
+##	both a description of what needs to take place in a top level file, as
+##	well as in the main
+##
+##	An interesting consequence of this description is that upgrading to a
+##	proper SDIO device would involve no more than swapping this file for an
+##	sdio.c peripheral description file.
+##
+## Creator:	Dan Gisselquist, Ph.D.
+##		Gisselquist Technology, LLC
+##
+################################################################################
+## }}}
+## Copyright (C) 2017-2023, Gisselquist Technology, LLC
+## {{{
+## This program is free software (firmware): you can redistribute it and/or
+## modify it under the terms of the GNU General Public License as published
+## by the Free Software Foundation, either version 3 of the License, or (at
+## your option) any later version.
+##
+## This program is distributed in the hope that it will be useful, but WITHOUT
+## ANY WARRANTY; without even the implied warranty of MERCHANTIBILITY or
+## FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+## for more details.
+##
+## You should have received a copy of the GNU General Public License along
+## with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
+## target there if the PDF file isn't present.)  If not, see
+## <http://www.gnu.org/licenses/> for a copy.
+## }}}
+## License:	GPL, v3, as defined and found on www.gnu.org,
+## {{{
+##		http://www.gnu.org/licenses/gpl.html
+##
+################################################################################
+##
+## }}}
+@PREFIX=sdcard
+@DEVID=SDSPI
+@NADDR=4
+@ACCESS=SDSPI_ACCESS
+@SLAVE.TYPE=OTHER
+@SLAVE.BUS=wb
+@BUS.NAME=wb
+## @SCOPE.TRIGGER=@$(PREFIX)_debug[31]
+## @SCOPE.DATA=@$(PREFIX)_debug
+@INT.SDCARD.WIRE= @$(PREFIX)_int
+@INT.SDCARD.PIC= syspic
+@TOP.PORTLIST=
+		// SD Card
+		o_@$(PREFIX)_sck, io_@$(PREFIX)_cmd, io_@$(PREFIX), i_@$(PREFIX)_cd
+@TOP.IODECL=
+	// SD Card
+	// {{{
+	output	wire		o_@$(PREFIX)_sck;
+	inout	wire		io_@$(PREFIX)_cmd;
+	inout	wire	[3:0]	io_@$(PREFIX);
+	input	wire		i_@$(PREFIX)_cd;
+	// }}}
+@TOP.DEFNS=
+	// SD Card definitions
+	// {{{
+	wire		w_@$(PREFIX)_cmd;
+	wire	[3:0]	w_@$(PREFIX)_data;
+
+	wire		i_@$(PREFIX)_cmd;
+	wire	[3:0]	i_@$(PREFIX);
+	// }}}
+@TOP.MAIN=
+		// SD Card
+		o_@$(PREFIX)_sck, w_@$(PREFIX)_cmd, w_@$(PREFIX)_data,
+		io_@$(PREFIX)_cmd, io_@$(PREFIX), i_@$(PREFIX)_cd
+@TOP.INSERT=
+	//////////////////////////////////////////////////////////////////////
+	//
+	// SD Card SPI Controller
+	// {{{
+	//////////////////////////////////////////////////////////////////////
+	//
+	//
+
+	// Wires for setting up the SD Card Controller
+	// {{{
+	// This is how we'd set up for SDIO
+	// assign io_@$(PREFIX)_cmd = w_@$(PREFIX)_cmd ? 1'bz:1'b0;	// MOSI
+	// assign io_@$(PREFIX)[0] = w_@$(PREFIX)_data[0]? 1'bz:1'b0;	// MISO
+	// assign io_@$(PREFIX)[1] = w_@$(PREFIX)_data[1]? 1'bz:1'b0;
+	// assign io_@$(PREFIX)[2] = w_@$(PREFIX)_data[2]? 1'bz:1'b0;
+	// assign io_@$(PREFIX)[3] = w_@$(PREFIX)_data[3]? 1'bz:1'b0;	// CS_n
+	// }}}
+	IOBUF @$(PREFIX)_cmd_bf(.T(1'b0),.O(i_@$(PREFIX)_cmd),.I(w_@$(PREFIX)_cmd),.IO(io_@$(PREFIX)_cmd));// MISO
+	IOBUF @$(PREFIX)_dat0_bf(.T(1'b1),.O(i_@$(PREFIX)[0]),.I(1'b1),.IO(io_@$(PREFIX)[0]));// MISO
+	IOBUF @$(PREFIX)_dat1_bf(.T(1'b1),.O(i_@$(PREFIX)[1]),.I(1'b1),.IO(io_@$(PREFIX)[1]));
+	IOBUF @$(PREFIX)_dat2_bf(.T(1'b1),.O(i_@$(PREFIX)[2]),.I(1'b1),.IO(io_@$(PREFIX)[2]));
+
+	// Implement an open-drain output
+	IOBUF @$(PREFIX)_dat3_bf(.T(w_@$(PREFIX)_data[3]),.O(i_@$(PREFIX)[3]),.I(1'b0),.IO(io_@$(PREFIX)[3]));
+	// }}}
+@MAIN.PORTLIST=
+		// The SD-Card wires
+		o_@$(PREFIX)_sck, o_@$(PREFIX)_cmd, o_@$(PREFIX)_data, i_@$(PREFIX)_cmd, i_@$(PREFIX)_data, i_@$(PREFIX)_detect
+@MAIN.IODECL=
+	// SD-Card declarations
+	// {{{
+	output	wire		o_@$(PREFIX)_sck, o_@$(PREFIX)_cmd;
+	output	wire	[3:0]	o_@$(PREFIX)_data;
+	// verilator lint_off UNUSED
+	// The SDSPI controller doesn't use all of the data pins
+	input	wire		i_@$(PREFIX)_cmd;
+	input	wire	[3:0]	i_@$(PREFIX)_data;
+	// verilator lint_on  UNUSED
+	input	wire		i_@$(PREFIX)_detect;
+	// }}}
+@MAIN.DEFNS=
+	// SD SPI definitions
+	// Verilator lint_off UNUSED
+	wire	[31:0]	@$(PREFIX)_debug;
+	// Verilator lint_on  UNUSED
+	wire		w_@$(PREFIX)_cs_n, w_@$(PREFIX)_mosi, w_@$(PREFIX)_miso;
+@MAIN.INSERT=
+	////////////////////////////////////////////////////////////////////////
+	//
+	// SD Card SPI handling
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
+
+	sdspi
+	@$(PREFIX)i(
+		// {{{
+		.i_clk(i_clk), .i_sd_reset(sd_reset),
+		@$(SLAVE.ANSIPORTLIST),
+		.o_cs_n(w_@$(PREFIX)_cs_n),
+		.o_sck(o_@$(PREFIX)_sck),
+		.o_mosi(w_@$(PREFIX)_mosi),
+		.i_miso(w_@$(PREFIX)_miso),
+		.i_card_detect(i_@$(PREFIX)_detect),
+		.o_int(@$(PREFIX)_int),
+		.i_bus_grant(1'b1),
+		.o_debug(@$(PREFIX)_debug)
+		// }}}
+	);
+
+	assign	w_@$(PREFIX)_miso = i_@$(PREFIX)_data[0];
+	assign	o_@$(PREFIX)_data = { w_@$(PREFIX)_cs_n, 3'b111 };
+	assign	o_@$(PREFIX)_cmd  = w_@$(PREFIX)_mosi;
+	// }}}
+@MAIN.ALT=
+	assign	o_@$(PREFIX)_sck   = 1'b1;
+	assign	o_@$(PREFIX)_cmd   = 1'b1;
+	assign	o_@$(PREFIX)_data  = 4'hf;
+@REGS.N=4
+@REGS.NOTE= // SD-SPI addresses
+@REGS.0= 0 R_@$(DEVID)_CTRL  	SDCARD
+@REGS.1= 1 R_@$(DEVID)_DATA 	SDDATA
+@REGS.2= 2 R_@$(DEVID)_FIFOA	SDFIFOA, SDFIF0, SDFIFA
+@REGS.3= 3 R_@$(DEVID)_FIFOB	SDFIFOB, SDFIF1, SDFIFB
+@BDEF.DEFN=
+////////////////////////////////////////////////////////////////////////////////
+//
+// SD SPI constants
+// {{{
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+
+#ifndef	@$(DEVID)_H
+#define @$(DEVID)_H
+
+#define	@$(DEVID)_SETAUX	0x0000ff
+#define	@$(DEVID)_READAUX	0x0000bf
+#define	@$(DEVID)_CMD		0x000040
+#define	@$(DEVID)_ACMD		(0x040+55) // CMD55
+#define	@$(DEVID)_READREG	0x000200	// Read only
+#define	@$(DEVID)_FIFO_OP	0x000800	// Read only
+#define	@$(DEVID)_WRITEOP	0x000c00	// Write to the FIFO
+#define	@$(DEVID)_ALTFIFO	0x001000
+#define	@$(DEVID)_BUSY		0x004000
+#define	@$(DEVID)_ERROR		0x008000
+#define	@$(DEVID)_CLEARERR	0x008000
+// #define	@$(DEVID)_CRCERR	0x010000
+// #define	@$(DEVID)_ERRTOK	0x020000
+#define	@$(DEVID)_REMOVED	0x040000
+#define	@$(DEVID)_PRESENTN	0x080000
+#define	@$(DEVID)_RESET		0x100000	// Read only
+#define	@$(DEVID)_WATCHDOG	0x200000	// Read only
+#define	@$(DEVID)_GO_IDLE	((@$(DEVID)_REMOVED|@$(DEVID)_CLEARERR|@$(DEVID)_CMD)+0)
+#define	@$(DEVID)_READ_SECTOR	((@$(DEVID)_CMD|@$(DEVID)_CLEARERR|@$(DEVID)_FIFO_OP)+17)
+#define	@$(DEVID)_WRITE_SECTOR	((@$(DEVID)_CMD|@$(DEVID)_CLEARERR|@$(DEVID)_WRITEOP)+24)
+
+typedef	struct @$(DEVID)_S {
+	unsigned	sd_ctrl, sd_data, sd_fifo[2];
+} @$(DEVID);
+
+#endif	// @$(DEVID)_H
+// }}}
+@BDEF.IONAME=_@$(PREFIX)
+@BDEF.IOTYPE=@$(DEVID)
+@BDEF.OSDEF=_BOARD_HAS_@$(DEVID)
+@BDEF.OSVAL=static volatile @$BDEF.IOTYPE *const @$BDEF.IONAME = ((@$BDEF.IOTYPE *)@$[0x%08x](REGBASE));
+@SIM.CLOCK=clk
+@SIM.INCLUDE=
+#include "sdspisim.h"
+@SIM.DEFNS=
+#ifdef	SDSPI_ACCESS
+	SDSPISIM	m_@$(PREFIX);
+#endif // @$(ACCESS)
+@SIM.INIT=
+#ifdef	@$(ACCESS)
+		m_@$(PREFIX).debug(false);
+#endif	// @$(ACCESS)
+@SIM.METHODS=
+#ifdef	@$(ACCESS)
+	void	setsdcard(const char *fn) {
+		m_@$(PREFIX).load(fn);
+	}
+#endif // @$(ACCESS)
+@SIM.TICK=
+		// SD Card simulation
+		// {{{
+#ifdef	@$(ACCESS)
+		m_core->i_@$(PREFIX)_data = m_@$(PREFIX)(
+				(m_core->o_@$(PREFIX)_data&8)?1:0,
+				m_core->o_@$(PREFIX)_sck,
+				m_core->o_@$(PREFIX)_cmd);
+		m_core->i_@$(PREFIX)_data &= 1;
+		m_core->i_@$(PREFIX)_data |= (m_core->o_@$(PREFIX)_data&0x0e);
+		m_core->i_@$(PREFIX)_detect = 1;
+#endif	// @$(ACCESS)
+		// }}}
+@RTL.MAKE.GROUP= SDSPI
+@RTL.MAKE.SUBD=sdspi
+@RTL.MAKE.FILES= sdspi.v llsdspi.v spicmd.v spirxdata.v spitxdata.v

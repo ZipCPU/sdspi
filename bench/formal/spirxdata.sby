@@ -1,5 +1,6 @@
 [tasks]
 prf
+prfle	prf	opt_little_endian
 cvr
 
 [options]
@@ -13,7 +14,13 @@ smtbmc boolector
 
 [script]
 read -formal -D SPIRXDATA spirxdata.v
-prep -top spirxdata
+--pycode-begin--
+cmd = "hierarchy -top spirxdata"
+cmd += " -chparam OPT_LITTLE_ENDIAN %d" % (1 if "opt_little_endian" in tags else 0)
+output(cmd)
+--pycode-end--
+proc -norom
+prep
 
 [files]
 ../../rtl/spirxdata.v

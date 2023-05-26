@@ -221,6 +221,9 @@ fprintf(stderr, "LGLEN = %d, LN = %d\n", lglen, ln);
 		r = read(SDSPI_CLEARERR|SDSPI_FIFO_OP|SDSPI_CMD+9, 0,
 				16, data);
 
+		for(int k=0; k<4; k++)
+			printf("CSD[%d] = 0x%08x\n", k, data[k]);
+
 		for(int k=0; k<4; k++) {
 			unsigned v;
 			v = 0;

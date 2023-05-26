@@ -14,7 +14,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2022, Gisselquist Technology, LLC
+// Copyright (C) 2016-2023, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -42,6 +42,7 @@
 module	sdspi #(
 		// {{{
 		parameter [0:0]	OPT_CARD_DETECT = 1'b1,
+		parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,
 		//
 		// LGFIFOLN
 		// {{{
@@ -320,8 +321,9 @@ module	sdspi #(
 	//
 	//
 
-	spirxdata
-	spirxdatai(
+	spirxdata #(
+		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN)
+	) spirxdatai(
 		// {{{
 		i_clk, w_reset | r_cmd_err, rx_start,
 			r_lgblklen, r_fifo_id, rx_busy,
@@ -339,8 +341,10 @@ module	sdspi #(
 	//
 	//
 
-	spitxdata #(.RDDELAY(2))
-	spitxdatai(
+	spitxdata #(
+		.RDDELAY(2),
+		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN)
+	) spitxdatai(
 		// {{{
 		i_clk, w_reset | r_cmd_err, tx_start,
 			r_lgblklen, r_fifo_id, tx_busy,

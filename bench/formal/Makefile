@@ -36,7 +36,7 @@
 ##
 ## }}}
 .PHONY: all
-all:	sdspi llsdspi spicmd spitxdata spirxdata
+all:	sdspi llsdspi spicmd spitxdata spirxdata report
 
 RTL := ../../rtl
 SDSPI := sdspi
@@ -64,7 +64,8 @@ $(LLSDSPI)_cvra/PASS: $(RTL)/$(LLSDSPI).v $(LLSDSPI).sby
 .PHONY: $(SDSPI)
 ## {{{
 SDSPIDEP := $(LLSDSPI)_prf/PASS $(SPICMD)_prf/PASS	\
-	$(SDSPITX)_prf/PASS $(SDSPIRX)_prf/PASS
+	$(SDSPITX)_prf/PASS $(SDSPIRX)_prf/PASS		\
+	$(SDSPITX)_prfle/PASS $(SDSPIRX)_prfle/PASS
 $(SDSPI): $(SDSPI)_prf/PASS $(SDSPIDEP) #  $(SDSPI)_cvr/PASS
 $(SDSPI)_prf/PASS: $(RTL)/$(SDSPI).v $(SDSPI).sby $(SDSPIDEP)
 	sby -f $(SDSPI).sby prf
@@ -91,6 +92,8 @@ $(SPICMD)_cvr/PASS: $(RTL)/$(SPICMD).v $(SPICMD).sby
 $(SDSPITX): $(SDSPITX)_prf/PASS $(SDSPITX)_cvr/PASS
 $(SDSPITX)_prf/PASS: $(RTL)/$(SDSPITX).v $(SDSPITX).sby
 	sby -f $(SDSPITX).sby prf
+$(SDSPITX)_prfle/PASS: $(RTL)/$(SDSPITX).v $(SDSPITX).sby
+	sby -f $(SDSPITX).sby prfle
 $(SDSPITX)_cvr/PASS: $(RTL)/$(SDSPITX).v $(SDSPITX).sby
 	sby -f $(SDSPITX).sby cvr
 ## }}}
@@ -100,8 +103,16 @@ $(SDSPITX)_cvr/PASS: $(RTL)/$(SDSPITX).v $(SDSPITX).sby
 $(SDSPIRX): $(SDSPIRX)_prf/PASS $(SDSPIRX)_cvr/PASS
 $(SDSPIRX)_prf/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
 	sby -f $(SDSPIRX).sby prf
+$(SDSPIRX)_prfle/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
+	sby -f $(SDSPIRX).sby prfle
 $(SDSPIRX)_cvr/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
 	sby -f $(SDSPIRX).sby cvr
+## }}}
+
+.PHONY: report
+## {{{
+report:
+	+perl genreport.pl > report.html
 ## }}}
 
 .PHONY: clean

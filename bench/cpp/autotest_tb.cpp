@@ -12,10 +12,10 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2022, Gisselquist Technology, LLC
+// Copyright (C) 2016-2023, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
-// modify it under the terms of  the GNU General Public License as published
+// modify it under the terms of the GNU General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or (at
 // your option) any later version.
 //
@@ -50,6 +50,8 @@
 
 // MACRO definitions
 // {{{
+// #define	OPT_LITTLE_ENDIAN
+
 #define	SDSPI_CMD_ADDR	0
 #define	SDSPI_DATA_ADDR	1
 #define	SDSPI_FIFO_A	2
@@ -218,11 +220,20 @@ fprintf(stderr, "LGLEN = %d, LN = %d\n", lglen, ln);
 		unsigned	r;
 		r = read(SDSPI_CLEARERR|SDSPI_FIFO_OP|SDSPI_CMD+9, 0,
 				16, data);
+
+		for(int k=0; k<4; k++)
+			printf("CSD[%d] = 0x%08x\n", k, data[k]);
+
 		for(int k=0; k<4; k++) {
 			unsigned v;
 			v = 0;
+#ifdef	OPT_LITTLE_ENDIAN
+			for(int i=0; i<4; i++)
+				v = (v<<8) | m_sdspi->CSD(k*4+3-i);
+#else
 			for(int i=0; i<4; i++)
 				v = (v<<8) | m_sdspi->CSD(k*4+i);
+#endif
 
 			TBASSERT((*this), v == data[k]);
 		}
@@ -238,8 +249,13 @@ fprintf(stderr, "LGLEN = %d, LN = %d\n", lglen, ln);
 		for(int k=0; k<4; k++) {
 			unsigned v;
 			v = 0;
+#ifdef	OPT_LITTLE_ENDIAN
+			for(int i=0; i<4; i++)
+				v = (v<<8) | m_sdspi->CID(k*4+3-i);
+#else
 			for(int i=0; i<4; i++)
 				v = (v<<8) | m_sdspi->CID(k*4+i);
+#endif
 
 			TBASSERT((*this), v == data[k]);
 		} return r;

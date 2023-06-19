@@ -2,7 +2,7 @@
 //
 // Filename: 	sdtxframe.v
 // {{{
-// Project:	SDIO SD-Card controller, using a shared SPI interface
+// Project:	SDIO SD-Card controller
 //
 // Purpose:	Given a frame of data from memory, formats it for sending to
 //		the front end.
@@ -112,7 +112,7 @@ module	sdtxframe #(
 	begin
 		if (i_cfg_ddr && i_cfg_spd == 0)
 			cfg_period <= 2'b10;	// Four clock periods
-		else if ((i_cfg_ddr && i_cfg_spd == 1)
+		else if (i_cfg_ddr
 			||(!i_cfg_ddr && i_cfg_spd == 0))
 			cfg_period <= 2'b01;	// Two clock periods
 		else

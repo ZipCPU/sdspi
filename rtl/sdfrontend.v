@@ -2,9 +2,11 @@
 //
 // Filename: 	sdfrontend.v
 // {{{
-// Project:	SDIO SD-Card controller, using a shared SPI interface
+// Project:	SDIO SD-Card controller
 //
-// Purpose:	
+// Purpose:	This is the "front-end" for the SDIO controller.  It's designed
+//		to support all modes up to HS400 if OPT_SERDES is enabled,
+//	or just the backwards compatibility modes (up to 50MHz) if not.
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
@@ -37,7 +39,7 @@
 `default_nettype	none
 // }}}
 module	sdfrontend #(
-		parameter [0:0]	OPT_SERDES = 1'b1,
+		parameter [0:0]	OPT_SERDES = 1'b0,
 		parameter	NUMIO = 8
 	) (
 		// {{{
@@ -48,6 +50,7 @@ module	sdfrontend #(
 		// Control signals
 		// Tx path
 		// {{{
+		// MSB "first" incoming data.
 		input	wire	[7:0]	i_sdclk,
 		//
 		input	wire		i_cmd_en,
@@ -90,14 +93,23 @@ module	sdfrontend #(
 	genvar		gk;
 	reg		cmd_busy, wait_for_busy;
 
+	// wire		i_reset;
+	// assign		i_reset = 1'b0;
+
 	generate if (!OPT_SERDES && !OPT_ODDR)
 	begin : GEN_NO_SERDES
 		// {{{
+		// This is sort of the "No-PHY" option.  Maximum speed, when
+		// using this option, is the incoming clock speed/2.  Without
+		// SERDES support, there's no support for the DS (data strobe)
+		// pin either.  Think of this as a compatibility mode.
+		//
 		wire		next_edge;
-		reg		resp_started, io_started, last_clk;
+		reg		resp_started, io_started, last_ck;
 		reg		r_cmd_data, r_cmd_strb, r_rx_strb;
 		reg	[7:0]	r_rx_data;
-
+		reg	[1:0]	ck_sreg, pck_sreg;
+		reg		sample_ck, cmd_sample_ck;
 
 		assign	o_ck = i_sdclk[7];
 
@@ -111,62 +123,106 @@ module	sdfrontend #(
 				? i_tx_data[24+gk] : 1'bz;
 		end
 
-		assign	next_edge = last_clk && !i_sdclk[7];
+		assign	next_edge = last_ck && !i_sdclk[7];
+
+		always @(posedge i_clk)
+			last_ck <= i_sdclk[7];
+
+		// sample_ck
+		// {{{
+		initial	ck_sreg = 0;
+		always @(posedge i_clk)
+		if (i_data_en)
+			ck_sreg <= 0;
+		else
+			ck_sreg <= { ck_sreg[0], next_edge };
+
+		initial	sample_ck = 0;
+		always @(*)
+		if (i_data_en)
+			sample_ck = 0;
+		else
+			// Verilator lint_off WIDTH
+			sample_ck = { ck_sreg[1:0], next_edge } >> i_sample_shift[4:3];
+			// Verilator lint_on  WIDTH
+		// }}}
+
+		// cmd_sampl_ck: When do we sample the command line?
+		// {{{
+		always @(posedge i_clk)
+		if (i_cmd_en)
+			pck_sreg <= 0;
+		else
+			pck_sreg <= { pck_sreg[0], next_edge };
+
+		always @(*)
+		if (!i_afifo_reset_n || i_data_en)
+			cmd_sample_ck = 0;
+		else
+			// Verilator lint_off WIDTH
+			cmd_sample_ck = { pck_sreg[1:0], next_edge } >> i_sample_shift;
+			// Verilator lint_on  WIDTH
+		// }}}
 
 		always @(posedge i_clk)
 		if (i_cmd_en)
 			resp_started <= 1'b0;
-		else if (!io_cmd)
+		else if (!io_cmd && cmd_sample_ck)
 			resp_started <= 1'b1;
 
 		always @(posedge i_clk)
 		if (i_data_en)
 			io_started <= 1'b0;
-		else if (!io_cmd)
+		else if (!io_dat[0] && sample_ck)
 			io_started <= 1'b1;
 
 		// cmd_busy, wait_for_busy
 		// {{{
+		initial	{ cmd_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
+		/*
 		if (i_reset)
 		begin
 			cmd_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
-		end else if (i_cmd_en)
+		end else */
+		if (i_cmd_en)
 		begin
 			cmd_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
-		end else if (wait_for_busy && !r_cmd_data[0])
+		end else if (wait_for_busy && !r_cmd_data)
 		begin
 			cmd_busy <= 1'b1;
 			wait_for_busy <= 1'b0;
-		end else if (!wait_for_busy && r_cmd_data[0])
+		end else if (!wait_for_busy && r_cmd_data)
 			cmd_busy <= 1'b0;
 
 		assign	o_cmd_busy = cmd_busy;
 		// }}}
 
-		initial	last_clk = 1'b0;
+		initial	last_ck = 1'b0;
 		always @(posedge i_clk)
 		begin
-			last_clk <= i_sdclk[0];
+			last_ck <= i_sdclk[7];
 
-			if (i_cmd_en)
+			if (i_cmd_en || !cmd_sample_ck)
 				r_cmd_strb <= 1'b0;
 			else if (!io_cmd || resp_started)
 				r_cmd_strb <= 1'b1;
 			else
 				r_cmd_strb <= 1'b0;
 
-			if (i_data_en)
+			if (i_data_en || !sample_ck)
 				r_rx_strb <= 1'b0;
-			else if (next_edge && (io_started || io_dat == 0))
+			else if (io_started || io_dat[0] == 0)
 				r_rx_strb <= 1'b1;
 			else
 				r_rx_strb <= 1'b0;
 
-			r_cmd_data <= io_cmd;
-			r_rx_data <= io_dat;
+			if (cmd_sample_ck)
+				r_cmd_data <= io_cmd;
+			if (sample_ck)
+				r_rx_data <= io_dat;
 		end
 
 		assign	o_cmd_strb = { r_cmd_strb, 1'b0 };
@@ -202,6 +258,20 @@ module	sdfrontend #(
 		// }}}
 	end else begin : GEN_WIDE_IO
 		// {{{
+		// Generic PHY handler, designed to support up to HS400.
+		// Outputs 4 data periods per incoming clock, and 8 clock values
+		// per incoming clock--hence the outgoing clock may have a
+		// 90 degree shift from the data.  When dealing with non-DS
+		// data, the clock edge is detected on output, and a sample
+		// controller decides when to sample it on input.  When working
+		// with DS based outputs, an asynchronous FIFO is used to clock
+		// incoming data.  Further, when using the asynchronous FIFO,
+		// the start of any incoming data is quietly stripped off,
+		// guaranteeing that all data will be aligned on the left/MSB
+		// sample.
+
+		// Local declarations
+		// {{{
 		reg		af_started_p, af_started_n, acmd_started;
 		reg		af_count_p, af_count_n, acmd_count;
 		wire	[3:0]	ign_afifo_full, afifo_empty;
@@ -217,6 +287,8 @@ module	sdfrontend #(
 		wire	[1:0]	af_cmd;
 		reg	[1:0]	r_cmd_data;
 		reg	[1:0]	busy_strb, busy_data;
+		reg		busy_ck;
+		// }}}
 
 		assign	next_pedge = { ~{last_ck, i_sdclk[7:1] } &  i_sdclk[7:0] };
 		assign	next_nedge = i_cfg_ddr ? {  {last_ck, i_sdclk[7:1] } & ~i_sdclk[7:0] } : 8'h0;
@@ -232,16 +304,18 @@ module	sdfrontend #(
 			ck_sreg <= { ck_sreg[15:0], next_ck_sreg };
 		end
 
+		initial	sample_ck = 0;
 		always @(posedge i_clk)
-		if (i_reset || i_data_en || i_afifo_reset_n)
+		if (i_data_en || i_afifo_reset_n)
 			sample_ck <= 0;
 		else
 			// Verilator lint_off WIDTH
 			sample_ck <= { ck_sreg[23:0], next_ck_sreg } >> i_sample_shift;
 			// Verilator lint_on  WIDTH
 
+		initial	busy_ck = 1'b0;
 		always @(posedge i_clk)
-		if (i_reset || i_data_en || i_cmd_en)
+		if (i_data_en || i_cmd_en)
 			busy_ck <= 0;
 		else
 			// Verilator lint_off WIDTH
@@ -315,7 +389,6 @@ module	sdfrontend #(
 
 		// o_rx_strb, o_rx_data
 		// {{{
-		reg	[1:0]	busy_strb;
 		always @(posedge i_clk)
 		begin
 			o_rx_strb[1] <= (|sample_ck);
@@ -344,12 +417,16 @@ module	sdfrontend #(
 				busy_data = { w_rx_data[8], w_rx_data[0] };
 		end
 
+		initial	{ cmd_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
+		/*
 		if (i_reset)
 		begin
 			cmd_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
-		end else if (i_cmd_en)
+		end else
+		*/
+		if (i_cmd_en)
 		begin
 			cmd_busy <= 1'b0;
 			wait_for_busy <= 1'b1;

@@ -2,7 +2,7 @@
 //
 // Filename: 	sdspisim.h
 // {{{
-// Project:	Wishbone Controlled SD-Card Controller over SPI port
+// Project:	SPI-based SD-Card Controller
 //
 // Purpose:	This library simulates the operation of a SPI commanded SD-Card,
 //		such as might be found on a XuLA2-LX25 board made by xess.com.

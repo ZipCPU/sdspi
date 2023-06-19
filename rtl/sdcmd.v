@@ -2,7 +2,7 @@
 //
 // Filename: 	sdcmd.v
 // {{{
-// Project:	SDIO SD-Card controller, using a shared SPI interface
+// Project:	SDIO SD-Card controller
 //
 // Purpose:	Bi-directional command line processor.  This generates the
 //		command line inputs to the PHY, and receives its outputs.

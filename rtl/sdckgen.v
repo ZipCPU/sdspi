@@ -2,11 +2,12 @@
 //
 // Filename: 	sdckgen.v
 // {{{
-// Project:	SDIO SD-Card controller, using a shared SPI interface
+// Project:	SDIO SD-Card controller
 //
 // Purpose:	Generate a digitally divided pre-serdes clock.  The serdes this
 //		will feed is an 8:1 serdes.  Hence, we generate 8 outputs per
-//	clock period.
+//	clock period.  This allows us to generate a clock with a 90 degree
+//	offset, without needing to actually offset the clock by 90 degrees.
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC

@@ -2,9 +2,10 @@
 //
 // Filename: 	spicmd.v
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SPI-based SD-Card controller
 //
-// Purpose:	
+// Purpose:	Issues commands and collects responses from the lower level
+//		SPI processor.
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC

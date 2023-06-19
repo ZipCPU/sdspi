@@ -2,7 +2,7 @@
 //
 // Filename: 	sdrxframe.v
 // {{{
-// Project:	SDIO SD-Card controller, using a shared SPI interface
+// Project:	SDIO SD-Card controller
 //
 // Purpose:	Process incoming data from the front end.  Data will come in
 //		on (potentially) every edge of DS.  We need to turn it here

@@ -3,7 +3,7 @@
 ##
 ## Filename:	genreport.pl
 ## {{{
-## Project:	SD-Card controller, using a shared SPI interface
+## Project:	SD-Card controller
 ##
 ## Purpose:	Generates an HTML report documenting the success (or failure)
 ##		of the various formal proofs contained in this repository.
@@ -46,7 +46,14 @@ $dir = ".";
 	"sdspi",
 	"sdcmd",
 	"spirxdata",
-	"spitxdata"
+	"spitxdata",
+	##
+	"sdio",
+	"sdwb",
+	"sdcmd",
+	"sdckgen",
+	"sdtxframe",
+	"sdrxframe"
 	);
 
 %desc = (
@@ -55,6 +62,13 @@ $dir = ".";
 	"sdcmd"		=> "Command processor",
 	"spirxdata"	=> "Data receive handler",
 	"spitxdata"	=> "Data transmit handler"
+	##
+	"sdio"		=> "Main SDIO controller",
+	"sdwb"		=> "SDIO Bus handler",
+	"sdcmd"		=> "SDIO CMD wire controller",
+	"sdckgen"	=> "SDIO Divided clock generator",
+	"sdtxframe"	=> "SDIO transmit data controller",
+	"sdrxframe"	=> "SDIO receive data handler"
 	);
 ## }}}
 

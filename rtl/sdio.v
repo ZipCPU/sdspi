@@ -2,9 +2,17 @@
 //
 // Filename: 	sdio.v
 // {{{
-// Project:	SDIO SD-Card controller, using a shared SPI interface
+// Project:	SDIO SD-Card controller
 //
-// Purpose:	
+// Purpose:	Top level module (minus the front end) for the SDIO controller.
+//		Contains submodules, but very little logic.
+//
+// Submodules:
+//	sdwb:		Wishbone bus handler.  Also includes FIFO memory.
+//	sdckgen:	Digital clock divider
+//	sdcmd:		Request commands, process responses
+//	sdrxframer:	Process receive frames into memory writes
+//	sdtxframer:	Process memory reads into frames to transmit
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC

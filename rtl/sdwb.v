@@ -2,9 +2,11 @@
 //
 // Filename: 	sdwb.v
 // {{{
-// Project:	SDIO SD-Card controller, using a shared SPI interface
+// Project:	SDIO SD-Card controller
 //
-// Purpose:	
+// Purpose:	Bus handler.  Accepts and responds to Wishbone bus requests.
+//		Configures clock division, and IO speed and parameters.
+//	Issues commands to the command handler, TX and RX handlers.
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
@@ -116,6 +118,12 @@ module	sdwb #(
 
 	// Local declarations
 	// {{{
+	localparam	[2:0]	ADDR_CMD = 0,
+				ADDR_ARG = 1,
+				ADDR_FIFOA = 2,
+				ADDR_FIFOB = 3,
+				ADDR_PHY   = 4;
+
 	localparam	[1:0]	WIDTH_1W = 2'b00,
 				WIDTH_4W = 2'b01,
 				WIDTH_8W = 2'b10;
@@ -163,7 +171,7 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset)
 		o_cmd_request <= 1'b0;
-	else if (!i_cmd_busy && i_wb_stb && i_wb_addr == 0 && i_wb_sel[0])
+	else if (!i_cmd_busy && i_wb_stb && i_wb_addr == ADDR_CMD && i_wb_sel[0])
 		o_cmd_request <= i_wb_data[7:6] == 2'b01;
 	else
 		o_cmd_request <= 1'b0;
@@ -171,7 +179,7 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset)
 		r_cmd <= 7'b0;
-	else if (!i_cmd_busy && i_wb_stb && i_wb_addr == 0 && i_wb_sel[0])
+	else if (!i_cmd_busy && i_wb_stb && i_wb_addr == ADDR_CMD && i_wb_sel[0])
 	begin
 		if (i_wb_data[7:6] == 2'b01)
 			r_cmd <= i_wb_data[6:0];
@@ -181,13 +189,13 @@ module	sdwb #(
 	assign	o_cmd_id = r_cmd[5:0];
 
 	always @(posedge i_clk)
-	if (!i_cmd_busy && i_wb_stb && i_wb_addr == 0 && i_wb_sel[1])
+	if (!i_cmd_busy && i_wb_stb && i_wb_addr == ADDR_CMD && i_wb_sel[1])
 		o_cmd_type <= i_wb_data[9:8];
 
 	always @(posedge i_clk)
 	if (i_reset)
 		r_tx_request <= 1'b0;
-	else if (!o_tx_en && !i_cmd_busy && i_wb_stb && i_wb_addr == 0
+	else if (!o_tx_en && !i_cmd_busy && i_wb_stb && i_wb_addr == ADDR_CMD
 							&& (&i_wb_sel[1:0]))
 		r_tx_request <= i_wb_data[10] && (i_wb_data[7:6] == 2'b01)
 			&& ((i_wb_data[13] && OPT_DMA) || i_wb_data[11]);
@@ -205,7 +213,7 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset)
 		r_rx_request <= 1'b0;
-	else if (!o_rx_en && !i_cmd_busy && i_wb_stb && i_wb_addr == 0
+	else if (!o_rx_en && !i_cmd_busy && i_wb_stb && i_wb_addr == ADDR_CMD
 							&& (&i_wb_sel[1:0]))
 	begin
 		r_rx_request <= !i_wb_data[10]
@@ -228,7 +236,7 @@ module	sdwb #(
 	if (i_reset)
 		r_fifo <= 1'b0;
 	else if (!i_cmd_busy && !o_tx_en && !o_rx_en
-			&& i_wb_stb && (i_wb_addr == 0) && i_wb_sel[1])
+			&& i_wb_stb && (i_wb_addr == ADDR_CMD) && i_wb_sel[1])
 		r_fifo <= i_wb_data[12];
 
 	// always @(posedge i_clk)
@@ -240,7 +248,7 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset)
 		r_cmd_err <= 1'b0;
-	else if (!i_cmd_busy && i_wb_stb && i_wb_addr == 0 && i_wb_sel[0])
+	else if (!i_cmd_busy && i_wb_stb && i_wb_addr == ADDR_CMD && i_wb_sel[0])
 	begin
 		if (i_wb_data[7:6] == 2'b01)
 			r_cmd_err <= 1'b0;
@@ -250,7 +258,7 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset)
 		r_cmd_ecode <= 2'b0;
-	else if (!i_cmd_busy && i_wb_stb && i_wb_addr == 0 && i_wb_sel[0])
+	else if (!i_cmd_busy && i_wb_stb && i_wb_addr == ADDR_CMD && i_wb_sel[0])
 	begin
 		if (i_wb_data[7:6] == 2'b01)
 			r_cmd_ecode <= 2'b0;
@@ -283,7 +291,7 @@ module	sdwb #(
 	//	r_arg <= 0;
 	else if (i_cmd_response)
 		r_arg <= i_arg;
-	else if (!i_cmd_busy && i_wb_stb && i_wb_addr == 1)
+	else if (!i_cmd_busy && i_wb_stb && i_wb_addr == ADDR_ARG)
 	begin
 		if (i_wb_sel[0])
 			r_arg[ 7: 0] <= i_wb_data[ 7: 0];
@@ -303,7 +311,7 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset)
 		lgblk <= 4'h9;
-	else if (i_wb_stb && !o_wb_stall && i_wb_addr == 2 && i_wb_sel[3])
+	else if (i_wb_stb && !o_wb_stall && i_wb_addr == ADDR_PHY && i_wb_sel[3])
 	begin
 		lgblk <= i_wb_data[27:24];
 		if (i_wb_data[27:24] >= LGFIFO)
@@ -317,7 +325,7 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset)
 		o_cfg_sample_shift <= 5'h18;
-	else if (i_wb_stb && !o_wb_stall && i_wb_addr == 2 && i_wb_sel[2])
+	else if (i_wb_stb && !o_wb_stall && i_wb_addr == ADDR_PHY && i_wb_sel[2])
 	begin
 		o_cfg_sample_shift <= i_wb_data[20:16];
 
@@ -328,7 +336,7 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset)
 		{ r_clk_shutdown, r_clk90 } <= 2'b00;
-	else if (i_wb_stb && !o_wb_stall && i_wb_addr == 2 && i_wb_sel[1])
+	else if (i_wb_stb && !o_wb_stall && i_wb_addr == ADDR_PHY && i_wb_sel[1])
 	begin
 		{ r_clk_shutdown, r_clk90 } <= i_wb_data[15:14];
 		if (i_wb_data[8])
@@ -341,19 +349,19 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset)
 		{ o_pp_cmd, o_pp_data } <= 2'b00;
-	else if (i_wb_stb && !o_wb_stall && i_wb_addr == 2 && i_wb_sel[1])
+	else if (i_wb_stb && !o_wb_stall && i_wb_addr == ADDR_PHY && i_wb_sel[1])
 		{ o_pp_cmd, o_pp_data } <= i_wb_data[13:12];
 
 	always @(posedge i_clk)
 	if (i_reset || !OPT_SERDES)
 		{ o_cfg_ds, o_cfg_ddr } <= 2'b00;
-	else if (i_wb_stb && !o_wb_stall && i_wb_addr == 2 && i_wb_sel[1])
+	else if (i_wb_stb && !o_wb_stall && i_wb_addr == ADDR_PHY && i_wb_sel[1])
 		{ o_cfg_ds, o_cfg_ddr } <= i_wb_data[9:8];
 
 	always @(posedge i_clk)
 	if (i_reset)
 		r_width <= WIDTH_1W;
-	else if (i_wb_stb && !o_wb_stall && i_wb_addr == 2 && i_wb_sel[1])
+	else if (i_wb_stb && !o_wb_stall && i_wb_addr == ADDR_PHY && i_wb_sel[1])
 	begin
 		case(i_wb_data[11:10])
 		2'b00: r_width <= WIDTH_1W;
@@ -369,7 +377,7 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset)
 		r_ckspeed <= 252;
-	else if (i_wb_stb && !o_wb_stall && i_wb_addr == 2 && i_wb_sel[0])
+	else if (i_wb_stb && !o_wb_stall && i_wb_addr == ADDR_PHY && i_wb_sel[0])
 	begin
 		r_ckspeed <= i_wb_data[7:0];
 		if (!OPT_SERDES && i_wb_data[7:0] <= 2)
@@ -410,10 +418,10 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset)
 		fif_wraddr <= 0;
-	else if (i_wb_stb &&  i_wb_we && i_wb_addr == 0 && i_wb_sel[1] && i_wb_data[11])
+	else if (i_wb_stb &&  i_wb_we && i_wb_addr == ADDR_CMD && i_wb_sel[1] && i_wb_data[11])
 		fif_wraddr <= 0;
 	else if (i_wb_stb && i_wb_we && i_wb_sel[0]
-					&& (i_wb_addr == 3 || i_wb_addr == 4))
+					&& (i_wb_addr == ADDR_FIFOA || i_wb_addr == ADDR_FIFOB))
 		fif_wraddr <= fif_wraddr + 1;
 	// }}}
 
@@ -422,10 +430,10 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset)
 		fif_rdaddr <= 0;
-	else if (i_wb_stb &&  i_wb_we && i_wb_addr == 0 && i_wb_sel[1] && i_wb_data[11])
+	else if (i_wb_stb &&  i_wb_we && i_wb_addr == ADDR_CMD && i_wb_sel[1] && i_wb_data[11])
 		fif_rdaddr <= 0;
 	else if (i_wb_stb && !i_wb_we && i_wb_sel[0]
-					&& (i_wb_addr == 3 || i_wb_addr == 4))
+					&& (i_wb_addr == ADDR_FIFOA || i_wb_addr == ADDR_FIFOB))
 		fif_rdaddr <= fif_rdaddr + 1;
 	// }}}
 
@@ -518,10 +526,10 @@ module	sdwb #(
 	begin
 		mem_wr_strb <= 0;
 
-		if (i_wb_stb && i_wb_we && (i_wb_addr == 3 || i_wb_addr == 4)
+		if (i_wb_stb && i_wb_we && (i_wb_addr == ADDR_FIFOA || i_wb_addr == ADDR_FIFOB)
 				&& (|i_wb_sel))
 		begin
-			mem_wr_addr <= { (i_wb_addr == 3), fif_wraddr };
+			mem_wr_addr <= { (i_wb_addr == ADDR_FIFOB), fif_wraddr };
 			mem_wr_strb <= i_wb_sel;
 			mem_wr_data <= i_wb_data;
 		end
@@ -567,9 +575,9 @@ module	sdwb #(
 		pre_data <= 0;
 
 		case(i_wb_addr)
-		3'h0: pre_data[31:0] <= w_cmd_word;
-		3'h1: pre_data[31:0] <= r_arg;
-		3'h2: pre_data[31:0] <= w_phy_ctrl;
+		ADDR_CMD: pre_data[31:0] <= w_cmd_word;
+		ADDR_ARG: pre_data[31:0] <= r_arg;
+		ADDR_PHY;
 		// 3'h3: pre_data <= w_ffta_word;
 		// 3'h4: pre_data <= w_fftb_word;
 		// 3'h5: DMA address (high, if !OPT_LITTLE_ENDIAN)
@@ -581,9 +589,9 @@ module	sdwb #(
 		if (!i_wb_stb || i_wb_we)
 			pre_data <= 0;
 
-		if (i_wb_addr == 3'h3)
+		if (i_wb_addr == ADDR_FIFOA)
 			pre_sel <= 1;
-		else if (i_wb_addr == 3'h4)
+		else if (i_wb_addr == ADDR_FIFOB)
 			pre_sel <= 2;
 		if (!i_wb_stb || i_wb_we)
 			pre_sel <= 0;

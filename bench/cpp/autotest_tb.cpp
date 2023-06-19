@@ -2,7 +2,7 @@
 //
 // Filename: 	autotest_tb.cpp
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SPI-based SD-Card controller
 //
 // Purpose:	Exercise all of the functionality contained within the Verilog
 //		core, from bring up through read to write and read-back.

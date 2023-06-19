@@ -2,7 +2,7 @@
 //
 // Filename: 	testb.h
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SPI-based SD-Card controller
 //
 // Purpose:	A wrapper for a common interface to a clocked FPGA core
 //		begin exercised in Verilator.

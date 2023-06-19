@@ -2,7 +2,7 @@
 //
 // Filename:	wb_tb.h
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SD-Card controller
 //
 // Purpose:	
 //

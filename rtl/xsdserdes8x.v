@@ -2,9 +2,12 @@
 //
 // Filename: 	xsdserdes8x.v
 // {{{
-// Project:	SDIO SD-Card controller, using a shared SPI interface
+// Project:	SDIO SD-Card controller
 //
-// Purpose:	
+// Purpose:	An 8:1 OSERDES followed by an (optional) 1:8 ISERDES.  That
+//		simple, nothing more.  This implementation is specific to
+//	Xilinx FPGAs.  It's designed, however, so that it may be the only
+//	component needing replacing when switching hardware platforms.
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC

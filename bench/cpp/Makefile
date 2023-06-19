@@ -2,7 +2,7 @@
 ##
 ## Filename: 	Makefile
 ## {{{
-## Project:	SD-Card controller, using a shared SPI interface
+## Project:	SD-Card controller
 ##
 ## Purpose:	Nothing currently.  Eventually, if I create a proper bench
 ##		test, rather than just running this on real hardware as part of

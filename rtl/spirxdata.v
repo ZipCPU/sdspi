@@ -2,7 +2,7 @@
 //
 // Filename: 	spirxdata.v
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SDIO SD-Card controller
 //
 // Purpose:	To handle all of the processing associated with receiving data
 //		from an SD card via the lower-level SPI processor, and then

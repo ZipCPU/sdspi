@@ -2,10 +2,11 @@
 //
 // Filename: 	sdspi.v
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SPI-based SD-Card controller
 //
 // Purpose:	SD Card controller, using SPI interface with the card and
-//		WB interface with the rest of the system.
+//		WB interface with the rest of the system.  This is the top
+//	level of the SPI based controller.
 //
 //	See the specification for more information.
 //

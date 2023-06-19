@@ -2,7 +2,7 @@
 //
 // Filename: 	spitxdata.v
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SPI-based SD-Card controller
 //
 // Purpose:	To handle all of the processing associated with sending data
 //		from a memory to our lower-level SPI processor.

@@ -2,7 +2,7 @@
 //
 // Filename: 	llsdspi.v
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SPI-based SD-Card controller
 //
 // Purpose:	This file implements the "lower-level" interface to the
 //		SD-Card controller.  Specifically, it turns byte-level

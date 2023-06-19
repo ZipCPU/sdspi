@@ -230,7 +230,7 @@ int	sdcard_read_scr(unsigned *scr) {
 	if (SDDEBUG)
 		txstr("READ-SCR\n");
 
-	// The SCR register is 512 bytes, and we can read it at fast speed
+	// The SCR register is 64 bits, and we can read it at fast speed
 	_sdcard->sd_data = SECTOR_8B | SPEED_FAST;
 	_sdcard->sd_ctrl = SDSPI_SETAUX;
 
@@ -511,8 +511,8 @@ int	sdcard_init(void) {
 		txstr("SDCARD-INIT\n");
 
 	// Start us out slow, with a known sector length
-	_sdcard->sd_data = SECTOR_512B | SPEED_SLOW;
-	_sdcard->sd_ctrl = SDSPI_SETAUX;
+	_sdcard->sd_data = SECTOR_512B | SPEED_SLOW;	// 128 word block length, 400kHz clock
+	_sdcard->sd_ctrl = SDSPI_SETAUX; // Write config data, read last config data
 
 	// Clear any prior pending errors
 	_sdcard->sd_data = 0;
@@ -547,7 +547,9 @@ int	sdcard_init(void) {
 		SCOPE->s_ctrl = WBSCOPE_TRIGGER | SCOPEDELAY;
 #endif
 		txstr("No response from card to reset command\n");
+#ifdef	GPIO_SD_RESET
 		*_gpio = GPIO_SET(GPIO_SD_RESET);
+#endif
 		sdcard_err |= SDERR_INIT | 0x800;
 		return -1;
 	}
@@ -929,25 +931,27 @@ int	sdcard_read(int sector, char *buf) {
 
 	// 512 byte block length, 25MHz clock
 	//
+	// Write config data, read last config data
 	_sdcard->sd_data = SECTOR_512B | SPEED_FAST;
 	_sdcard->sd_ctrl = SDSPI_SETAUX;
 
 	//
 	// Issue the read command
 	//
-	_sdcard->sd_data = sector;
+	_sdcard->sd_data = sector; // sector to read from
 	_sdcard->sd_ctrl = SDSPI_READ_SECTOR;	// CMD 17, into FIFO 0
 	SDSPI_WAIT_WHILE_BUSY;
 
 #ifdef	INCLUDE_DMA_CONTROLLER
 	if (SDUSEDMA && ((_zip->z_dma.d_ctrl & DMA_BUSY) == 0)) {
-		_zip->z_dma.d_len= 512/sizeof(int);
-		_zip->z_dma.d_rd = (unsigned *)&_sdcard->sd_fifo[0];
-		_zip->z_dma.d_wr = &ubuf[0];
-		_zip->z_dma.d_ctrl = DMACCOPY | DMA_CONSTSRC;
+		_zip->z_dma.d_len= 512/sizeof(char);
+		_zip->z_dma.d_rd = (char *)&_sdcard->sd_fifo[0];
+		_zip->z_dma.d_wr = buf;
+		_zip->z_dma.d_ctrl = DMAREQUEST|DMACLEAR|DMA_DSTWIDE
+					| DMA_CONSTSRC|DMA_SRCWORD;
 		while(_zip->z_dma.d_ctrl & DMA_BUSY)
 			;
-		CLEAR_CACHE;
+		CLEAR_DCACHE;
 	} else
 #endif
 		for(j=0; j<512/4; j++)
@@ -996,10 +1000,11 @@ int	sdcard_write(const int sector, const char *buf) {
 
 #ifdef	INCLUDE_DMA_CONTROLLER
 	if (SDUSEDMA && ((_zip->z_dma.d_ctrl & DMA_BUSY) == 0)) {
-		_zip->z_dma.d_len= 512/sizeof(int);
-		_zip->z_dma.d_rd = (unsigned *)&ubuf[0];
-		_zip->z_dma.d_wr = (unsigned *)&_sdcard->sd_fifo[0];
-		_zip->z_dma.d_ctrl = DMACCOPY | DMA_CONSTDST;
+		_zip->z_dma.d_len= 512/sizeof(char);
+		_zip->z_dma.d_rd = (char *)buf;
+		_zip->z_dma.d_wr = (char *)&_sdcard->sd_fifo[0];
+		_zip->z_dma.d_ctrl = DMAREQUEST|DMACLEAR|DMA_SRCWIDE
+					| DMA_CONSTDST|DMA_DSTWORD;
 		while(_zip->z_dma.d_ctrl & DMA_BUSY)
 			;
 	} else

@@ -1,0 +1,5 @@
+           iCE40  X7-s   RAW
+Controller  4LUT  6LUT  NANDs
+-----------------------------------
+SDIO:       1976   979 722560
+SDSPI:       970   494  12495

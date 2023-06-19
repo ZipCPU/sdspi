@@ -64,9 +64,9 @@ module	sdwb #(
 		// Configuration options
 		// {{{
 		output	reg			o_cfg_clk90,
-		output	reg	[7:0]		o_cfg_ckspeed,
+		output	wire	[7:0]		o_cfg_ckspeed,
 		output	reg			o_cfg_shutdown,
-		output	reg	[1:0]		o_cfg_width,
+		output	wire	[1:0]		o_cfg_width,
 		output	reg			o_cfg_ds, o_cfg_ddr,
 		output	reg			o_pp_cmd, o_pp_data,
 		output	reg	[4:0]		o_cfg_sample_shift,
@@ -134,7 +134,6 @@ module	sdwb #(
 	reg	[1:0]	r_cmd_ecode;
 	reg	[31:0]	r_arg;
 	reg	[3:0]	lgblk;
-	reg		r_clk_shutdown, r_clk90;
 	reg	[1:0]	r_width;
 	reg	[7:0]	r_ckspeed;
 	reg	[31:0]	w_cmd_word, w_phy_ctrl;
@@ -335,16 +334,13 @@ module	sdwb #(
 
 	always @(posedge i_clk)
 	if (i_reset)
-		{ r_clk_shutdown, r_clk90 } <= 2'b00;
+		{ o_cfg_shutdown, o_cfg_clk90 } <= 2'b00;
 	else if (i_wb_stb && !o_wb_stall && i_wb_addr == ADDR_PHY && i_wb_sel[1])
 	begin
-		{ r_clk_shutdown, r_clk90 } <= i_wb_data[15:14];
+		{ o_cfg_shutdown, o_cfg_clk90 } <= i_wb_data[15:14];
 		if (i_wb_data[8])
-			r_clk90 <= 1'b1;
+			o_cfg_clk90 <= 1'b1;
 	end
-
-	assign	o_cfg_clk90 = r_clk90;
-	assign	o_cfg_shutdown = r_clk_shutdown;
 
 	always @(posedge i_clk)
 	if (i_reset)
@@ -396,8 +392,8 @@ module	sdwb #(
 					: WIDTH_8W;
 		w_phy_ctrl[21]    = OPT_SERDES;
 		w_phy_ctrl[20:16] = o_cfg_sample_shift;
-		w_phy_ctrl[15] = r_clk_shutdown;
-		w_phy_ctrl[14] = r_clk90;
+		w_phy_ctrl[15] = o_cfg_shutdown;
+		w_phy_ctrl[14] = o_cfg_clk90;
 		w_phy_ctrl[13] = o_pp_cmd;	// Push-pull CMD line
 		w_phy_ctrl[12] = o_pp_data;	// Push-pull DAT line(s)
 		w_phy_ctrl[11:10] = r_width;
@@ -577,7 +573,7 @@ module	sdwb #(
 		case(i_wb_addr)
 		ADDR_CMD: pre_data[31:0] <= w_cmd_word;
 		ADDR_ARG: pre_data[31:0] <= r_arg;
-		ADDR_PHY;
+		ADDR_PHY: pre_data[31:0] <= w_phy_ctrl;
 		// 3'h3: pre_data <= w_ffta_word;
 		// 3'h4: pre_data <= w_fftb_word;
 		// 3'h5: DMA address (high, if !OPT_LITTLE_ENDIAN)

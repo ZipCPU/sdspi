@@ -70,12 +70,12 @@ sub	topusage() {
 	## {{{
 	my $result = "";
 
-	$result = sprintf("SDIO:    %5d %5d %6d\n",
+	$result = sprintf("SDIO:      %5d %5d %6d\n",
 		calcusage($ice40synth, "sdio", "",""),
 		calcusage($xilinxsynth,"sdio", "",""),
 		calcusage($asicsynth,  "sdio", "",$asicpost));
 
-	$result = $result . sprintf("SDSPI:   %5d %5d %6d\n",
+	$result = $result . sprintf("SDSPI:     %5d %5d %6d\n",
 		calcusage($ice40synth, "sdspi", "",""),
 		calcusage($xilinxsynth,"sdspi", "",""),
 		calcusage($asicsynth,  "sdspi", "",$asicpost));
@@ -88,8 +88,8 @@ $result = "";
 $result = topusage();
 
 ## Add a header
-$result = "                 iCE40  X7-s   RAW\n"
-	. "Wrapper   Config  4LUT  6LUT  NANDs\n"
+$result = "           iCE40  X7-s   RAW\n"
+	. "Controller  4LUT  6LUT  NANDs\n"
 	. "-----------------------------------\n" . $result;
 print $result;
 

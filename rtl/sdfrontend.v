@@ -40,6 +40,7 @@
 // }}}
 module	sdfrontend #(
 		parameter [0:0]	OPT_SERDES = 1'b0,
+		parameter [0:0]	OPT_ODDR = 1'b1,
 		parameter	NUMIO = 8
 	) (
 		// {{{
@@ -82,14 +83,24 @@ module	sdfrontend #(
 		// I/O ports
 		// {{{
 		output	wire			o_ck,
+`ifdef	VERILATOR
+		output	wire			io_cmd_tristate,
+		output	wire			o_cmd,
+		input	wire			i_cmd,
+		//
+		output	wire	[NUMIO-1:0]	io_data_tristate,
+		output	wire			o_data,
+		output	wire	[NUMIO-1:0]	i_data,
+`else
 		inout	wire			io_cmd,
 		inout	wire			io_ds,
-		inout	wire	[NUMIO-1:0]	io_dat
+		inout	wire	[NUMIO-1:0]	io_dat,
+`endif
 		// }}}
+		output	wire	[31:0]	o_debug
 		// }}}
 	);
 
-	localparam	[0:0]	OPT_ODDR = 1'b0;
 	genvar		gk;
 	reg		cmd_busy, wait_for_busy;
 
@@ -104,7 +115,9 @@ module	sdfrontend #(
 		// SERDES support, there's no support for the DS (data strobe)
 		// pin either.  Think of this as a compatibility mode.
 		//
-		wire		next_edge;
+		// Fastest clock supported = incoming clock speed / 2
+		//
+		wire		next_pedge, next_dedge;
 		reg		resp_started, io_started, last_ck;
 		reg		r_cmd_data, r_cmd_strb, r_rx_strb;
 		reg	[7:0]	r_rx_data;
@@ -113,6 +126,30 @@ module	sdfrontend #(
 
 		assign	o_ck = i_sdclk[7];
 
+`ifdef	VERILATOR
+		// {{{
+		wire			io_cmd;
+		wire	[NUMIO-1:0]	io_dat;
+
+		assign	io_cmd_tristate
+				= !(i_cmd_en && (i_pp_cmd || !i_cmd_data[1]));
+		assign	o_cmd = i_cmd_data[1];
+
+		assign	io_cmd = (io_cmd_tristate) ? i_cmd : o_cmd;
+
+
+		assign	o_data = i_tx_data[24 +: NUMIO];
+
+		for(gk=0; gk<NUMIO; gk=gk+1)
+		begin : FOREACH_IO
+			assign	io_data_tristate[gk] = !(i_data_en
+					&& (i_pp_data || !i_tx_data[24+gk]));
+		end
+
+		assign	io_dat = (o_data & ~io_data_tristate)
+				| (i_data & io_data_tristate);
+		// }}}
+`else
 		assign	io_cmd = (i_cmd_en && (i_pp_cmd || !i_cmd_data[1]))
 						? i_cmd_data[1] : 1'bz;
 
@@ -123,7 +160,11 @@ module	sdfrontend #(
 				? i_tx_data[24+gk] : 1'bz;
 		end
 
-		assign	next_edge = last_ck && !i_sdclk[7];
+`endif
+
+		assign	next_pedge = !last_ck && i_sdclk[7];
+		assign	next_dedge = next_pedge || (i_cfg_ddr
+					&& last_ck && !i_sdclk[7]);
 
 		always @(posedge i_clk)
 			last_ck <= i_sdclk[7];
@@ -135,7 +176,7 @@ module	sdfrontend #(
 		if (i_data_en)
 			ck_sreg <= 0;
 		else
-			ck_sreg <= { ck_sreg[0], next_edge };
+			ck_sreg <= { ck_sreg[0], next_dedge };
 
 		initial	sample_ck = 0;
 		always @(*)
@@ -143,7 +184,7 @@ module	sdfrontend #(
 			sample_ck = 0;
 		else
 			// Verilator lint_off WIDTH
-			sample_ck = { ck_sreg[1:0], next_edge } >> i_sample_shift[4:3];
+			sample_ck = { ck_sreg[1:0], next_dedge } >> i_sample_shift[4:3];
 			// Verilator lint_on  WIDTH
 		// }}}
 
@@ -153,14 +194,14 @@ module	sdfrontend #(
 		if (i_cmd_en)
 			pck_sreg <= 0;
 		else
-			pck_sreg <= { pck_sreg[0], next_edge };
+			pck_sreg <= { pck_sreg[0], next_pedge };
 
 		always @(*)
 		if (!i_afifo_reset_n || i_data_en)
 			cmd_sample_ck = 0;
 		else
 			// Verilator lint_off WIDTH
-			cmd_sample_ck = { pck_sreg[1:0], next_edge } >> i_sample_shift;
+			cmd_sample_ck = { pck_sreg[1:0], next_pedge } >> i_sample_shift;
 			// Verilator lint_on  WIDTH
 		// }}}
 
@@ -222,7 +263,10 @@ module	sdfrontend #(
 			if (cmd_sample_ck)
 				r_cmd_data <= io_cmd;
 			if (sample_ck)
-				r_rx_data <= io_dat;
+			begin
+				r_rx_data <= 0;
+				r_rx_data[NUMIO-1:0] <= io_dat;
+			end
 		end
 
 		assign	o_cmd_strb = { r_cmd_strb, 1'b0 };
@@ -236,6 +280,25 @@ module	sdfrontend #(
 		assign	MAD_VALID = 1'b0;
 		assign	MAD_DATA  = 32'h0;
 
+		reg	w_out[7:0];
+		always @(*)
+		begin
+			w_out = 0;
+			w_out[NUMIO-1:0] = io_dat;
+		end
+
+		assign	o_debug = {
+				i_cmd_en || i_data_en,
+				7'h0,
+				i_sdclk[7],
+				i_cmd_en, i_cmd_data[1],
+					io_cmd, r_cmd_strb, r_cmd_data,
+				i_data_en, r_rx_strb, r_rx_data,
+				//
+				((i_data_en) ? i_tx_data[31:24]
+					: { {(8-NUMIO){1'b0}}, io_dat })
+				};
+
 		// Keep Verilator happy
 		// {{{
 		// Verilator coverage_off
@@ -243,7 +306,7 @@ module	sdfrontend #(
 		wire	unused_no_serdes;
 		assign	unused_no_serdes = &{ 1'b0, i_afifo_reset_n,
 				i_sdclk[6:0], i_tx_data[23:0],
-				i_cmd_data[0], i_hsclk, i_cfg_ddr,i_sample_shift
+				i_cmd_data[0], i_hsclk,i_sample_shift
 				};
 		// Verilator lint_on  UNUSED
 		// Verilator coverage_on
@@ -252,9 +315,231 @@ module	sdfrontend #(
 	end else if (!OPT_SERDES && OPT_ODDR)
 	begin : GEN_IODDR_IO
 		// {{{
-		// Not built.
-		// The idea is, if we only have DDR elements, can we do better
-		// than with just IOs?
+		// Notes:
+		// {{{
+		// The idea is, if we only have DDR elements and no SERDES
+		// elements, can we do better than with just IOs?
+		//
+		// The answer is, Yes.  Even though we aren't going to run at
+		// 2x the clock speed w/o OPT_SERDES, we can output a DDR clk,
+		// and we can also access sub-sample timing via IDDR elements.
+		// Even in DDR mode, however, there will be no possibility of
+		// two outputs per clock.
+		//
+		// Fastest clock supported = incoming clock speed
+		//	Practically, you won't be likely to achieve this unless
+		//	you get really lucky, but it is technically the fastest
+		//	speed this version supports.
+		// A more realistic speed will be the incoming clock speed / 2,
+		//	and done with more reliability than the non-DDR mode.
+		// }}}
+
+		// Local declarations
+		// {{{
+		wire	[1:0]	w_cmd;
+		wire	[7:0]	w_dat;
+		wire	[1:0]	next_pedge, next_dedge;
+
+		reg	[5:0]	ck_sreg, pck_sreg;
+		reg		sample_ck, cmd_sample_ck,
+				resp_started, io_started, last_ck,
+				r_cmd_strb, r_rx_strb;
+		reg	[7:0]	r_rx_data;
+`ifdef	VERILATOR
+		// Verilator lint_off UNUSED
+		wire		io_clk_tristate, i_clk;
+		// Verilator lint_on  UNUSED
+`endif
+		// }}}
+
+		// Clock
+		// {{{
+		xsdddr #(.OPT_BIDIR(1'b0))
+		u_clk_oddr(
+			.i_clk(i_clk), .i_en(1'b1),
+			.i_data(i_sdclk),
+`ifdef	VERILATOR
+			.io_pin_tristate(io_clk_tristate),
+			.o_pin(o_ck),
+			.i_pin(i_clk),
+`else
+			.io_pin(o_ck),
+`endif
+			// Verilator lint_off PINCONNECTEMPTY
+			.o_wide()
+			// Verilator lint_on  PINCONNECTEMPTY
+		);
+		// }}}
+
+		// CMD
+		// {{{
+		xsdddr #(.OPT_BIDIR(1'b1))
+		u_cmd_ddr(
+			.i_clk(i_clk), .i_en(1'b1),
+			.i_en(i_cmd_en && (i_pp_cmd || !i_cmd_data[1])),
+			.i_data({(2){ i_cmd_data[1] }}),
+`ifdef	VERILATOR
+			.io_pin_tristate(io_cmd_tristate),
+			.o_pin(o_cmd),
+			.i_pin(i_cmd),
+`else
+			.io_pin(io_cmd),
+`endif
+			.o_wide(w_cmd)
+		);
+		// }}}
+
+		// DATA
+		// {{{
+		for(gk=0; gk<NUMIO; gk=gk+1)
+		begin
+
+			xsdddr #(.OPT_BIDIR(1'b1))
+			u_dat_ddr(
+				.i_clk(i_clk), .i_en(1'b1),
+				.i_en(i_dat_en && (i_pp_data || !i_tx__data[24+gk])),
+				.i_data({(2){ i_tx_data[24+gk] }}),
+`ifdef	VERILATOR
+				.io_pin_tristate(io_data_tristate),
+				.o_pin(o_data),
+				.i_pin(i_data),
+`else
+				.io_pin(io_dat[gk]),
+`endif
+				.o_wide({ w_dat[gk+8], w_dat[gk] })
+			);
+
+		end for(gk=NUMIO; gk<8; gk=gk+1)
+		begin
+			assign	{ w_dat[8+gk], w_dat[gk] } = 2'b00;
+		end
+		// }}}
+
+		assign	next_pedge = { !last_ck && i_sdclk[7],
+				!i_sdclk[7] && i_sdclk[4] };
+		assign	next_dedge = next_pedge | (!i_cfg_ddr ? 2'b00
+			: {last_ck && !i_sdclk[7], i_sdclk[7] && !i_sdclk[4]});
+
+		// sample_ck
+		// {{{
+		initial	ck_sreg = 0;
+		always @(posedge i_clk)
+		if (i_data_en)
+			ck_sreg <= 0;
+		else
+			ck_sreg <= { ck_sreg[4:0], next_dedge };
+
+		initial	sample_ck = 0;
+		always @(*)
+		if (i_data_en)
+			sample_ck = 0;
+		else
+			// Verilator lint_off WIDTH
+			sample_ck = { ck_sreg[5:0], next_dedge } >> i_sample_shift[4:2];
+			// Verilator lint_on  WIDTH
+		// }}}
+
+		// cmd_sampl_ck: When do we sample the command line?
+		// {{{
+		always @(posedge i_clk)
+		if (i_cmd_en)
+			pck_sreg <= 0;
+		else
+			pck_sreg <= { pck_sreg[4:0], next_pedge };
+
+		always @(*)
+		if (!i_afifo_reset_n || i_data_en)
+			cmd_sample_ck = 0;
+		else
+			// Verilator lint_off WIDTH
+			cmd_sample_ck = { pck_sreg[5:0], next_pedge } >> i_sample_shift;
+			// Verilator lint_on  WIDTH
+		// }}}
+
+		always @(posedge i_clk)
+		if (i_cmd_en)
+			resp_started <= 1'b0;
+		else if ((cmd_sample_ck != 0) && (cmd_sampl_ck & w_cmd)==0)
+			resp_started <= 1'b1;
+
+		always @(posedge i_clk)
+		if (i_data_en)
+			io_started <= 1'b0;
+		else if (sample_ck != 0
+				&& ((sample_ck & { w_dat[8], w_dat[0] }) == 0))
+			io_started <= 1'b1;
+
+		// cmd_busy, wait_for_busy
+		// {{{
+		initial	{ cmd_busy, wait_for_busy } = 2'b01;
+		always @(posedge i_clk)
+		/*
+		if (i_reset)
+		begin
+			cmd_busy <= 1'b0;
+			wait_for_busy <= 1'b1;
+		end else */
+		if (i_cmd_en)
+		begin
+			cmd_busy <= 1'b0;
+			wait_for_busy <= 1'b1;
+		end else if (wait_for_busy && (cmd_sample_ck != 0)
+				&& (cmd_sample_ck & {w_dat[8],w_dat[0]})==2'b0)
+		begin
+			cmd_busy <= 1'b1;
+			wait_for_busy <= 1'b0;
+		end else if (!wait_for_busy
+				&& (cmd_sample_ck & {w_dat[8],w_dat[0]})!=2'b0)
+			cmd_busy <= 1'b0;
+
+		assign	o_cmd_busy = cmd_busy;
+		// }}}
+
+		initial	last_ck = 1'b0;
+		always @(posedge i_clk)
+		begin
+			last_ck <= i_sdclk[4];
+
+			if (i_cmd_en || cmd_sample_ck == 0)
+			begin
+				r_cmd_strb <= 1'b0;
+				// r_cmd_data <= r_cmd_data;
+			end else if (resp_started)
+			begin
+				r_cmd_strb <= 1'b1;
+				r_cmd_data <= |(cmd_sample_ck & w_cmd);
+			end else if ((cmd_sample_ck[1] && !w_cmd[1])
+					||(cmd_sampl_ck[0] && !w_cmd[0]))
+			begin
+				r_cmd_strb <= 1'b1;
+				r_cmd_data <= 1'b0;
+			end else
+				r_cmd_strb <= 1'b0;
+
+			if (i_data_en || sample_ck == 0)
+				r_rx_strb <= 1'b0;
+			else if (io_started)
+				r_rx_strb <= 1'b1;
+			else
+				r_rx_strb <= 1'b0;
+
+			if (sample_ck[1])
+				r_rx_data <= w_dat[15:8];
+			else
+				r_rx_data <= w_dat[7:0];
+		end
+
+		assign	o_cmd_strb = { r_cmd_strb, 1'b0 };
+		assign	o_cmd_data = { r_cmd_data, 1'b0 };
+		assign	o_rx_strb  = { r_rx_strb, 1'b0 };
+		assign	o_rx_data  = { r_rx_data, 8'h0 };
+
+		// No asynchronous outputs w/o OPT_SERDES
+		assign	MAC_VALID = 1'b0;
+		assign	MAC_DATA  = 2'h0;
+		assign	MAD_VALID = 1'b0;
+		assign	MAD_DATA  = 32'h0;
+
 		// }}}
 	end else begin : GEN_WIDE_IO
 		// {{{
@@ -269,6 +554,8 @@ module	sdfrontend #(
 		// the start of any incoming data is quietly stripped off,
 		// guaranteeing that all data will be aligned on the left/MSB
 		// sample.
+		//
+		// Fastest clock supported = incoming clock speed * 2
 
 		// Local declarations
 		// {{{
@@ -288,6 +575,31 @@ module	sdfrontend #(
 		reg	[1:0]	r_cmd_data;
 		reg	[1:0]	busy_strb, busy_data;
 		reg		busy_ck;
+		// }}}
+
+		// Clock
+		// {{{
+		// Verilator lint_off UNUSED
+		wire		io_clk_tristate, i_clk;
+		// Verilator lint_on  UNUSED
+
+		xsdserdes8x #(.OPT_BIDIR(1'b0))
+		u_clk_oserdes(
+			.i_clk(i_clk),
+			.i_hsclk(i_hsclk),
+			.i_en(1'b1),
+			.i_data(i_sdclk),
+`ifdef	VERILATOR
+			.io_pin_tristate(io_clk_tristate),
+			.o_pin(o_ck),
+			.i_pin(i_clk),
+`else
+			.io_pin(o_ck),
+`endif
+			// Verilator lint_off PINCONNECTEMPTY
+			.o_wide()
+			// Verilator lint_on  PINCONNECTEMPTY
+		);
 		// }}}
 
 		assign	next_pedge = { ~{last_ck, i_sdclk[7:1] } &  i_sdclk[7:0] };
@@ -343,7 +655,13 @@ module	sdfrontend #(
 				.i_hsclk(i_hsclk),
 				.i_en(out_en),
 				.i_data(out_pin),
+`ifdef	VERILATOR
+				.io_pin_tristate(io_data_tristate),
+				.o_pin(o_data),
+				.i_pin(i_data),
+`else
 				.io_pin(io_dat[gk]),
+`endif
 				.o_wide(in_pin)
 			);
 
@@ -477,7 +795,13 @@ module	sdfrontend #(
 			.i_hsclk(i_hsclk),
 			.i_en(i_cmd_en && (i_pp_cmd || !i_cmd_data[1])),
 			.i_data({ {(4){i_cmd_data[1]}}, {(4){i_cmd_data[0]}} }),
+// `ifdef	VERILATOR
+//			.io_pin_tristate(io_cmd_tristate),
+//			.o_pin(o_cmd),
+//			.i_pin(i_cmd),
+// `else
 			.io_pin(io_cmd),
+// `endif
 			.o_wide(wide_cmd_data)
 		);
 
@@ -677,4 +1001,3 @@ module	sdfrontend #(
 		// }}}
 	end endgenerate
 endmodule
-

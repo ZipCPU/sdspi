@@ -359,7 +359,6 @@ module	sdrxframe #(
 		rail_count <= 0;
 	else if (!busy && i_rx_en)
 	begin
-		busy <= 1;
 		// Verilator lint_off WIDTH
 		if (i_cfg_ds)
 			rail_count <= i_length + 16;

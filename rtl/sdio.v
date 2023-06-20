@@ -82,7 +82,7 @@ module	sdio #(
 		// But these ones ...
 		output	wire		o_cfg_ddr,
 		output	wire	[4:0]	o_cfg_sample_shift,
-		output	wire	[7:0]	o_sdclk,
+		output	reg	[7:0]	o_sdclk,
 		//
 		output	wire		o_cmd_en, o_pp_cmd,
 		output	wire	[1:0]	o_cmd_data,
@@ -119,11 +119,12 @@ module	sdio #(
 
 	// Local declarations
 	// {{{
-	wire		cfg_clk90, cfg_clk_shutdown, cfg_ds;
-	wire	[7:0]	cfg_ckspeed;
-	wire	[1:0]	cfg_width;
+	wire			cfg_clk90, cfg_clk_shutdown, cfg_ds;
+	wire	[7:0]		cfg_ckspeed;
+	wire	[1:0]		cfg_width;
 
-	wire		clk_stb;
+	wire			clk_stb, clk_half;
+	wire	[7:0]		w_sdclk;
 
 	wire			cmd_request, cmd_err, cmd_busy, cmd_done;
 	wire	[1:0]		cmd_type, cmd_ercode;
@@ -219,8 +220,7 @@ module	sdio #(
 		.i_cfg_clk90(cfg_clk90), .i_cfg_ckspd(cfg_ckspeed),
 		.i_cfg_shutdown(cfg_clk_shutdown),
 	
-		.o_ckstb(clk_stb),
-		.o_ckwide(o_sdclk)
+		.o_ckstb(clk_stb), .o_hlfck(clk_half), .o_ckwide(w_sdclk)
 		// }}}
 	);
 
@@ -264,7 +264,7 @@ module	sdio #(
 		.i_cfg_width(cfg_width),
 		.i_cfg_ddr(o_cfg_ddr),
 		//
-		.i_en(tx_en), .i_ckstb(clk_stb),
+		.i_en(tx_en), .i_ckstb(clk_stb), .i_hlfck(clk_half),
 		//
 		.S_VALID(tx_en && tx_mem_valid), .S_READY(tx_mem_ready),
 		.S_DATA(tx_mem_data), .S_LAST(tx_mem_last),
@@ -296,6 +296,9 @@ module	sdio #(
 	);
 
 	assign	o_afifo_reset_n = cfg_ds && rx_en;
+
+	always @(posedge i_clk)
+		o_sdclk <= w_sdclk;
 
 	//
 	// Make verilator happy

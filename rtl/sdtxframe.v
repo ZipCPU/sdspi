@@ -49,7 +49,7 @@ module	sdtxframe #(
 		input	wire	[1:0]		i_cfg_width,
 		input	wire			i_cfg_ddr,
 		//
-		input	wire			i_en, i_ckstb,
+		input	wire			i_en, i_ckstb, i_hlfck,
 		//
 		input	wire			S_VALID,
 		output	wire			S_READY,
@@ -112,7 +112,7 @@ module	sdtxframe #(
 	begin
 		if (i_cfg_ddr && i_cfg_spd == 0)
 			cfg_period <= 2'b10;	// Four clock periods
-		else if (i_cfg_ddr
+		else if ((i_cfg_ddr && i_cfg_spd == 1)
 			||(!i_cfg_ddr && i_cfg_spd == 0))
 			cfg_period <= 2'b01;	// Two clock periods
 		else
@@ -488,7 +488,7 @@ module	sdtxframe #(
 			endcase end
 			// }}}
 		endcase
-	end else if (i_ckstb && ck_counts > 0)
+	end else if ((i_ckstb || (i_hlfck && cfg_ddr)) && ck_counts > 0)
 	begin // Transition to idle
 		ck_counts <= ck_counts - 1;
 		case(cfg_period)
@@ -556,7 +556,6 @@ module	sdtxframe #(
 	end else begin
 		if (ck_ready)
 		begin // Fully idle
-			ck_valid <= 0;
 			if (i_ckstb)
 			begin
 				ck_data  <= -1;
@@ -581,14 +580,14 @@ module	sdtxframe #(
 		endcase
 	end
 
-	assign	pre_ready = (ck_counts == 0) && (!ck_valid || ck_ready);
+	assign	pre_ready = (ck_counts == 0) && i_ckstb && (!ck_valid || ck_ready);
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Final outputs
 	// {{{
 	assign	tx_valid = ck_valid;
-	assign	ck_ready = tx_ready;
+	assign	ck_ready = tx_ready && (i_ckstb || (i_hlfck && cfg_ddr));
 	assign	tx_data  = ck_data;
 	// }}}
 

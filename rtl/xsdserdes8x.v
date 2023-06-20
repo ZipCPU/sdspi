@@ -53,6 +53,7 @@ module	xsdserdes8x #(
 		// }}}
 	);
 
+`ifndef VERILATOR
 	wire	w_pin, w_in, w_reset, high_z;
 	assign	w_reset = 1'b0;	// Active high reset
 
@@ -126,4 +127,5 @@ module	xsdserdes8x #(
 		assign	unused = &{ 1'b0, w_in };
 		// Verilator lint_on  UNUSED
 	end endgenerate
+`endif	// VERILATOR
 endmodule

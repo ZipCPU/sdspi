@@ -95,14 +95,14 @@ module	sdwb #(
 		// {{{
 		output	reg			o_tx_en,
 		//
-		output	wire			o_tx_mem_valid,
+		output	reg			o_tx_mem_valid,
 		input	wire			i_tx_mem_ready,
 		output	reg	[31:0]		o_tx_mem_data,
-		output	wire			o_tx_mem_last,
+		output	reg			o_tx_mem_last,
 		// }}}
 		// RX interface
 		// {{{
-		output	wire			o_rx_en,
+		output	reg			o_rx_en,
 		output	wire			o_crc_en,
 		output	wire	[LGFIFO:0]	o_length,
 		//
@@ -352,7 +352,7 @@ module	sdwb #(
 	if (i_reset || !OPT_SERDES)
 		{ o_cfg_ds, o_cfg_ddr } <= 2'b00;
 	else if (i_wb_stb && !o_wb_stall && i_wb_addr == ADDR_PHY && i_wb_sel[1])
-		{ o_cfg_ds, o_cfg_ddr } <= i_wb_data[9:8];
+		{ o_cfg_ds, o_cfg_ddr } <= { (&i_wb_data[9:8]), i_wb_data[8] };
 
 	always @(posedge i_clk)
 	if (i_reset)

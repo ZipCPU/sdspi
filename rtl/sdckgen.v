@@ -55,6 +55,7 @@ module	sdckgen #(
 		input	wire			i_cfg_shutdown,
 		//
 		output	reg			o_ckstb,
+		output	reg			o_hlfck,
 		output	reg	[7:0]		o_ckwide
 		// }}}
 	);
@@ -141,24 +142,28 @@ module	sdckgen #(
 	if (i_reset)
 	begin
 		o_ckstb  <= 0;
+		o_hlfck <= 0;
 		o_ckwide <= 0;
 	end else if ((nxt_clk && i_cfg_shutdown) && (w_ckspd == 0))
 	begin
 		o_ckstb  <= 1'b1;	// Or should this be !i_cfg_shutdown?
+		o_hlfck  <= 1'b1;
 		o_ckwide <= (i_cfg_shutdown) ? 8'h00 : 8'h66;
 	end else if (w_ckspd == 1)
 	begin
 		o_ckstb  <= 1'b1;
+		o_hlfck  <= 1'b1;
 		o_ckwide <= 8'h3c;
 	end else if (w_ckspd == 2)
 	begin
-		o_ckstb  <= !nxt_counter[NCTR-1];
+		{ o_ckstb, o_hlfck } <= (!nxt_counter[NCTR-1]) ? 2'b10 : 2'b01;
 		if (w_clk90)
 			o_ckwide <= (!nxt_counter[NCTR-1]) ? 8'h0f : 8'hf0;
 		else
 			o_ckwide <= (!nxt_counter[NCTR-1]) ? 8'h00 : 8'hff;
 	end else begin
 		o_ckstb <= nxt_clk;
+		o_hlfck <= (counter == {2'b01, {(NCTR-2){1'b0}} });
 		if (w_clk90)
 			o_ckwide <= {(8){nxt_counter[NCTR-1]
 						^ nxt_counter[NCTR-2]}};

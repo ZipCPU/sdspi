@@ -106,13 +106,15 @@ module	sdckgen #(
 			else if (i_cfg_ckspd == 2)
 				nxt_counter = { 2'b01, {(NCTR-2){1'b0}} };
 			else
-				nxt_counter[NCTR-3:0] = i_cfg_ckspd-2;
+				nxt_counter[NCTR-3:0] = i_cfg_ckspd-3;
 		end
 	end
 
 	always @(posedge i_clk)
 	if (i_reset)
 		counter <= 0;
+	else if (nxt_clk && i_cfg_shutdown)
+		counter <= { 2'b11, {(NCTR-2){1'b0}} };
 	else
 		counter <= nxt_counter;
 	// }}}
@@ -138,22 +140,26 @@ module	sdckgen #(
 
 	// o_ckstb, o_ckwide
 	// {{{
+	initial	o_ckstb  = 1;
+	initial	o_hlfck  = 1;
+	initial	o_ckwide = 0;
 	always @(posedge i_clk)
 	if (i_reset)
 	begin
-		o_ckstb  <= 0;
-		o_hlfck <= 0;
+		o_ckstb  <= 1;
+		o_hlfck  <= 1;
 		o_ckwide <= 0;
-	end else if ((nxt_clk && i_cfg_shutdown) && (w_ckspd == 0))
+	end else if ((nxt_clk && i_cfg_shutdown) || (w_ckspd == 0))
 	begin
 		o_ckstb  <= 1'b1;	// Or should this be !i_cfg_shutdown?
 		o_hlfck  <= 1'b1;
-		o_ckwide <= (i_cfg_shutdown) ? 8'h00 : 8'h66;
+		o_ckwide <= (i_cfg_shutdown) ? 8'h00
+				: (i_cfg_clk90) ? 8'h66 : 8'h33;
 	end else if (w_ckspd == 1)
 	begin
 		o_ckstb  <= 1'b1;
 		o_hlfck  <= 1'b1;
-		o_ckwide <= 8'h3c;
+		o_ckwide <= (w_clk90) ? 8'h3c : 8'h0f;
 	end else if (w_ckspd == 2)
 	begin
 		{ o_ckstb, o_hlfck } <= (!nxt_counter[NCTR-1]) ? 2'b10 : 2'b01;

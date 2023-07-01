@@ -11,8 +11,8 @@
 //	sdwb:		Wishbone bus handler.  Also includes FIFO memory.
 //	sdckgen:	Digital clock divider
 //	sdcmd:		Request commands, process responses
-//	sdrxframer:	Process receive frames into memory writes
-//	sdtxframer:	Process memory reads into frames to transmit
+//	sdrxframe:	Process receive frames into memory writes
+//	sdtxframe:	Process memory reads into frames to transmit
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
@@ -56,12 +56,14 @@ module	sdio #(
 		//  serdes support.  Setting OPT_SERDES to zero will disable
 		//  that support, effectively limiting our operation to 50MHz
 		//  from a 100MHz clock.
-		localparam [0:0]	OPT_SERDES = 1'b0,
+		parameter [0:0]	OPT_SERDES = 1'b0,
+		parameter [0:0]	OPT_DDR = 1'b0,
+		parameter [0:0]	OPT_CARD_DETECT = 1'b1,
 		parameter	LGTIMEOUT = 6
 		// }}}
 	) (
 		// {{{
-		input	wire			i_clk, i_reset,
+		input	wire		i_clk, i_reset,
 		// Control (Wishbone) interface
 		// {{{
 		input	wire		i_wb_cyc, i_wb_stb, i_wb_we,
@@ -72,6 +74,8 @@ module	sdio #(
 		output	wire		o_wb_stall, o_wb_ack,
 		output	wire [MW-1:0]	o_wb_data,
 		// }}}
+		input	wire		i_card_detect,
+		output	wire		o_int,
 		// Interface to PHY
 		// {{{
 		// Not these wires--those will be the connections handled by
@@ -119,6 +123,8 @@ module	sdio #(
 
 	// Local declarations
 	// {{{
+	wire			soft_reset;
+
 	wire			cfg_clk90, cfg_clk_shutdown, cfg_ds;
 	wire	[7:0]		cfg_ckspeed;
 	wire	[1:0]		cfg_width;
@@ -152,6 +158,8 @@ module	sdio #(
 		// {{{
 		.LGFIFO(LGFIFO), .NUMIO(NUMIO),
 		.OPT_SERDES(OPT_SERDES),
+		.OPT_DDR(OPT_DDR),
+		.OPT_CARD_DETECT(OPT_CARD_DETECT),
 		// .OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN)
 		// .OPT_DMA(OPT_DMA)
 		.MW(MW)
@@ -177,6 +185,7 @@ module	sdio #(
 		.o_pp_cmd(o_pp_cmd), .o_pp_data(o_pp_data),
 		.o_cfg_sample_shift(o_cfg_sample_shift),
 		// }}}
+		.o_soft_reset(soft_reset),
 		// CMD control interface
 		// {{{
 		.o_cmd_request(cmd_request), .o_cmd_type(cmd_type),
@@ -207,8 +216,10 @@ module	sdio #(
 		.i_rx_mem_valid(rx_mem_valid), .i_rx_mem_strb(rx_mem_strb),
 			.i_rx_mem_addr(rx_mem_addr),.i_rx_mem_data(rx_mem_data),
 		//
-		.i_rx_done(rx_done), .i_rx_err(rx_err)
+		.i_rx_done(rx_done), .i_rx_err(rx_err),
 		// }}}
+		.i_card_detect(i_card_detect),
+		.o_int(o_int)
 		// }}}
 	);
 
@@ -225,11 +236,12 @@ module	sdio #(
 	);
 
 	sdcmd #(
+		.OPT_DS(OPT_SERDES),
 		.MW(MW),
 		.LGLEN(LGFIFO-$clog2(MW/8))
 	) u_sdcmd (
 		// {{{
-		.i_clk(i_clk), .i_reset(i_reset),
+		.i_clk(i_clk), .i_reset(i_reset || soft_reset),
 		//
 		.i_cfg_ds(cfg_ds), .i_cfg_dbl(cfg_ds && cfg_ckspeed == 0),
 		.i_ckstb(clk_stb),
@@ -242,7 +254,7 @@ module	sdio #(
 		//
 		.o_cmd_en(o_cmd_en), .o_cmd_data(o_cmd_data),
 		.i_cmd_strb(i_cmd_strb), .i_cmd_data(i_cmd_data),
-			.i_dat_busy(i_cmd_busy),
+			// .i_dat_busy(i_cmd_busy),
 		.S_ASYNC_VALID(S_AC_VALID), .S_ASYNC_DATA(S_AC_DATA),
 		//
 		.o_cmd_response(rsp_stb), .o_resp(rsp_id),
@@ -254,11 +266,11 @@ module	sdio #(
 	);
 
 	sdtxframe #(
-		.OPT_SERDES(OPT_SERDES)
+		.OPT_SERDES(OPT_SERDES || OPT_DDR)
 		// .MW(MW)
 	) u_txframe (
 		// {{{
-		.i_clk(i_clk), .i_reset(i_reset),
+		.i_clk(i_clk), .i_reset(i_reset || soft_reset),
 		//
 		.i_cfg_spd(cfg_ckspeed),
 		.i_cfg_width(cfg_width),
@@ -269,18 +281,20 @@ module	sdio #(
 		.S_VALID(tx_en && tx_mem_valid), .S_READY(tx_mem_ready),
 		.S_DATA(tx_mem_data), .S_LAST(tx_mem_last),
 		//
-		.tx_valid(o_data_en), .tx_ready(1'b1),
-		.tx_data(o_tx_data)
+		.tx_valid(o_data_en), .tx_data(o_tx_data)
 		// }}}
 	);
 
 	sdrxframe #(
+		// {{{
+		.OPT_DS(OPT_SERDES),
 		.LGLEN(LGFIFO),
 		.MW(MW),
 		.LGTIMEOUT(LGTIMEOUT)
+		// }}}
 	) u_rxframe (
 		// {{{
-		.i_clk(i_clk), .i_reset(i_reset),
+		.i_clk(i_clk), .i_reset(i_reset || soft_reset),
 		//
 		.i_cfg_ds(cfg_ds), .i_cfg_width(cfg_width),
 		.i_rx_en(rx_en), .i_crc_en(crc_en), .i_length(rx_length),

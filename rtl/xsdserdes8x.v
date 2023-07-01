@@ -48,13 +48,28 @@ module	xsdserdes8x #(
 		//
 		input	wire		i_en,
 		input	wire	[7:0]	i_data,
-		inout	wire		io_pin,
+		//
+		output	wire		io_tristate,
+		output	wire		o_pin,
+		input	wire		i_pin,
+		//
+		output	wire		o_raw,
 		output	wire	[7:0]	o_wide
 		// }}}
 	);
 
-`ifndef VERILATOR
-	wire	w_pin, w_in, w_reset, high_z;
+`ifdef VERILATOR
+	assign	io_tristate = 1'b1;
+	assign	o_pin = 1'b1;
+	assign	o_wide = 8'h0;
+	assign	o_raw = i_pin;
+
+	// Verilator lint_off UNUSED
+	wire	unused;
+	assign	unused = i_pin;
+	// Verilator lint_on  UNUSED
+`else
+	wire	w_pin, w_in, w_reset, high_z, fabric_return;
 	assign	w_reset = 1'b0;	// Active high reset
 
 	OSERDESE2 #(
@@ -69,23 +84,25 @@ module	xsdserdes8x #(
 		// {{{
 		// Verilator lint_off PINCONNECTEMPTY
 		.OCE(1'b1), .TCE(1'b1), .TFB(), .TQ(high_z),
-		.CLK(i_hsclk), .CLKDIV(i_clk), .OQ(w_pin), // .OFB(),
+		.CLK(i_hsclk), .CLKDIV(i_clk), .OQ(w_pin), .OFB(fabric_return),
 		.D1(i_data[7]),	.D2(i_data[6]),
 		.D3(i_data[5]),	.D4(i_data[4]),
 		.D5(i_data[3]),	.D6(i_data[2]),
 		.D7(i_data[1]),	.D8(i_data[0]),
 		.RST(w_reset), .TBYTEIN(1'b0), // .TBYTEOUT(),
-		.T1(!i_en), .T2(1'b0), .T3(1'b0), .T4(1'b0)
+		.T1(!i_en && OPT_BIDIR), .T2(1'b0), .T3(1'b0), .T4(1'b0)
 		// .SHIFTIN1(), .SHIFTIN2(), .SHIFTOUT1(), .SHIFTOUT2()
 		// Verilator lint_on  PINCONNECTEMPTY
 		// }}}
 	);
 
+	// Actual buffers are held externally
+	assign	io_tristate = high_z;
+	assign	o_pin = w_pin;
+	assign	w_in  = i_pin;
+
 	generate if (OPT_BIDIR)
 	begin : GEN_BIDIRECTIONAL
-		IOBUF u_iobuffer(
-			.T(high_z), .I(w_pin), .IO(io_pin), .O(w_in)
-		);
 
 		ISERDESE2 #(
 		// {{{
@@ -107,7 +124,7 @@ module	xsdserdes8x #(
 		.BITSLIP(1'b0), .CE(1'b1), // .CE2(),
 		.CLK(i_hsclk), .CLKB(!i_hsclk), .CLKDIV(i_clk), .CLKDIVP(1'b0),
 		.D(w_in), .DYNCLKDIVSEL(1'b0), .DYNCLKSEL(1'b0), // .DDLY()
-		.OCLK(1'b0), .OCLKB(1'b0), // .O(), .OFB(),
+		.OCLK(1'b0), .OCLKB(1'b0), .O(o_raw), // .OFB(),
 		.Q1(o_wide[0]),	.Q2(o_wide[1]),
 		.Q3(o_wide[2]),	.Q4(o_wide[3]),
 		.Q5(o_wide[4]),	.Q6(o_wide[5]),
@@ -118,9 +135,8 @@ module	xsdserdes8x #(
 		);
 	end else begin : GEN_OUTPUT
 
-		OBUF u_obuf( .I(w_pin), .O(io_pin));
-
 		assign	o_wide = 8'h0;
+		assign	o_raw  = fabric_return;
 
 		// Verilator lint_off UNUSED
 		wire	unused;

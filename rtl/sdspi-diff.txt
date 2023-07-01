@@ -1,0 +1,207 @@
+Index: sdspi.v
+===================================================================
+--- sdspi.v	(revision 2)
++++ sdspi.v	(working copy)
+@@ -130,7 +130,10 @@
+ 				r_fifo_id,
+ 				ll_fifo_wr, ll_fifo_rd,
+ 				r_have_data_response_token, 
+-				r_have_start_token;
++				r_have_start_token,
++				r_err_token;
++	reg	[3:0]	r_read_err_token;
++	reg	[1:0]	r_data_response_token;
+ 	reg	[7:0]	fifo_byte;
+ 	reg	[7:0]	r_last_r_one;
+ 	//
+@@ -242,9 +245,9 @@
+ 				if (r_have_resp)
+ 				begin
+ 					if (r_use_fifo)
+-						r_cmd_state <= r_cmd_state + 3'h1;
++						r_cmd_state <= r_cmd_state+3'h1;
+ 					else
+-						r_cmd_state <= r_cmd_state + 3'h2;
++						r_cmd_state <= r_cmd_state+3'h2;
+ 					ll_fifo_rd <= (r_use_fifo)&&(r_fifo_wr);
+ 					if ((r_use_fifo)&&(r_fifo_wr))
+ 						ll_cmd_dat <= 8'hfe;
+@@ -273,8 +276,8 @@
+ 			// are expecting.
+ 			if (pre_rsp_state)
+ 			begin
+-				if (r_rsp_state == `SDSPI_RSP_NONE)
+-				begin // Waiting on R1
++				case(r_rsp_state)
++				`SDSPI_RSP_NONE: begin // Waiting on R1
+ 					if (~ll_out_dat[7])
+ 					begin
+ 						r_last_r_one <= ll_out_dat;
+@@ -288,51 +291,58 @@
+ 						begin // Go wait on R1b
+ 							r_data_reg <= 32'hffffffff;
+ 						end // else wait on 32-bit rsp
+-					end
+-				end else if (r_rsp_state == `SDSPI_RSP_BSYWAIT)
+-				begin // Waiting on R1b, have R1
++					end end
++				`SDSPI_RSP_BSYWAIT: begin
++					// Waiting on R1b, have R1
+ 					if (nonzero_out)
+ 						r_have_resp <= 1'b1;
+ 					ll_cmd_stb <= (r_use_fifo);
+-				end else if (r_rsp_state == `SDSPI_RSP_GETWORD)
+-				begin // Have R1, waiting on all of R2/R3/R7
+-					r_data_reg <= { r_data_reg[23:0], ll_out_dat };
++					end 
++				`SDSPI_RSP_GETWORD: begin
++					// Have R1, waiting on all of R2/R3/R7
++					r_data_reg <= { r_data_reg[23:0],
++								ll_out_dat };
+ 					r_data_fil <= r_data_fil+2'b01;
+ 					if (r_data_fil == 2'b11)
+ 					begin
+ 						ll_cmd_stb <= (r_use_fifo);
+ 						// r_rsp_state <= 3'h3;
+-					end
+-				end else if (r_rsp_state == `SDSPI_RSP_WAIT_WHILE_BUSY)
+-				begin // Wait while device is busy writing
++					end end 
++				`SDSPI_RSP_WAIT_WHILE_BUSY: begin
++					// Wait while device is busy writing
+ 					// if (nonzero_out)
+ 					// begin
+ 						// r_data_reg[31:8] <= 24'h00;
+-						// r_data_reg[7:0] <= ll_out_dat;
++						// r_data_reg[7:0]<= ll_out_dat;
+ 						// // r_rsp_state <= 3'h6;
+ 					// end
+-					;
+-				end else if (r_rsp_state == `SDSPI_RSP_RDCOMPLETE)
+-				begin // Block write command has completed
++					end
++				`SDSPI_RSP_RDCOMPLETE: begin
++					// Block write command has completed
+ 					ll_cmd_stb <= 1'b0;
+-				end else if (r_rsp_state == `SDSPI_RSP_WRITING)
+-				begin // We are reading from the device into
++					end
++				`SDSPI_RSP_WRITING: begin
++					// We are reading from the device into
+ 					// our FIFO
+ 					if ((ll_fifo_wr_complete)
+ 						// Or ... we receive an error
+-						||((~r_have_start_token)
+-						&&(~ll_out_dat[4])
+-						&&(ll_out_dat[0])))
++						||(r_read_err_token[0]))
+ 					begin
+ 						ll_fifo_wr <= 1'b0;
+ 						ll_cmd_stb <= 1'b0;
+-					end
+-				end
++					end end
++				// `SDSPI_RSP_GETTOKEN:
++				default: begin end
++				endcase
+ 			end
+ 
++			if (r_use_fifo)
++				r_data_reg <= { 26'h3ffffff, r_data_response_token, r_read_err_token };
++
+ 			if (r_watchdog_err)
+ 				ll_cmd_stb <= 1'b0;
+-			r_cmd_err<= (r_cmd_err)|(fifo_crc_err)|(r_watchdog_err);
++			r_cmd_err<= (r_cmd_err)|(fifo_crc_err)|(r_watchdog_err)
++					|(r_err_token);
+ 		end else if (r_cmd_busy)
+ 		begin
+ 			r_cmd_busy <= (ll_cmd_stb)||(~ll_idle);
+@@ -478,7 +488,7 @@
+ 		case(i_wb_addr)
+ 		`SDSPI_CMD_ADDRESS:
+ 			o_wb_data <= { need_reset, 11'h00,
+-					3'h0, fifo_crc_err,
++					2'h0, r_err_token, fifo_crc_err,
+ 					r_cmd_err, r_cmd_busy, 1'b0, r_fifo_id,
+ 					r_use_fifo, r_fifo_wr, r_cmd_resp,
+ 					r_last_r_one };
+@@ -542,13 +552,12 @@
+ 	initial	pre_fifo_addr_inc_rd = 1'b0;
+ 	initial	pre_fifo_addr_inc_wr = 1'b0;
+ 	always @(posedge i_clk)
+-		pre_fifo_addr_inc_wr <= ((ll_fifo_wr)&&(ll_out_stb)&&(r_have_start_token));
++		pre_fifo_addr_inc_wr <= ((ll_fifo_wr)&&(ll_out_stb)
++						&&(r_have_start_token));
+ 	always @(posedge i_clk)
+-		pre_fifo_addr_inc_rd <= ((ll_fifo_rd)&&(ll_cmd_stb)&&(ll_idle));//&&(ll_fifo_pkt_state[2:0]!=3'b000));
++		pre_fifo_addr_inc_rd <= ((ll_fifo_rd)&&(ll_cmd_stb)&&(ll_idle));
+ 	always @(posedge i_clk)
+ 	begin
+-		// if ((write_stb)&&(i_wb_addr == `SDSPI_CMD_ADDRESS)&&(i_wb_data[11]))
+-			// ll_fifo_addr <= {(LGFIFOLN+2){1'b0}};
+ 		if (~r_cmd_busy)
+ 			ll_fifo_addr <= {(LGFIFOLN+2){1'b0}};
+ 		else if ((pre_fifo_addr_inc_wr)||(pre_fifo_addr_inc_rd))
+@@ -555,12 +564,38 @@
+ 			ll_fifo_addr <= ll_fifo_addr + 1;
+ 	end
+ 
+-	// Look for that start token
++	//
++	// Look for that start token.  This will be present when reading from 
++	// the device into the FIFO.
++	// 
+ 	always @(posedge i_clk)
+ 		if (~r_cmd_busy)
+ 			r_have_start_token <= 1'b0;
+ 		else if ((ll_fifo_wr)&&(ll_out_stb)&&(ll_out_dat==8'hfe))
+ 			r_have_start_token <= 1'b1;
++	always @(posedge i_clk)
++		if (~r_cmd_busy)
++			r_read_err_token <= 4'h0;
++		else if ((ll_fifo_wr)&&(ll_out_stb)&&(~r_have_start_token)
++				&&(ll_out_dat[7:4]==4'h0))
++			r_read_err_token <= ll_out_dat[3:0];
++	always @(posedge i_clk) // Look for a response to our writing
++		if (~r_cmd_busy)
++			r_data_response_token <= 2'b00;
++		else if ((ready_for_response_token)
++				&&(!ll_out_dat[4])&&(ll_out_dat[0]))
++			r_data_response_token <= ll_out_dat[3:2];
++	initial	r_err_token = 1'b0;
++	always @(posedge i_clk)
++		if (ll_fifo_rd)
++			r_err_token <= (r_err_token)|(r_read_err_token[0]);
++		else if (ll_fifo_wr)
++			r_err_token <= (r_err_token)|
++				((|r_data_response_token)&&(r_data_response_token[1]));
++		else if (cmd_stb)
++			// Clear the error on any write with the bit high
++			r_err_token  <= (r_err_token)&&(~i_wb_data[16])
++						&&(~i_wb_data[15]);
+ 
+ 	reg	last_fifo_byte;
+ 	initial last_fifo_byte = 1'b0;
+@@ -582,11 +617,16 @@
+ 		clear_fifo_crc;
+ 	always @(posedge i_clk)
+ 	begin
+-		pre_fifo_a_wr <= (ll_fifo_wr)&&(ll_out_stb)&&(~r_fifo_id)&&(ll_fifo_wr_state == 2'b00);
+-		pre_fifo_b_wr <= (ll_fifo_wr)&&(ll_out_stb)&&( r_fifo_id)&&(ll_fifo_wr_state == 2'b00);
+-		fifo_wr_crc_stb <= (ll_fifo_wr)&&(ll_out_stb)&&(ll_fifo_wr_state == 2'b00)&&(r_have_start_token);
+-		pre_fifo_crc_a<= (ll_fifo_wr)&&(ll_out_stb)&&(ll_fifo_wr_state == 2'b01);
+-		pre_fifo_crc_b<= (ll_fifo_wr)&&(ll_out_stb)&&(ll_fifo_wr_state == 2'b10);
++		pre_fifo_a_wr <= (ll_fifo_wr)&&(ll_out_stb)
++				&&(~r_fifo_id)&&(ll_fifo_wr_state == 2'b00);
++		pre_fifo_b_wr <= (ll_fifo_wr)&&(ll_out_stb)
++				&&( r_fifo_id)&&(ll_fifo_wr_state == 2'b00);
++		fifo_wr_crc_stb <= (ll_fifo_wr)&&(ll_out_stb)
++			&&(ll_fifo_wr_state == 2'b00)&&(r_have_start_token);
++		pre_fifo_crc_a<= (ll_fifo_wr)&&(ll_out_stb)
++				&&(ll_fifo_wr_state == 2'b01);
++		pre_fifo_crc_b<= (ll_fifo_wr)&&(ll_out_stb)
++				&&(ll_fifo_wr_state == 2'b10);
+ 		clear_fifo_crc <= (cmd_stb)&&(i_wb_data[15]);
+ 	end
+ 

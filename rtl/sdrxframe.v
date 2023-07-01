@@ -46,6 +46,7 @@ module	sdrxframe #(
 		parameter	MW = 32,
 		localparam	LGLENW = LGLEN-$clog2(MW/8),
 		parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,
+		parameter [0:0]	OPT_DS = 1'b0,
 		parameter	LGTIMEOUT = 22
 		// }}}
 	) (
@@ -85,8 +86,8 @@ module	sdrxframe #(
 	localparam	[NCRC-1:0]	CRC_POLYNOMIAL = 16'h1021;
 	genvar	gk;
 
-	reg		i_sync;
-	reg		syncd;
+	wire		i_sync;
+	wire		syncd;
 	reg	[4:0]	sync_fill;
 	reg	[19:0]	sync_sreg;
 
@@ -100,7 +101,7 @@ module	sdrxframe #(
 	reg	[LGLENW-1:0]		mem_addr;
 	reg	[$clog2(MW/8)-1:0]	subaddr;
 
-	reg			busy, data_phase, load_crc;
+	reg			busy, data_phase, load_crc, done;
 	reg	[LGLEN+4-1:0]	rail_count;
 
 	reg	[15:0]		crc	[0:NUMIO-1];
@@ -149,6 +150,7 @@ module	sdrxframe #(
 
 	// Step #1: Bit sync
 	// {{{
+/*
 	always @(*)
 	begin
 		case(i_cfg_width)
@@ -167,12 +169,17 @@ module	sdrxframe #(
 		syncd <= 0;
 	else if (i_sync)
 		syncd <= 1;
+*/
+
+	assign	i_sync = 1'b0;
+	assign	syncd  = 1'b1;
 
 	always @(posedge i_clk)
 	if (!i_rx_en)
 		sync_fill <= 0;
 	else if (i_rx_strb == 0)
 	begin
+		sync_fill[4:3] <= 2'b0;
 	end else if (syncd)
 	begin
 		// Verilator lint_off WIDTH
@@ -272,11 +279,13 @@ module	sdrxframe #(
 	//
 	//
 
+	// o_mem_valid
+	// {{{
 	always @(posedge i_clk)
 	if (i_reset || !i_rx_en || mem_full
-			|| (mem_valid && &mem_addr && mem_strb[0]))
+			|| (mem_valid && (&mem_addr) && mem_strb[0]))
 		mem_valid <= 0;
-	else if (!i_cfg_ds)
+	else if (!i_cfg_ds || !OPT_DS)
 	begin
 		mem_valid <= s2_valid;
 	end else begin
@@ -286,9 +295,14 @@ module	sdrxframe #(
 	always @(posedge i_clk)
 	if (i_reset || !i_rx_en)
 		mem_full <= 0;
-	else if (mem_valid && &mem_addr && mem_strb[0])
+	else if (mem_valid && (&mem_addr) && mem_strb[0])
 		mem_full <= 1;
 
+	assign	o_mem_valid = mem_valid;
+	// }}}
+
+	// o_mem_addr
+	// {{{
 	always @(posedge i_clk)
 	if (i_reset || !i_rx_en)
 		{ mem_addr, subaddr } <= 0;
@@ -301,10 +315,17 @@ module	sdrxframe #(
 		{ mem_addr, subaddr } <= { mem_addr, subaddr } + 4;
 	end
 
+	assign	o_mem_addr  = mem_addr;
+	// }}}
+
+	// o_mem_data, o_mem_strb
+	// {{{
 	always @(posedge i_clk)
 	if (i_reset || !i_rx_en || mem_full)
+	begin
 		mem_data <= 0;
-	else if (!i_cfg_ds)
+		mem_strb <= 0;
+	end else if (!i_cfg_ds || !OPT_DS)
 	begin
 		mem_strb <= 0;
 
@@ -313,7 +334,7 @@ module	sdrxframe #(
 			mem_data <= { s2_data[15:0], {(MW-16){1'b0}} } >> (subaddr*8);
 			mem_strb <= { 2'b11, {(MW/8-2){1'b0}} } >> (subaddr);
 		end else begin
-			mem_data <= { s2_data[7:0], {(MW-8){1'b0}} } >> (subaddr*8);
+			mem_data <= { s2_data[15:8], {(MW-8){1'b0}} } >> (subaddr*8);
 			mem_strb <= { 1'b1, {(MW/8-1){1'b0}} } >> (subaddr);
 		end
 	end else if (S_ASYNC_VALID)
@@ -322,9 +343,6 @@ module	sdrxframe #(
 		mem_strb <= { 4'hf, {(MW/8-4){1'b0}} } >> (subaddr);
 	end else
 		mem_strb <= 0;
-
-	assign	o_mem_valid = mem_valid;
-	assign	o_mem_addr  = mem_addr;
 
 	generate if (OPT_LITTLE_ENDIAN)
 	begin
@@ -345,19 +363,24 @@ module	sdrxframe #(
 		assign	o_mem_strb  = mem_strb;
 		assign	o_mem_data  = mem_data;
 	end endgenerate
+	// }}}
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Are we done?  Have we received a full packet?
-	////////////////////////////////////////////////////////////////////////
-	////////////////////////////////////////////////////////////////////////
 	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
 
 	always @(posedge i_clk)
-	if (i_reset)
+	if (i_reset || done)
+	begin
 		rail_count <= 0;
-	else if (!busy && i_rx_en)
+		load_crc   <= 0;
+		data_phase <= 0;
+	end else if (!busy && i_rx_en)
 	begin
 		// Verilator lint_off WIDTH
 		if (i_cfg_ds)
@@ -371,7 +394,7 @@ module	sdrxframe #(
 
 		data_phase <= 1;
 		load_crc   <= 0;
-	end else if (!i_cfg_ds)
+	end else if (!i_cfg_ds || !OPT_DS)
 	begin
 		if (syncd && i_rx_strb == 2'b11)
 		begin
@@ -402,10 +425,16 @@ module	sdrxframe #(
 	end
 
 	always @(posedge i_clk)
+	if (i_reset || !i_rx_en)
+		done <= 0;
+	else if (busy && !data_phase && !load_crc)
+		done <= 1'b1;
+
+	always @(posedge i_clk)
 	if (i_reset)
 		busy <= 0;
 	else if (!busy)
-		busy <= i_rx_en && i_length > 0;
+		busy <= i_rx_en && i_length > 0 && !done;
 	else
 		busy <= (data_phase || load_crc);
 	// }}}
@@ -426,7 +455,7 @@ module	sdrxframe #(
 		always @(posedge i_clk)
 		if (i_reset || !i_rx_en || !i_crc_en || !data_phase)
 			crc[gk] <= 0;
-		else if (!i_cfg_ds)
+		else if (!i_cfg_ds || !OPT_DS)
 		begin // CRC based upon synchronous inputs
 			// {{{
 			if (gk >= 1 && i_cfg_width == WIDTH_1W)
@@ -449,14 +478,11 @@ module	sdrxframe #(
 		begin // Asynchronous CRC generation
 			// {{{
 			// Note that in ASYNC mode, all rails are used (IIRC)
-			crc[gk] <= STEPCRC(
-					STEPCRC(
-						STEPCRC(
-							STEPCRC(crc[gk],
-								S_ASYNC_DATA[gk+24]),
-							S_ASYNC_DATA[gk+16]),
-						S_ASYNC_DATA[gk+8]),
-					S_ASYNC_DATA[gk]);
+			crc[gk] <= STEPCRC( STEPCRC( STEPCRC( STEPCRC(crc[gk],
+					S_ASYNC_DATA[gk+24]),
+					S_ASYNC_DATA[gk+16]),
+					S_ASYNC_DATA[gk+ 8]),
+					S_ASYNC_DATA[gk   ]);
 			// }}}
 		end
 		// }}}
@@ -465,7 +491,7 @@ module	sdrxframe #(
 		if (i_reset || !i_rx_en || !i_crc_en || !load_crc)
 		begin
 			check[gk] <= 0;
-		end else if (!i_cfg_ds)
+		end else if (!i_cfg_ds || !OPT_DS)
 		begin
 			// {{{
 			if (!syncd)
@@ -521,9 +547,9 @@ module	sdrxframe #(
 	end
 
 	function automatic [NCRC-1:0]	STEPCRC(reg[NCRC-1:0] prior,
-						input i_data);
+						input i_crc_data);
 	begin
-		if (prior[NCRC-1] ^ i_data)
+		if (prior[NCRC-1] ^ i_crc_data)
 			STEPCRC = { prior[NCRC-2:0], 1'b0 } ^ CRC_POLYNOMIAL;
 		else
 			STEPCRC = { prior[NCRC-2:0], 1'b0 };
@@ -537,8 +563,8 @@ module	sdrxframe #(
 
 	always @(posedge i_clk)
 	if (i_reset || !i_rx_en
-			|| (!i_cfg_ds && i_rx_strb != 0)
-			|| (i_cfg_ds && S_ASYNC_VALID))
+			|| ((!OPT_DS || !i_cfg_ds) && i_rx_strb != 0)
+			|| (OPT_DS && i_cfg_ds && S_ASYNC_VALID))
 	begin
 		r_watchdog <= 0;
 		r_timeout  <= -1;
@@ -555,7 +581,15 @@ module	sdrxframe #(
 	// wire	unused;
 	// assign	unused = i_wb_cyc;
 	// verilator lint_on  UNUSED
-
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+//
+// Formal properties
+// {{{
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
 	reg	f_past_valid;
 	initial	f_past_valid = 0;
@@ -602,5 +636,5 @@ module	sdrxframe #(
 		busy = (count >0)&&(count < length+16);
 
 `endif	// FORMAL
+// }}}
 endmodule
-

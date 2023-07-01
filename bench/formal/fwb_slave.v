@@ -2,7 +2,7 @@
 //
 // Filename:	fwb_slave.v
 // {{{
-// Project:	Zip CPU -- a small, lightweight, RISC CPU soft core
+// Project:	SPI-based SD-Card controller
 //
 // Purpose:	This file describes the rules of a wishbone interaction from the
 //		perspective of a wishbone slave.  These formal rules may be used

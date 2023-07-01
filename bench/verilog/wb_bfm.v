@@ -2,7 +2,7 @@
 //
 // Filename: 	wb_bfm.v
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SDIO SD-Card controller
 //
 // Purpose:	Drive a Wishbone bus via commands from a test script.
 //

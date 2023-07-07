@@ -2,10 +2,11 @@
 //
 // Filename: 	sdspi.v
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SPI-based SD-Card controller
 //
 // Purpose:	SD Card controller, using SPI interface with the card and
-//		WB interface with the rest of the system.
+//		WB interface with the rest of the system.  This is the top
+//	level of the SPI based controller.
 //
 //	See the specification for more information.
 //
@@ -150,6 +151,7 @@ module	sdspi #(
 	wire		wb_stb, write_stb, wb_cmd_stb, new_data;
 	wire	[AW-1:0]	wb_addr;
 	wire	[DW-1:0]	wb_data;
+	wire	[3:0]		wb_sel;
 	reg	[1:0]	pipe_addr;
 	reg		dly_stb;
 
@@ -170,7 +172,7 @@ module	sdspi #(
 
 	//
 	//
-	reg		card_removed, card_present;
+	wire		card_removed, card_present;
 	//
 	reg	[3:0]	r_lgblklen;
 	wire	[3:0]	max_lgblklen;
@@ -218,13 +220,15 @@ module	sdspi #(
 	begin : EXTRA_WB_PASSTHROUGH
 		// {{{
 		assign	wb_stb    = ((i_wb_stb)&&(!o_wb_stall));
-		assign	write_stb = ((wb_stb)&&( i_wb_we));
-	// assign	read_stb  = ((wb_stb)&&(!i_wb_we));
-		assign	wb_cmd_stb  = (!r_cmd_busy)&&(write_stb)
+		assign	write_stb = ((wb_stb)&&( i_wb_we) && i_wb_sel != 0);
+		// assign	read_stb  = ((wb_stb)&&(!i_wb_we));
+		assign	wb_sel = i_wb_sel;
+		assign	wb_cmd_stb  = (!r_cmd_busy)&& write_stb && (&i_wb_sel)
 				&&(i_wb_addr==SDSPI_CMD_ADDRESS);
 		assign	wb_addr = i_wb_addr;
 		assign	wb_data = i_wb_data;
-		assign	new_data = (i_wb_stb)&&(!o_wb_stall)&&(i_wb_we)
+		assign	new_data = (i_wb_stb)&&(!o_wb_stall)
+				&&(i_wb_we && i_wb_sel != 0)
 				&&(i_wb_addr == SDSPI_DAT_ADDRESS);
 		// }}}
 	end else begin : GEN_EXTRA_WB_CLOCK
@@ -232,6 +236,7 @@ module	sdspi #(
 		reg		r_wb_stb, r_write_stb, r_wb_cmd_stb, r_new_data;
 		reg	[AW-1:0]	r_wb_addr;
 		reg	[DW-1:0]	r_wb_data;
+		reg	[DW/8-1:0]	r_wb_sel;
 
 		initial	r_wb_stb = 1'b0;
 		always @(posedge i_clk)
@@ -239,15 +244,20 @@ module	sdspi #(
 
 		initial	r_write_stb = 1'b0;
 		always @(posedge i_clk)
-			r_write_stb <= ((i_wb_stb)&&(!o_wb_stall)&&(i_wb_we));
+			r_write_stb <= ((i_wb_stb)&&(!o_wb_stall)&&(i_wb_we && i_wb_sel != 0));
+
+		initial	r_wb_sel = 1'b0;
+		always @(posedge i_clk)
+			r_wb_sel <= i_wb_sel;
 
 		initial	r_wb_cmd_stb = 1'b0;
 		always @(posedge i_clk)
-			r_wb_cmd_stb <= (!r_cmd_busy)&&(i_wb_stb)&&(!o_wb_stall)&&(i_wb_we)
+			r_wb_cmd_stb <= (!r_cmd_busy)&&(i_wb_stb)&&(!o_wb_stall)&&(i_wb_we && i_wb_sel != 0)
 					&&(i_wb_addr == SDSPI_CMD_ADDRESS);
 
 		always @(posedge i_clk)
-			r_new_data <= (i_wb_stb)&&(!o_wb_stall)&&(i_wb_we)
+			r_new_data <= (i_wb_stb)&&(!o_wb_stall)
+					&&(i_wb_we && i_wb_sel != 0)
 					&&(i_wb_addr == SDSPI_DAT_ADDRESS);
 
 		always @(posedge i_clk)
@@ -262,6 +272,7 @@ module	sdspi #(
 		assign	new_data = r_new_data;
 		assign	wb_addr  = r_wb_addr;
 		assign	wb_data  = r_wb_data;
+		assign	wb_sel   = r_wb_sel;
 		// }}}
 	end endgenerate
 	// }}}
@@ -372,7 +383,7 @@ module	sdspi #(
 		begin // Command write
 			// Clear the read/write address
 			fifo_wb_addr <= {(LGFIFOLN){1'b0}};
-		end else if ((wb_stb)&&(wb_addr[1]))
+		end else if ((wb_stb)&&(wb_addr[1] && wb_sel != 0))
 		begin // On read or write, of either FIFO,
 			// we increase our pointer
 			// if (wb_sel[0])
@@ -399,7 +410,7 @@ module	sdspi #(
 		write_fifo_a_addr <= spi_write_addr[LGFIFOLN-1:0];
 		// write_fifo_a_mask <= 4'hf;
 	end else begin
-		write_fifo_a      <= write_stb &&(wb_addr == SDSPI_FIFO_A_ADDR);
+		write_fifo_a      <= write_stb &&(wb_addr == SDSPI_FIFO_A_ADDR) &&(&wb_sel);
 		write_fifo_a_data <= wb_data;
 		write_fifo_a_addr <= fifo_wb_addr;
 		// write_fifo_a_mask <= 4'hf;
@@ -414,7 +425,7 @@ module	sdspi #(
 		write_fifo_b_addr <= spi_write_addr[LGFIFOLN-1:0];
 		// write_fifo_b_mask <= 4'hf;
 	end else begin
-		write_fifo_b      <= write_stb &&(wb_addr == SDSPI_FIFO_B_ADDR);
+		write_fifo_b      <= write_stb &&(wb_addr == SDSPI_FIFO_B_ADDR) && (&wb_sel);
 		write_fifo_b_data <= wb_data;
 		write_fifo_b_addr <= fifo_wb_addr;
 		// write_fifo_b_mask <= 4'hf;
@@ -712,15 +723,16 @@ module	sdspi #(
 	begin : GEN_CARD_DETECT
 		reg	[2:0]	raw_card_present;
 		reg	[9:0]	card_detect_counter;
+		reg		r_card_removed, r_card_present;
 
-		initial	card_removed = 1'b1;
+		initial	r_card_removed = 1'b1;
 		always @(posedge i_clk)
 		if (i_sd_reset)
-			card_removed <= 1'b1;
+			r_card_removed <= 1'b1;
 		else if (!card_present)
-			card_removed <= 1'b1;
+			r_card_removed <= 1'b1;
 		else if (wb_cmd_stb && wb_data[CARD_REMOVED_BIT])
-			card_removed <= 1'b0;
+			r_card_removed <= 1'b0;
 
 		initial	raw_card_present = 0;
 		always @(posedge i_clk)
@@ -733,20 +745,20 @@ module	sdspi #(
 		else if (!(&card_detect_counter))
 			card_detect_counter <= card_detect_counter + 1;
 
-		initial card_present = 1'b0;
+		initial r_card_present = 1'b0;
 		always @(posedge i_clk)
 		if (i_sd_reset || !raw_card_present[2])
-			card_present <= 1'b0;
+			r_card_present <= 1'b0;
 		else if (&card_detect_counter)
-			card_present <= 1'b1;
+			r_card_present <= 1'b1;
+
+		assign	card_present = r_card_present;
+		assign	card_removed = r_card_removed;
 
 	end else begin : NO_CARD_DETECT_SIGNAL
 
-		always @(*)
-			card_present = 1'b1;
-
-		always @(*)
-			card_removed = 1'b0;
+		assign	card_present = 1'b1;
+		assign	card_removed = 1'b0;
 
 	end endgenerate
 	// }}}
@@ -835,11 +847,16 @@ module	sdspi #(
 		.F_MAX_STALL(1),
 		.F_MAX_ACK_DELAY(2),
 		.F_OPT_DISCONTINUOUS(1),
-		.F_OPT_MINCLOCK_DELAY(1))
-	fwb(i_clk, !f_past_valid,
-		i_wb_cyc, i_wb_stb, i_wb_we, i_wb_addr, i_wb_data, i_wb_sel,
-			o_wb_stall, o_wb_ack, o_wb_data, 1'b0,
-		f_nreqs, f_nacks, f_outstanding);
+		.F_OPT_MINCLOCK_DELAY(1)
+	) fwb(
+		.i_clk(i_clk), .i_reset(!f_past_valid),
+		.i_wb_cyc(i_wb_cyc), .i_wb_stb(i_wb_stb), .i_wb_we(i_wb_we),
+		.i_wb_addr(i_wb_addr),.i_wb_data(i_wb_data),.i_wb_sel(i_wb_sel),
+			.i_wb_stall(o_wb_stall), .i_wb_ack(o_wb_ack),
+			.i_wb_idata(o_wb_data), .i_wb_err(1'b0),
+		.f_nreqs(f_nreqs), .f_nacks(f_nacks),
+		.f_outstanding(f_outstanding)
+	);
 
 	always @(*)
 	if (i_wb_cyc)
@@ -1020,9 +1037,10 @@ endmodule
 //
 // Filename: 	spicmd.v
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SPI-based SD-Card controller
 //
-// Purpose:	
+// Purpose:	Issues commands and collects responses from the lower level
+//		SPI processor.
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
@@ -1051,7 +1069,6 @@ endmodule
 //
 //
 ////////////////////////////////////////////////////////////////////////////////
-//
 //
 `default_nettype	none
 // }}}
@@ -1532,7 +1549,7 @@ endmodule
 //
 // Filename: 	spitxdata.v
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SPI-based SD-Card controller
 //
 // Purpose:	To handle all of the processing associated with sending data
 //		from a memory to our lower-level SPI processor.
@@ -1565,8 +1582,7 @@ endmodule
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-//
-`default_nettype none
+`default_nettype	none
 // }}}
 module spitxdata #(
 		// {{{
@@ -2262,7 +2278,7 @@ endmodule
 //
 // Filename: 	spirxdata.v
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SDIO SD-Card controller
 //
 // Purpose:	To handle all of the processing associated with receiving data
 //		from an SD card via the lower-level SPI processor, and then
@@ -2297,7 +2313,7 @@ endmodule
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-`default_nettype none
+`default_nettype	none
 // }}}
 module spirxdata #(
 		// {{{
@@ -2957,7 +2973,7 @@ endmodule
 //
 // Filename: 	llsdspi.v
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SPI-based SD-Card controller
 //
 // Purpose:	This file implements the "lower-level" interface to the
 //		SD-Card controller.  Specifically, it turns byte-level
@@ -3622,6 +3638,13 @@ module	llsdspi #(
 	else if (|(f_start_seq & {(8){2'b10}}))
 		assert(!o_sclk);
 
+	generate if (!OPT_CONTINUOUS_CLOCK)
+	begin
+		always @(*)
+		if (f_start_seq[17:0] == 18'h001)
+			cover(r_state == LLSDSPI_START);
+	end endgenerate
+
 	always @(*)
 	case(f_start_seq[17:0])
 	18'h001: begin
@@ -3629,6 +3652,7 @@ module	llsdspi #(
 		assert(r_byte == fv_byte[7:0] );
 		assert(r_state == LLSDSPI_START);
 		// assert(o_mosi == fv_byte[7]);
+		assert(!OPT_CONTINUOUS_CLOCK);
 		assert(!o_cs_n);
 		assert(!r_idle);
 		end
@@ -3992,11 +4016,11 @@ module	llsdspi #(
 		assume(i_miso == f_rxdata[7]);
 		end
 	18'h004: begin
-		assume(i_miso == f_rxdata[7]);
+		// assume(i_miso == f_rxdata[7]);
 		assert(r_ireg[0] == f_rxdata[7]);
 		end
 	18'h008: begin
-		assume(i_miso == f_rxdata[6]);
+		// assume(i_miso == f_rxdata[6]);
 		assert(r_ireg[0] == f_rxdata[7]);
 		end
 	18'h010: begin

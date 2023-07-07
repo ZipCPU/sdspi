@@ -79,7 +79,7 @@ doc:
 .PHONY: formal
 ## {{{
 formal:
-	$(SUBMAKE) bench/formal
+	+$(SUBMAKE) bench/formal
 ## }}}
 
 .PHONY: bench
@@ -91,6 +91,7 @@ bench: rtl
 .PHONY: test
 ## {{{
 test: formal rtl
+	$(SUBMAKE) bench/verilog test
 	$(SUBMAKE) bench/cpp test
 ## }}}
 #.PHONY: sw

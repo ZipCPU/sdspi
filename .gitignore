@@ -8,6 +8,7 @@ obj-zip
 *.a
 *.vcd
 *.fst
+*.log
 .*.swp
 .*.swo
 svn-commit*

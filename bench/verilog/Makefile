@@ -44,6 +44,14 @@ tb_sdckgen: $(RTL)/sdckgen.v tb_sdckgen.v
 tb_txframe: $(RTL)/sdckgen.v $(RTL)/sdtxframe.v tb_txframe.v
 	iverilog -g2012 $^ -o $@
 
+.PHONY: test_ckgen
+test_ckgen: tb_sdckgen
+	./tb_sdckgen
+
+.PHONY: test_txframe
+test_txframe: tb_txframe
+	./tb_txframe
+
 .PHONY: test
-test:
+test: test_txframe test_ckgen
 	perl sim_sdio.pl sdiostart

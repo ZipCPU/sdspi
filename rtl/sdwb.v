@@ -154,6 +154,7 @@ module	sdwb #(
 	reg	[1:0]	r_width;
 	reg	[7:0]	r_ckspeed;
 	reg	[31:0]	w_cmd_word, w_phy_ctrl;
+	reg	[15:0]	blk_words;
 
 	integer	ika, ikb;
 	localparam	NFIFOW = (1<<LGFIFO) / (MW/8);
@@ -649,7 +650,6 @@ module	sdwb #(
 	always @(*)
 		fif_b_rdaddr = (o_tx_en &&  r_fifo) ? tx_mem_addr[LGFIFO32-1:$clog2(MW/32)] : fif_rdaddr;
 
-	reg	[15:0]	blk_words;
 	always @(*)
 		blk_words = (1<<(lgblk-2))-1;
 	always @(*)

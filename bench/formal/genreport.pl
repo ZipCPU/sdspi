@@ -44,7 +44,7 @@ $dir = ".";
 @proofs = (
 	"llsdspi",
 	"sdspi",
-	"sdcmd",
+	"spicmd",
 	"spirxdata",
 	"spitxdata",
 	##
@@ -58,10 +58,10 @@ $dir = ".";
 
 %desc = (
 	"llsdspi"	=> "Low-Level SPI handler",
-	"sdspi"		=> "Top level controller",
-	"sdcmd"		=> "Command processor",
-	"spirxdata"	=> "Data receive handler",
-	"spitxdata"	=> "Data transmit handler",
+	"sdspi"		=> "SDSPI Top level controller",
+	"spicmd"	=> "SPI Command processor",
+	"spirxdata"	=> "SPI Data receive handler",
+	"spitxdata"	=> "SPI Data transmit handler",
 	##
 	"sdio"		=> "Main SDIO controller",
 	"sdwb"		=> "SDIO Bus handler",

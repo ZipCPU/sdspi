@@ -667,6 +667,13 @@ module	llsdspi #(
 	else if (|(f_start_seq & {(8){2'b10}}))
 		assert(!o_sclk);
 
+	generate if (!OPT_CONTINUOUS_CLOCK)
+	begin
+		always @(*)
+		if (f_start_seq[17:0] == 18'h001)
+			cover(r_state == LLSDSPI_START);
+	end endgenerate
+
 	always @(*)
 	case(f_start_seq[17:0])
 	18'h001: begin
@@ -674,7 +681,7 @@ module	llsdspi #(
 		assert(r_byte == fv_byte[7:0] );
 		assert(r_state == LLSDSPI_START);
 		// assert(o_mosi == fv_byte[7]);
-		cover(r_state == LLSDSPI_START);
+		assert(!OPT_CONTINUOUS_CLOCK);
 		assert(!o_cs_n);
 		assert(!r_idle);
 		end

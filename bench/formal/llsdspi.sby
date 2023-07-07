@@ -2,9 +2,9 @@
 prfa prf optarbiter
 prf
 prfc prf continuous
-cvra cvr optarbiter
 cvr
-cvr continuous
+cvra cvr optarbiter
+cvrc cvr continuous
 
 [options]
 prf: mode prove

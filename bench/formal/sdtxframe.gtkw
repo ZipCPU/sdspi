@@ -1,0 +1,61 @@
+[*]
+[*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
+[*] Mon Jul  3 23:06:36 2023
+[*]
+[dumpfile_mtime] "Mon Jul  3 23:05:56 2023"
+[dumpfile_size] 173733
+[timestart] 0
+[size] 1406 891
+[pos] -1 -1
+*-5.748147 190 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 362
+[signals_width] 158
+[sst_expanded] 1
+[sst_vpaned_height] 258
+@28
+sdtxframe.i_clk
+sdtxframe.i_reset
+sdtxframe.i_en
+sdtxframe.i_cfg_ddr
+@22
+sdtxframe.i_cfg_spd[7:0]
+@28
+sdtxframe.i_cfg_width[1:0]
+@200
+-
+@28
+sdtxframe.i_ckstb
+sdtxframe.i_hlfck
+@200
+-
+@28
+sdtxframe.S_VALID
+sdtxframe.S_READY
+@22
+sdtxframe.S_DATA[31:0]
+@28
+sdtxframe.S_LAST
+@200
+-
+@28
+sdtxframe.tx_valid
+@22
+sdtxframe.tx_data[31:0]
+@200
+-
+@28
+sdtxframe.pstate[1:0]
+@22
+sdtxframe.ck_counts[4:0]
+@200
+-
+@22
+sdtxframe.fb_count[14:0]
+sdtxframe.fd_count[14:0]
+sdtxframe.fd_offset[5:0]
+sdtxframe.fd_count[14:0]
+sdtxframe.fs_count[9:0]
+@29
+sdtxframe.fs_last
+[pattern_trace] 1
+[pattern_trace] 0

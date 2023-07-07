@@ -187,6 +187,70 @@ module	sdckgen #(
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
+	reg	f_past_valid;
+
+	initial	f_past_valid = 1'b0;
+	always @(posedge i_clk)
+		f_past_valid <= 1'b1;
+
+	always @(*)
+	if (!f_past_valid)
+		assume(i_reset);
+
+	always @(*)
+	if (i_cfg_ckspd == 0)
+		assume(i_cfg_clk90);
+
+	always @(posedge i_clk)
+	if (f_past_valid)
+	begin
+		if (ckspd == 0)
+		begin
+			assert(o_ckstb);
+			assert(counter == 0
+				||counter == {2'b11,{(NCTR-2){1'b0}} });
+		end
+		if (ckspd == 1)
+			assert(counter == {2'b11,{(NCTR-2){1'b0}} });
+		if (ckspd == 2)
+			assert(counter == 0
+				|| counter == {2'b01,{(NCTR-2){1'b0}} }
+				|| counter == {2'b10,{(NCTR-2){1'b0}} }
+				|| counter == {2'b11,{(NCTR-2){1'b0}} });
+		if (ckspd >= 3)
+			assert(counter[NCTR-3:0] <= (ckspd-3));
+	end
+
+	always @(*)
+	if (!i_reset && o_ckstb && o_hlfck)
+		assert(ckspd <= 1 || (o_ckwide == 0 && nxt_clk));
+
+	always @(*)
+	if (!i_reset)
+	case(o_ckwide)
+	8'h00: if (nxt_clk)
+		begin
+			assert(counter == {2'b11,{(NCTR-2){1'b0}} } || ckspd == 0);
+		end else if(!clk90)
+		begin
+			assert(counter[NCTR-1] == 1'b0);
+		end else if(clk90)
+		begin
+			assert(counter[NCTR-1:NCTR-2] == 2'b00
+				||counter[NCTR-1:NCTR-2] == 2'b11);
+		end
+	8'h0f: assert((!clk90 && ckspd == 1 && o_ckstb && o_hlfck)
+			||(clk90 && ckspd == 2 && o_ckstb));
+	8'hf0: assert(clk90 && ckspd == 2 && !o_ckstb && o_hlfck);
+	8'hff: if(!clk90) assert(counter[NCTR-1] == 1'b1);
+		else
+			assert(counter[NCTR-1:NCTR-2] == 2'b01
+				|| counter[NCTR-1:NCTR-2] == 2'b10);
+	8'h3c: assert( clk90 && ckspd == 1 && o_ckstb && o_hlfck);
+	8'h33: assert(!clk90 && ckspd == 0 && o_ckstb && o_hlfck);
+	8'h66: assert( clk90 && ckspd == 0 && o_ckstb && o_hlfck);
+	default: assert(0);
+	endcase
 `endif	// FORMAL
 // }}}
 endmodule

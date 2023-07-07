@@ -109,8 +109,6 @@ module	xsdddr #(
 		reg		r_p, r_n;
 		reg	[1:0]	r_in;
 
-		// assign	w_in = (high_z) ? i_pin : o_pin;
-
 		always @(posedge i_clk)
 			r_p <= w_in;
 		always @(negedge i_clk)

@@ -121,6 +121,8 @@ $(SDSPIRX)_cvr/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
 $(SDCMD): $(SDCMD)_prf/PASS # $(SDCMD)_cvr/PASS
 $(SDCMD)_prf/PASS: $(RTL)/$(SDCMD).v $(SDCMD).sby
 	sby -f $(SDCMD).sby prf
+$(SDCMD)_prfds/PASS: $(RTL)/$(SDCMD).v $(SDCMD).sby
+	sby -f $(SDCMD).sby prfds
 # $(SDCMD)_cvr/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
 #	sby -f $(SDSPIRX).sby cvr
 ## }}}

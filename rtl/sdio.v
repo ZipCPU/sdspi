@@ -254,7 +254,6 @@ module	sdio #(
 		//
 		.o_cmd_en(o_cmd_en), .o_cmd_data(o_cmd_data),
 		.i_cmd_strb(i_cmd_strb), .i_cmd_data(i_cmd_data),
-			// .i_dat_busy(i_cmd_busy),
 		.S_ASYNC_VALID(S_AC_VALID), .S_ASYNC_DATA(S_AC_DATA),
 		//
 		.o_cmd_response(rsp_stb), .o_resp(rsp_id),
@@ -316,9 +315,13 @@ module	sdio #(
 
 	//
 	// Make verilator happy
+	// {{{
+	// verilator coverage_off
 	// verilator lint_off UNUSED
-	// wire	unused;
-	// assign	unused = i_wb_cyc;
+	wire	unused;
+	assign	unused = &{ 1'b0, i_cmd_busy };
 	// verilator lint_on  UNUSED
+	// verilator coverage_on
+	// }}}
 endmodule
 

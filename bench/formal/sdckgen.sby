@@ -1,0 +1,21 @@
+[tasks]
+prf
+# cvr
+
+[options]
+prf: mode prove
+# cvr: mode cover
+
+[engines]
+smtbmc
+
+[script]
+read -formal sdckgen.v
+--pycode-begin--
+cmd = "hierarchy -top sdckgen"
+output(cmd)
+--pycode-end--
+prep -top sdckgen
+
+[files]
+../../rtl/sdckgen.v

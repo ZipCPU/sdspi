@@ -847,11 +847,16 @@ module	sdspi #(
 		.F_MAX_STALL(1),
 		.F_MAX_ACK_DELAY(2),
 		.F_OPT_DISCONTINUOUS(1),
-		.F_OPT_MINCLOCK_DELAY(1))
-	fwb(i_clk, !f_past_valid,
-		i_wb_cyc, i_wb_stb, i_wb_we, i_wb_addr, i_wb_data, i_wb_sel,
-			o_wb_stall, o_wb_ack, o_wb_data, 1'b0,
-		f_nreqs, f_nacks, f_outstanding);
+		.F_OPT_MINCLOCK_DELAY(1)
+	) fwb(
+		.i_clk(i_clk), .i_reset(!f_past_valid),
+		.i_wb_cyc(i_wb_cyc), .i_wb_stb(i_wb_stb), .i_wb_we(i_wb_we),
+		.i_wb_addr(i_wb_addr),.i_wb_data(i_wb_data),.i_wb_sel(i_wb_sel),
+			.i_wb_stall(o_wb_stall), .i_wb_ack(o_wb_ack),
+			.i_wb_idata(o_wb_data), .i_wb_err(1'b0),
+		.f_nreqs(f_nreqs), .f_nacks(f_nacks),
+		.f_outstanding(f_outstanding)
+	);
 
 	always @(*)
 	if (i_wb_cyc)

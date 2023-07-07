@@ -52,6 +52,15 @@ module	tb_txframe;
 	reg	[31:0]	S_DATA;
 	wire		tx_valid;
 	wire	[31:0]	tx_data;
+	wire	S_READY;
+
+	// For CRC checking ...
+	genvar	gk;
+	reg	crc_fsm, pc, ph, dc, dh, pre_fsm, dly_fsm;
+	parameter		NCRC = 16;
+	parameter [NCRC-1:0]	CRC_POLYNOMIAL  = 16'h1021;
+	reg	[7:0]		rail_fail, eval_rail;
+	reg			crc_fail;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -73,7 +82,6 @@ module	tb_txframe;
 	//
 	// Module under test
 	// {{{
-	wire	S_READY;
 
 	sdtxframe #(
 		.OPT_SERDES(OPT_SERDES)
@@ -110,7 +118,7 @@ module	tb_txframe;
 			tx_en <= 0;
 			S_VALID <= 0;
 			S_DATA  <= $random;
-			S_LAST  <= 0;
+			S_LAST  <= (length <= 1);
 		end
 
 		@(posedge clk)
@@ -124,7 +132,7 @@ module	tb_txframe;
 			begin
 				S_VALID <= !S_LAST;
 				S_DATA  <= $random;
-				S_LAST  <= (counter+1) >= length;
+				S_LAST  <= (counter+2) >= length;
 				counter <= counter + 1;
 			end
 
@@ -180,7 +188,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h0;
 			cfg_width = 2'b10;
 			cfg_ddr   = 1'b1;
-		end send_packet(128);
+		end
+		send_packet(128);
+		send_packet(128);
 
 		@(posedge clk)
 		begin
@@ -188,7 +198,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h0;
 			cfg_width = 2'b01;
 			cfg_ddr   = 1'b1;
-		end send_packet(128);
+		end
+		send_packet(128);
+		send_packet(128);
 
 		@(posedge clk)
 		begin
@@ -196,7 +208,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h0;
 			cfg_width = 2'b00;
 			cfg_ddr   = 1'b1;
-		end send_packet(128);
+		end
+		send_packet(128);
+		send_packet(128);
 		// }}}
 
 		// DDR100
@@ -207,7 +221,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h1;
 			cfg_width = 2'b10;
 			cfg_ddr   = 1'b1;
-		end send_packet(5);
+		end
+		send_packet(5);
+		send_packet(5);
 
 		@(posedge clk)
 		begin
@@ -215,7 +231,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h1;
 			cfg_width = 2'b01;
 			cfg_ddr   = 1'b1;
-		end send_packet(5);
+		end
+		send_packet(5);
+		send_packet(5);
 
 		@(posedge clk)
 		begin
@@ -223,7 +241,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h1;
 			cfg_width = 2'b00;
 			cfg_ddr   = 1'b1;
-		end send_packet(5);
+		end
+		send_packet(5);
+		send_packet(5);
 		// }}}
 
 		// SDR100
@@ -234,7 +254,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h1;
 			cfg_width = 2'b10;
 			cfg_ddr   = 1'b0;
-		end send_packet(5);
+		end
+		send_packet(5);
+		send_packet(5);
 
 		@(posedge clk)
 		begin
@@ -242,7 +264,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h1;
 			cfg_width = 2'b01;
 			cfg_ddr   = 1'b0;
-		end send_packet(5);
+		end
+		send_packet(5);
+		send_packet(5);
 
 		@(posedge clk)
 		begin
@@ -250,7 +274,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h1;
 			cfg_width = 2'b00;
 			cfg_ddr   = 1'b0;
-		end send_packet(5);
+		end
+		send_packet(5);
+		send_packet(5);
 		// }}}
 
 		// DDR50
@@ -261,7 +287,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h2;
 			cfg_width = 2'b10;
 			cfg_ddr   = 1'b1;
-		end send_packet(5);
+		end
+		send_packet(5);
+		send_packet(5);
 
 		@(posedge clk)
 		begin
@@ -269,7 +297,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h2;
 			cfg_width = 2'b01;
 			cfg_ddr   = 1'b1;
-		end send_packet(5);
+		end
+		send_packet(5);
+		send_packet(5);
 
 		@(posedge clk)
 		begin
@@ -277,7 +307,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h2;
 			cfg_width = 2'b00;
 			cfg_ddr   = 1'b1;
-		end send_packet(5);
+		end
+		send_packet(5);
+		send_packet(5);
 		// }}}
 
 		// SDR50
@@ -288,7 +320,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h2;
 			cfg_width = 2'b10;
 			cfg_ddr   = 1'b0;
-		end send_packet(128);
+		end
+		send_packet(128);
+		send_packet(128);
 
 		@(posedge clk)
 		begin
@@ -296,7 +330,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h2;
 			cfg_width = 2'b01;
 			cfg_ddr   = 1'b0;
-		end send_packet(128);
+		end
+		send_packet(128);
+		send_packet(128);
 
 		@(posedge clk)
 		begin
@@ -304,7 +340,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h2;
 			cfg_width = 2'b00;
 			cfg_ddr   = 1'b0;
-		end send_packet(128);
+		end
+		send_packet(128);
+		send_packet(128);
 		// }}}
 
 		// SDRSLOW
@@ -315,7 +353,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h3;
 			cfg_width = 2'b10;
 			cfg_ddr   = 1'b0;
-		end send_packet(128);
+		end
+		send_packet(128);
+		send_packet(128);
 
 		@(posedge clk)
 		begin
@@ -323,7 +363,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h3;
 			cfg_width = 2'b01;
 			cfg_ddr   = 1'b0;
-		end send_packet(128);
+		end
+		send_packet(128);
+		send_packet(128);
 
 		@(posedge clk)
 		begin
@@ -331,7 +373,9 @@ module	tb_txframe;
 			cfg_spd   = 8'h3;
 			cfg_width = 2'b00;
 			cfg_ddr   = 1'b0;
-		end send_packet(128);
+		end
+		send_packet(128);
+		send_packet(128);
 		// }}}
 
 		$finish;
@@ -341,12 +385,22 @@ module	tb_txframe;
 	//
 	// CRC checking
 	// {{{
-	genvar	gk;
-	reg	crc_fsm, pc, ph, dc, dh, pre_fsm;
-	parameter		NCRC = 16;
-	parameter [NCRC-1:0]	CRC_POLYNOMIAL  = 16'h1021;
-	reg	[7:0]		rail_fail, eval_rail;
-	reg			crc_fail;
+
+	// Note:
+	// {{{
+	// tx_valid will be true on the stop bit, for which everything is one.
+	// Our indication that things are done, however, is when tx_valid drops.
+	// Therefore, we need to delay all evaluations by one clock cycle, to
+	// allow for that final stop-bit clock cycle.
+	//
+	// To make this delay happen, the following signals are delayed by one
+	// clock cycle:
+	//
+	//	(Original)		(Delayed)
+	//	pre_fsm			crc_fsm
+	//	ckstb,hlfck		pc,ph
+	//	tx_data			delay
+	// }}}
 
 	initial	crc_fail = 1'b0;
 
@@ -354,17 +408,30 @@ module	tb_txframe;
 	always @(posedge clk)
 	if (reset)
 		{ crc_fsm, pre_fsm } <= 0;
-	else if (pc && !tx_valid)
+	else if (ph && !tx_valid)
 		{ crc_fsm, pre_fsm } <= 0;
-	else if (pre_fsm && !crc_fsm)
+	else if (pre_fsm && !crc_fsm && ph)
 		crc_fsm <= 1'b1;
 	else if (!tx_data[0] && pc && !crc_fsm)
 		{ crc_fsm, pre_fsm } <= { 1'b0, 1'b1 };
+
+	always @(posedge clk)
+	if (reset)
+		dly_fsm <= 1'b0;
+	else if (tx_valid && crc_fsm && ph && !dly_fsm)
+		dly_fsm <= 1'b1;
+	else if (tx_valid && pc && ph && !dly_fsm && pre_fsm)
+		dly_fsm <= 1'b1;
+	else if (!tx_valid)
+		dly_fsm <= 1'b0;
 
 	initial	{ pc, ph } = 2'b00;
 	always @(posedge clk)
 		{ dc, dh, pc, ph } <= { pc, ph, ckstb, hlfck };
 
+	// DEBUG: Display raw incoming source data, on a per-rail basis
+	// {{{
+	// We show rail zero only ...
 	always @(posedge clk)
 	if (S_VALID && S_READY && 0)
 	begin
@@ -394,16 +461,19 @@ module	tb_txframe;
 			$display("DATA: %08x -> %1x %1d", S_DATA, { S_DATA[24],
 					S_DATA[ 8] }, S_LAST);
 	end
+	// }}}
 
 	generate for(gk=0; gk<8; gk=gk+1)
 	begin : GEN_CRC_CHECK
-		reg	[3:0]	delay;
+		reg	[3:0]	pedge_delay, nedge_delay;
 		wire	[3:0]	vector;
 		reg	[15:0]	crcfill, hlffill, psreg, nsreg;
 		reg	[15:0]	crcpast	[0:15];
 		reg	[15:0]	hlfpast	[0:15];
+		reg		pedge_fail, nedge_fail, pedge_eval, nedge_eval;
 		reg		validpin;
 		integer		sp, sh;
+		reg	[15:0]	last_half;
 
 		initial	rail_fail[gk] = 1'b0;
 		initial	eval_rail[gk] = 1'b0;
@@ -421,29 +491,33 @@ module	tb_txframe;
 			validpin <= 0;
 
 		// always @(*) delay = vector;
-		always @(posedge clk) delay <= vector;
+		always @(posedge clk)
+		if (pc)
+			pedge_delay <= vector;
+
+		always @(posedge clk)
+		if (ph)
+			nedge_delay <= vector;
 
 		always @(posedge clk)
 		if (!crc_fsm || !validpin)
 		begin
 			crcfill <= 0;
-			eval_rail[gk] <= 1'b0;
-			rail_fail[gk] <= 1'b0;
+			pedge_eval <= 1'b0;
+			pedge_fail <= 1'b0;
 		end else if (crc_fsm && tx_valid && pc)
 		begin
 			if (cfg_spd == 0)
 				crcfill <= STEPCRC(
-					STEPCRC(crcfill, delay[3]), delay[1]);
+					STEPCRC(crcfill, pedge_delay[3]), pedge_delay[1]);
 			else
-				crcfill <= STEPCRC(crcfill, delay[3]);
+				crcfill <= STEPCRC(crcfill, pedge_delay[3]);
 		end else if (crc_fsm && !tx_valid && pc && validpin)
 		begin
 			assert(crcfill == 0);
-			eval_rail[gk] <= 1'b1;
-			rail_fail[gk] <= (crcfill != 0);
+			pedge_eval <= 1'b1;
+			pedge_fail <= (crcfill != 0);
 		end
-
-		reg	[15:0]	last_half;
 
 		always @(posedge clk)
 		if (crc_fsm && tx_valid && ph)
@@ -451,26 +525,31 @@ module	tb_txframe;
 
 		always @(posedge clk)
 		if (!crc_fsm || !validpin || !cfg_ddr)
+		begin
 			hlffill <= 0;
-		else if (crc_fsm && tx_valid && ph)
+			nedge_fail <= 1'b0;
+			nedge_eval <= 1'b0;
+		end else if (dly_fsm && tx_valid && ph)
 		begin
 			if (cfg_spd == 0)
 			begin
 				hlffill <= STEPCRC(
-					STEPCRC(hlffill, delay[2]), delay[0]);
+					STEPCRC(hlffill, nedge_delay[2]), nedge_delay[0]);
 			end else
-				hlffill <= STEPCRC(crcfill, delay[2]);
+				hlffill <= STEPCRC(hlffill, nedge_delay[2]);
 		end else if (crc_fsm && !tx_valid && pc && validpin)
 		begin
-			if (cfg_spd < 2)
-				assert(hlffill == 0);
-			else
-				assert(last_half == 0);
-			eval_rail[gk] <= 1'b1;
-			if (last_half != 0)
-				rail_fail[gk] <= 1'b1;
+			nedge_eval <= 1'b1;
+			nedge_fail <= (hlffill != 0);
 		end
+
+		always @(*) rail_fail[gk] = pedge_fail || nedge_fail;
+		always @(*) eval_rail[gk] = pedge_eval || nedge_eval;
 	end endgenerate
+
+	always @(posedge clk)
+	if (!reset)
+		assert(0 == (eval_rail & rail_fail));
 
 	function automatic [NCRC-1:0] STEPCRC(input [NCRC-1:0] prior,
 		// {{{

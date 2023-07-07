@@ -1,0 +1,27 @@
+[tasks]
+prf
+# cvr
+
+[options]
+prf: mode prove
+# cvr: mode cover
+prf: depth 10
+
+[engines]
+smtbmc
+
+[script]
+read -formal sdwb.v
+read -formal fwb_slave.v
+read -formal fwb_register.v
+--pycode-begin--
+cmd = "hierarchy -top sdwb"
+output(cmd)
+--pycode-end--
+proc -norom
+prep -top sdwb
+
+[files]
+../../rtl/sdwb.v
+fwb_slave.v
+fwb_register.v

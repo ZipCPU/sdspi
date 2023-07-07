@@ -1,0 +1,23 @@
+[tasks]
+prf
+cvr
+
+[options]
+prf: mode prove
+cvr: mode cover
+cvr: depth 96
+
+[engines]
+smtbmc
+
+[script]
+read -formal sdtxframe.v
+--pycode-begin--
+cmd = "hierarchy -top sdtxframe"
+output(cmd)
+--pycode-end--
+proc -norom
+prep -top sdtxframe
+
+[files]
+../../rtl/sdtxframe.v

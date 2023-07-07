@@ -5,3 +5,8 @@ spitxdata_*/
 spirxdata_*/
 spicmd_*/
 sdspi_*/
+#
+sdwb_*/
+sdckgen_*/
+sdcmd_*/
+sdtxframe_*/

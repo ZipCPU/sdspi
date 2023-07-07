@@ -61,7 +61,7 @@ $dir = ".";
 	"sdspi"		=> "Top level controller",
 	"sdcmd"		=> "Command processor",
 	"spirxdata"	=> "Data receive handler",
-	"spitxdata"	=> "Data transmit handler"
+	"spitxdata"	=> "Data transmit handler",
 	##
 	"sdio"		=> "Main SDIO controller",
 	"sdwb"		=> "SDIO Bus handler",
@@ -189,7 +189,7 @@ foreach $prf (sort @proofs) {
 	foreach $dent (@dirent) {
 		next if (! -d $dent);
 		next if ($dent =~ /^\./);
-		next if ($dent !~ /$prf(_\S+)/);
+		next if ($dent !~ /^$prf(_\S+)/);
 			$subprf = $1;
 
 		$ndirs = $ndirs+1;
@@ -205,7 +205,7 @@ foreach $prf (sort @proofs) {
 		# Only look at subdirectories
 		next if (! -d $dent);
 		next if ($dent =~ /^\./);
-		next if ($dent !~ /$prf(_\S+)/);
+		next if ($dent !~ /^$prf(_\S+)/);
 			$subprf = $1;
 		# print("<TR><TD>$dent matches $prf</TD></TR>\n");
 		## }}}

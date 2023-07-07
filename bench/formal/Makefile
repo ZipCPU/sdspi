@@ -2,7 +2,7 @@
 ##
 ## Filename: 	Makefile
 ## {{{
-## Project:	SD-Card controller, using a shared SPI interface
+## Project:	SD-Card controller(s)
 ##
 ## Purpose:	
 ##
@@ -11,7 +11,7 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2019-2022, Gisselquist Technology, LLC
+## Copyright (C) 2019-2023, Gisselquist Technology, LLC
 ## {{{
 ## This program is free software (firmware): you can redistribute it and/or
 ## modify it under the terms of  the GNU General Public License as published
@@ -36,14 +36,21 @@
 ##
 ## }}}
 .PHONY: all
-all:	sdspi llsdspi spicmd spitxdata spirxdata report
+all:	sdspi llsdspi spicmd spitxdata spirxdata sdcmd sdwb sdckgen sdtxframe report
 
 RTL := ../../rtl
+## SDSPI components
 SDSPI := sdspi
 LLSDSPI := llsdspi
 SDSPITX := spitxdata
 SDSPIRX := spirxdata
 SPICMD  := spicmd
+## SDIO components
+SDCMD := sdcmd
+SDWB  := sdwb
+SDCK  := sdckgen
+SDTX  := sdtxframe
+SDRX  := sdrxframe
 
 .PHONY: $(LLSDSPI)
 ## {{{
@@ -108,6 +115,52 @@ $(SDSPIRX)_prfle/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
 $(SDSPIRX)_cvr/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
 	sby -f $(SDSPIRX).sby cvr
 ## }}}
+
+.PHONY: $(SDCMD)
+## {{{
+$(SDCMD): $(SDCMD)_prf/PASS # $(SDCMD)_cvr/PASS
+$(SDCMD)_prf/PASS: $(RTL)/$(SDCMD).v $(SDCMD).sby
+	sby -f $(SDCMD).sby prf
+# $(SDCMD)_cvr/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
+#	sby -f $(SDSPIRX).sby cvr
+## }}}
+
+.PHONY: $(SDWB)
+## {{{
+$(SDWB): $(SDWB)_prf/PASS # $(SDCMD)_cvr/PASS
+$(SDWB)_prf/PASS: $(RTL)/$(SDWB).v $(SDWB).sby fwb_slave.v fwb_register.v
+	sby -f $(SDWB).sby prf
+# $(SDWB)_cvr/PASS: $(RTL)/$(SDWB).v $(SDWB).sby fwb_slave.v fwb_register.v
+#	sby -f $(SDWB).sby cvr
+## }}}
+
+.PHONY: $(SDCK)
+## {{{
+$(SDCK): $(SDCK)_prf/PASS # $(SDCK)_cvr/PASS
+$(SDCK)_prf/PASS: $(RTL)/$(SDCK).v $(SDCK).sby
+	sby -f $(SDCK).sby prf
+# $(SDCK)_cvr/PASS: $(RTL)/$(SDCK).v $(SDCK).sby
+#	sby -f $(SDCK).sby cvr
+## }}}
+
+.PHONY: $(SDTX)
+## {{{
+$(SDTX): $(SDTX)_prf/PASS $(SDTX)_cvr/PASS
+$(SDTX)_prf/PASS: $(RTL)/$(SDTX).v $(SDTX).sby
+	sby -f $(SDTX).sby prf
+$(SDTX)_cvr/PASS: $(RTL)/$(SDTX).v $(SDTX).sby
+	sby -f $(SDTX).sby cvr
+## }}}
+
+.PHONY: $(SDRX)
+## {{{
+$(SDRX): $(SDRX)_prf/PASS $(SDRX)_cvr/PASS
+$(SDRX)_prf/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
+	sby -f $(SDRX).sby prf
+$(SDRX)_cvr/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
+	sby -f $(SDRX).sby cvr
+## }}}
+
 
 .PHONY: report
 ## {{{

@@ -48,7 +48,8 @@ module	sdwb #(
 		parameter [0:0]	OPT_DDR = 1'b0,
 		parameter [0:0]	OPT_CARD_DETECT = 1'b1,
 		localparam	LGFIFOW=LGFIFO-$clog2(MW/8),
-		parameter [0:0]	OPT_DMA = 1'b0
+		parameter [0:0]	OPT_DMA = 1'b0,
+		parameter [0:0]	OPT_1P8V= 1'b0	// 1.8V voltage switch capable?
 		// }}}
 	) (
 		// {{{
@@ -57,11 +58,11 @@ module	sdwb #(
 		// {{{
 		input	wire			i_wb_cyc, i_wb_stb, i_wb_we,
 		input	wire	[2:0]		i_wb_addr,
-		input	wire	[MW-1:0]	i_wb_data,
-		input	wire	[MW/8-1:0]	i_wb_sel,
+		input	wire	[32-1:0]	i_wb_data,
+		input	wire	[32/8-1:0]	i_wb_sel,
 		output	wire			o_wb_stall,
 		output	reg			o_wb_ack,
-		output	reg	[MW-1:0]	o_wb_data,
+		output	reg	[32-1:0]	o_wb_data,
 		// }}}
 		// Configuration options
 		// {{{
@@ -103,6 +104,7 @@ module	sdwb #(
 		input	wire			i_tx_mem_ready,
 		output	reg	[31:0]		o_tx_mem_data,
 		output	reg			o_tx_mem_last,
+		input	wire			i_tx_busy,
 		// }}}
 		// RX interface
 		// {{{
@@ -118,6 +120,8 @@ module	sdwb #(
 		input	wire			i_rx_done, i_rx_err,
 		// }}}
 		input	wire			i_card_detect,
+		input	wire			i_card_busy,
+		output	wire			o_1p8v,
 		output	reg			o_int
 		// }}}
 	);
@@ -146,7 +150,7 @@ module	sdwb #(
 
 	wire		wb_cmd_stb, wb_phy_stb;
 	reg	[6:0]	r_cmd;
-	reg		r_tx_request, r_rx_request;
+	reg		r_tx_request, r_rx_request, r_tx_sent;
 	reg		r_fifo, r_cmd_err;
 	reg	[1:0]	r_cmd_ecode;
 	reg	[31:0]	r_arg;
@@ -183,49 +187,96 @@ module	sdwb #(
 	//
 	// Registers
 	// {{{
-	reg	cmd_busy;
+	reg	cmd_busy, new_cmd_request, new_data_request, new_tx_request;
 
 	// CMD/control register
 	// {{{
 	assign	wb_cmd_stb = i_wb_stb && i_wb_addr == ADDR_CMD && i_wb_we;
 
+	// o_soft_reset
+	// {{{
 	initial	o_soft_reset = 1'b1;
 	always @(posedge i_clk)
-	if (i_reset)
+	if (i_reset || !card_present)
 		o_soft_reset <= 1'b1;
 	else
 		o_soft_reset <= (wb_cmd_stb)&&(&i_wb_sel[3:0])
 					&&(i_wb_data==32'h52_00_00_00);
+	// }}}
+
+	// o_cmd_request
+	// {{{
+	always @(*)
+	begin
+		new_cmd_request = !cmd_busy && wb_cmd_stb && i_wb_sel[0]
+			&& (i_wb_data[7:6] == CMD_PREFIX);
+
+		new_data_request = wb_cmd_stb && (&i_wb_sel[1:0])
+			&& ((!cmd_busy && i_wb_data[7:6] == CMD_PREFIX)
+						|| i_wb_data[7:6] == 2'b00)
+			&& ((i_wb_data[13] && OPT_DMA)
+					|| i_wb_data[USE_FIFO_BIT]
+				||(!cmd_busy && i_wb_data[7:6] == CMD_PREFIX
+						&& i_wb_data[9:8] == R2_REPLY));
+
+		// If the FIFO is already in use, then we can't accept any
+		// new command which would require the FIFO
+		// {{{
+		if (o_tx_en || r_tx_request || o_rx_en || r_rx_request)
+			new_data_request = 1'b0;
+		if (cmd_busy && o_cmd_type == R2_REPLY)
+			new_data_request = 1'b0;
+
+		// If we want an R2 reply, then the data channels need to be
+		// clear.
+		if ((o_tx_en || r_tx_request || o_rx_en || r_rx_request)
+				&&((i_wb_sel[1] && i_wb_data[9:8] == R2_REPLY)
+				||(!i_wb_sel[1]&&o_cmd_type == R2_REPLY)))
+			new_cmd_request = 1'b0;
+
+		// If we are requesting a new command, one that requires data
+		// transfer, and the data channels are still busy, then we
+		// must refuse the command.
+		if ((o_tx_en || r_tx_request || o_rx_en || r_rx_request)
+			&&((i_wb_data[13] && OPT_DMA)
+					|| i_wb_data[USE_FIFO_BIT]))
+			new_cmd_request = 1'b0;
+		// }}}
+
+		if (i_reset || o_soft_reset)
+			{ new_data_request, new_cmd_request } = 2'b0;
+	end
 
 	initial	o_cmd_request = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		o_cmd_request <= 1'b0;
-	else if (!cmd_busy && wb_cmd_stb && i_wb_sel[0])
+	else if (new_cmd_request)
 	begin
-		o_cmd_request <= (i_wb_data[7:6] == CMD_PREFIX);
-
-		if ((o_tx_en || r_tx_request || o_rx_en || r_rx_request)
-				&&((i_wb_sel[1] && i_wb_data[9:8] == R2_REPLY)
-				||(!i_wb_sel[1]&&o_cmd_type == R2_REPLY)))
-			o_cmd_request <= 1'b0;
+		o_cmd_request <= 1'b1;
 	end else if (!i_cmd_busy)
 		o_cmd_request <= 1'b0;
+	// }}}
 
+	// cmd_busy: Are we waiting on a command to complete?
+	// {{{
 	initial	cmd_busy = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		cmd_busy <= 1'b0;
-	else if (!cmd_busy && wb_cmd_stb && i_wb_sel[0])
-	begin
-		cmd_busy <= (i_wb_data[7:6] == CMD_PREFIX);
-		if ((o_tx_en || r_tx_request || o_rx_en || r_rx_request)
-				&&((i_wb_sel[1] && i_wb_data[9:8] == R2_REPLY)
-				||(!i_wb_sel[1]&&o_cmd_type == R2_REPLY)))
-			cmd_busy <= 1'b0;
-	end else if (i_cmd_done)
+	else if (new_cmd_request)
+		cmd_busy <= 1'b1;
+	else if (i_cmd_done)
 		cmd_busy <= 1'b0;
+`ifdef	FORMAL
+	always @(*)
+	if (i_reset && o_cmd_request)
+		assert(cmd_busy);
+`endif
+	// }}}
 
+	// o_cmd_id: What command are we issuing?
+	// {{{
 	initial	r_cmd = 7'b0;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
@@ -238,37 +289,69 @@ module	sdwb #(
 		r_cmd <= { 1'b0, i_resp };
 
 	assign	o_cmd_id = r_cmd[5:0];
+	// }}}
 
+	// o_cmd_type: What response to expect?  None, R1, R2, or R1b
+	// {{{
 	initial	o_cmd_type = 2'b00;
 	always @(posedge i_clk)
-	if (!cmd_busy && wb_cmd_stb && i_wb_sel[1])
+	if (i_reset || o_soft_reset)
+		o_cmd_type <= 2'b00;
+	else if (new_cmd_request && i_wb_sel[1])
 		o_cmd_type <= i_wb_data[9:8];
+	// }}}
 
-	// o_tx_en, r_tx_request
+	// o_tx_en, r_tx_request, r_tx_sent
 	// {{{
+	always @(*)
+	begin
+		new_tx_request = new_data_request && i_wb_data[FIFO_WRITE_BIT];
+		if (i_wb_data[9:8] == R2_REPLY
+				&& i_wb_data[7:6] == CMD_PREFIX)
+			new_tx_request = 1'b0;
+		if (i_reset || o_soft_reset)
+			new_tx_request = 1'b0;
+	end
+
 	initial	r_tx_request = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		r_tx_request <= 1'b0;
-	else if (!o_tx_en && !r_tx_request && !o_rx_en && !r_rx_request
-		&& !cmd_busy && wb_cmd_stb && (&i_wb_sel[1:0]))
-	begin
-		r_tx_request <= i_wb_data[FIFO_WRITE_BIT]
-			&&((i_wb_data[7:6]== CMD_PREFIX)||(i_wb_data[7:0] == 0))
-			&& ((i_wb_data[13] && OPT_DMA) || i_wb_data[USE_FIFO_BIT]);
-		if (i_wb_data[9:8] == R2_REPLY)
-			r_tx_request <= 1'b0;
-	end else if (!cmd_busy && !o_cmd_request && !o_tx_en)
+	else if (new_tx_request)
+		r_tx_request <= 1'b1;
+	else if (!cmd_busy && !o_cmd_request && !o_tx_en && !i_card_busy)
 		r_tx_request <= 1'b0;
+
+	initial	r_tx_sent = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset || o_soft_reset || !o_tx_en)
+		r_tx_sent <= 1'b0;
+	else if (o_tx_mem_valid && i_tx_mem_ready && o_tx_mem_last)
+		r_tx_sent <= 1'b1;
 
 	initial	o_tx_en = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		o_tx_en <= 1'b0;
-	else if (o_tx_mem_valid && i_tx_mem_ready && o_tx_mem_last)
+	else if (o_tx_en && r_tx_sent && !i_tx_busy)
 		o_tx_en <= 1'b0;
-	else if (!cmd_busy && !o_cmd_request && !o_tx_en && r_tx_request)
+	else if (!cmd_busy && !o_cmd_request && !o_tx_en && !i_card_busy
+				&& r_tx_request)
 		o_tx_en <= r_tx_request;
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset && !o_soft_reset)
+		assert(!r_tx_request || !o_tx_en);
+
+	always @(posedge i_clk)
+	if (!i_reset && $past(!i_reset && !o_soft_reset && r_tx_request))
+		assert(r_tx_request || o_tx_en);
+
+	always @(posedge i_clk)
+	if (!i_reset && $past(!i_reset && !o_soft_reset && new_data_request))
+		assert(r_tx_request || r_rx_request
+			||(o_cmd_request && o_cmd_type == R2_REPLY));
+`endif
 	// }}}
 
 	// o_rx_en, r_rx_request
@@ -277,26 +360,33 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		r_rx_request <= 1'b0;
-	else if (!o_rx_en && !r_rx_request && !o_tx_en && !r_tx_request
-		&& !cmd_busy && wb_cmd_stb && (&i_wb_sel[1:0]))
-	begin
-		r_rx_request <= !i_wb_data[FIFO_WRITE_BIT]
-			&&((i_wb_data[7:6]== CMD_PREFIX)||(i_wb_data[7:0] == 0))
-			&& ((i_wb_data[13] && OPT_DMA) || i_wb_data[USE_FIFO_BIT])
-			&& i_wb_data[9:8] != R2_REPLY;
-	end else if (!cmd_busy && !o_cmd_request)
+	else if (new_data_request && !i_wb_data[FIFO_WRITE_BIT]
+			&& (i_wb_data[9:8] != R2_REPLY
+						|| i_wb_data[7:6] == 2'b00))
+		r_rx_request <= 1'b1;
+	else if (!cmd_busy && !o_cmd_request)
 		r_rx_request <= 1'b0;
 
 	initial	o_rx_en = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		o_rx_en <= 1'b0;
-	else if (i_rx_done)
+	else if (o_rx_en && i_rx_done)
 		o_rx_en <= 1'b0;
 	else if (!cmd_busy && !o_cmd_request && r_rx_request)
 		o_rx_en <= 1'b1;
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset && !o_soft_reset)
+		assert(!r_rx_request || !o_rx_en);
+	always @(posedge i_clk)
+	if (!i_reset && $past(!i_reset && !o_soft_reset && r_rx_request))
+		assert(r_rx_request || o_rx_en);
+`endif
 	// }}}
 
+	// r_fifo: Control which FIFO this command uses
+	// {{{
 	initial	r_fifo = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
@@ -305,6 +395,7 @@ module	sdwb #(
 			&& !r_tx_request && !r_rx_request
 			&& wb_cmd_stb && i_wb_sel[FIFO_ID_BIT/8])
 		r_fifo <= i_wb_data[FIFO_ID_BIT];
+	// }}}
 
 	// always @(posedge i_clk)
 	// if (i_reset || !OPT_DMA)
@@ -318,28 +409,36 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		r_cmd_err <= 1'b0;
-	else if (!cmd_busy && wb_cmd_stb && i_wb_sel[0])
+	else if (!cmd_busy && wb_cmd_stb && i_wb_sel[0]
+			&& (!r_cmd_err || (i_wb_sel[1] && i_wb_data[15])))
 	begin
 		if (i_wb_data[7:6] == CMD_PREFIX)
 			r_cmd_err <= 1'b0;
-	end else if (i_cmd_err)
+	end else if (i_cmd_err || i_rx_err)
 		r_cmd_err <= 1'b0;
 
 	initial	r_cmd_ecode = 2'b0;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		r_cmd_ecode <= 2'b0;
-	else if (!cmd_busy && wb_cmd_stb && i_wb_sel[0])
+	else if (!cmd_busy && wb_cmd_stb && i_wb_sel[0]
+			&& (!r_cmd_err || (i_wb_sel[1] && i_wb_data[15])))
 	begin
 		if (i_wb_data[7:6] == CMD_PREFIX)
 			r_cmd_ecode <= 2'b0;
-	end else if (cmd_busy || i_cmd_err || i_cmd_done)
-		r_cmd_ecode <= i_cmd_ercode;
+	end else if (!r_cmd_err)
+	begin
+		if (cmd_busy || i_cmd_err || i_cmd_done)
+			r_cmd_ecode <= i_cmd_ercode;
+		if (i_rx_err)
+			r_cmd_ecode <= 2'b10;
+	end
 	// }}}
 
 	always @(*)
 	begin
 		w_cmd_word = 32'h0;
+		w_cmd_word[20] = i_card_busy;
 		w_cmd_word[19] = !card_present;
 		w_cmd_word[18] =  card_removed;
 		w_cmd_word[17:16] = r_cmd_ecode;
@@ -385,6 +484,8 @@ module	sdwb #(
 	// {{{
 	assign	wb_phy_stb = i_wb_stb && !o_wb_stall && i_wb_addr == ADDR_PHY && i_wb_we;
 
+	// o_length, lgblk
+	// {{{
 	initial	lgblk = 4'h9;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
@@ -400,21 +501,65 @@ module	sdwb #(
 	end
 
 	assign	o_length = 1<<lgblk;
+	// }}}
 
+	// o_1p8v: Set to true to enable the hardware to operate at 1.8V
+	// {{{
+	generate if (OPT_1P8V)
+	begin : GEN_1P8V
+		reg	r_1p8v;
+
+		// Chips always start up at 3.3V, so we need to disable 1.8V
+		// on startup.  Once they switch to 1.8V, they cannot switch
+		// back.  Hence, any 1.8V hardware *MUST* also force the card
+		// to reset (i.e. power down the card) any time the FPGA reloads
+		// its configuration--else we'll be operating at 3.3V when the
+		// card is configured for 1.8V.
+		//
+		// Note that there is *no* way to test this bit.  We're either
+		// in 1.8V, or not, and we can't come back.  Hence, the PHY
+		// supports bit[23] = OPT_1P8V, so the user can know that
+		// the 1.8V option exists.  If the option exists, the user can
+		// then query the card to know if the card supports 1.8V, and
+		// then switch the card and other hardware confidently.
+		//
+		initial	r_1p8v = 1'b0;
+		always @(posedge i_clk)
+		if (i_reset || !card_present)
+			r_1p8v <= 1'b0;
+		else if (wb_phy_stb && i_wb_sel[2])
+			r_1p8v <= r_1p8v || i_wb_data[22];
+
+		assign	o_1p8v = r_1p8v;
+
+	end else begin : NO_1P8V
+		assign	o_1p8v = 1'b0;
+	end endgenerate
+	// }}}
+
+	// o_cfg_sample_shift: Control when we sample data returning from card
+	// {{{
 	initial	o_cfg_sample_shift = 5'h18;
 	always @(posedge i_clk)
-	if (i_reset || o_soft_reset)
-		o_cfg_sample_shift <= 5'h18;
-	else if (wb_phy_stb && i_wb_sel[2])
 	begin
-		o_cfg_sample_shift <= i_wb_data[20:16];
+		if (i_reset || o_soft_reset)
+			o_cfg_sample_shift <= 5'h18;
+		else if (wb_phy_stb && i_wb_sel[2])
+			o_cfg_sample_shift <= i_wb_data[20:16];
 
 		if(!OPT_SERDES)
 			o_cfg_sample_shift[1:0] <= 2'h0;
 		if(!OPT_SERDES && !OPT_DDR)
 			o_cfg_sample_shift[2] <= 1'h0;
 	end
+	// }}}
 
+	// o_cfg_shutdown: Shutdown the SD Card clock when not in use
+	// o_cfg_clk90: Use a clock that's 90 degrees offset from the data,
+	// {{{
+	//	vs allowing the data to align with the negative edge of the
+	//	clock.  o_cfg_clk90 is required for all DDR modes, but may not
+	//	be required for SDR modes.
 	initial	{ o_cfg_shutdown, o_cfg_clk90 } = 2'b00;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
@@ -425,28 +570,50 @@ module	sdwb #(
 		if (i_wb_data[8])
 			o_cfg_clk90 <= 1'b1;
 	end
+	// }}}
 
+	// o_pp_cmd, o_pp_data: If set, configure cmd/data to push-pull modes
+	// {{{
+	// If clear, the cmd/data lines will be left in their original
+	// open-drain modes.  The SD spec requires that the card start in
+	// open-drain, and then switch to push-pull modes when speeding up
+	// the clock to higher speeds.  o_pp_cmd controls whether or not the
+	// command wire is operated in push-pull mode, whereas o_pp_data
+	// controls whether or not the data lines are operated in push-pull
+	// mode.
 	initial	{ o_pp_cmd, o_pp_data } = 2'b00;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		{ o_pp_cmd, o_pp_data } <= 2'b00;
 	else if (wb_phy_stb && i_wb_sel[1])
 		{ o_pp_cmd, o_pp_data } <= i_wb_data[13:12];
+	// }}}
 
+	// o_cfg_ds: Enable return data strobe support
+	// {{{
 	initial	o_cfg_ds = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || !OPT_SERDES || o_soft_reset)
 		o_cfg_ds <= 1'b0;
 	else if (wb_phy_stb && i_wb_sel[1])
 		o_cfg_ds <= (&i_wb_data[9:8]);
+	// }}}
 
+	// o_cfg_ddr: Transmit data on both edges of the clock
+	// {{{
+	//	Note: this requires o_cfg_clk90 support
 	initial	o_cfg_ddr = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		o_cfg_ddr <= 1'b0;
 	else if (wb_phy_stb && i_wb_sel[1])
 		o_cfg_ddr <= i_wb_data[8];
+	// }}}
 
+	// o_cfg_width: Control the number of data bits, whether 1, 4, or 8
+	// {{{
+	//	SDIO uses either 1 or 4 data bits.
+	//	eMMC can use 1, 4, or 8 data bits.
 	initial	r_width = WIDTH_1W;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
@@ -458,12 +625,18 @@ module	sdwb #(
 		2'b01: if (NUMIO < 4) r_width <= WIDTH_1W;
 			else r_width <= WIDTH_4W;
 		2'b10: if (NUMIO >= 8) r_width <= WIDTH_8W;
+		2'b11: if (NUMIO >= 8) r_width <= WIDTH_8W;
+			else if (NUMIO >= 4)	r_width <= WIDTH_4W;
+			else			r_width <= WIDTH_1W;
 		default: begin end
 		endcase
 	end
 
 	assign	o_cfg_width = r_width;
+	// }}}
 
+	// o_cfg_ckspeed: Clock speed control
+	// {{{
 	initial	r_ckspeed = 252;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
@@ -471,31 +644,40 @@ module	sdwb #(
 	else if (wb_phy_stb && i_wb_sel[0])
 	begin
 		r_ckspeed <= i_wb_data[7:0];
-		if (!OPT_SERDES && i_wb_data[7:0] == 0)
-			r_ckspeed <= (OPT_DDR) ? 8'h1 : 8'h2;
-		if (!OPT_SERDES && !OPT_DDR && i_wb_data[7:0] == 1)
+		if (!OPT_SERDES && !OPT_DDR && i_wb_data[7:0] < 2)
 			r_ckspeed <= 8'h2;
+		else if (!OPT_SERDES && i_wb_data[7:0] == 0)
+			r_ckspeed <= 8'h1;
 	end
 
 	assign	o_cfg_ckspeed = r_ckspeed;
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset && !OPT_SERDES && !OPT_DDR)
+		assert(o_cfg_ckspeed >= 2);
+
+	always @(*)
+	if (!i_reset && !OPT_SERDES)
+		assert(o_cfg_ckspeed >= 1);
+`endif
+	// }}}
 
 	always @(*)
 	begin
 		w_phy_ctrl = 0;
-		w_phy_ctrl[31:28] = LGFIFO;
+		w_phy_ctrl[31:28] = LGFIFO; // Can also set lgblk=15, & read MAX
 		w_phy_ctrl[27:24] = lgblk;
-		w_phy_ctrl[23:22] = (NUMIO < 4) ? WIDTH_1W
-					: (NUMIO < 8) ? WIDTH_4W
-					: WIDTH_8W;
-		w_phy_ctrl[21]    = OPT_SERDES;
+		w_phy_ctrl[23]    = OPT_1P8V;
+		w_phy_ctrl[22]    = o_1p8v;
+		w_phy_ctrl[21]    = OPT_SERDES;	// Is this required?
 		w_phy_ctrl[20:16] = o_cfg_sample_shift;
-		w_phy_ctrl[15] = o_cfg_shutdown;
-		w_phy_ctrl[14] = o_cfg_clk90;
-		w_phy_ctrl[13] = o_pp_cmd;	// Push-pull CMD line
-		w_phy_ctrl[12] = o_pp_data;	// Push-pull DAT line(s)
+		w_phy_ctrl[15]    = o_cfg_shutdown;
+		w_phy_ctrl[14]    = o_cfg_clk90;
+		w_phy_ctrl[13]    = o_pp_cmd;	// Push-pull CMD line
+		w_phy_ctrl[12]    = o_pp_data;	// Push-pull DAT line(s)
 		w_phy_ctrl[11:10] = r_width;
-		w_phy_ctrl[9:8] = { o_cfg_ds, o_cfg_ddr };
-		w_phy_ctrl[7:0] = r_ckspeed;
+		w_phy_ctrl[9:8]   = { o_cfg_ds, o_cfg_ddr };
+		w_phy_ctrl[7:0]   = r_ckspeed;
 	end
 	// }}}
 
@@ -519,9 +701,24 @@ module	sdwb #(
 		reg	[9:0]	card_detect_counter;
 		reg		r_card_removed, r_card_present;
 
+		// 3FF cross clock domains: i_card_detect->raw_card_present
+		// {{{
+		initial	raw_card_present = 0;
+		always @(posedge i_clk)
+		if (i_reset)
+			raw_card_present <= 0;
+		else
+			raw_card_present <= { raw_card_present[1:0], i_card_detect };
+		// }}}
+
+		// card_removed: If the card is ever not present, then it has
+		// {{{
+		// been removed.  Set the removed flag so the user can see the
+		// card has been removed, even if they come back to it later
+		// and there's a card present.
 		initial	r_card_removed = 1'b1;
 		always @(posedge i_clk)
-		if (i_reset || o_soft_reset)
+		if (i_reset)
 			r_card_removed <= 1'b1;
 		else if (!card_present)
 			r_card_removed <= 1'b1;
@@ -529,16 +726,16 @@ module	sdwb #(
 					&& i_wb_sel[CARD_REMOVED_BIT/8])
 			r_card_removed <= 1'b0;
 
-		initial	raw_card_present = 0;
-		always @(posedge i_clk)
-		if (i_reset)
-			raw_card_present <= 0;
-		else
-			raw_card_present <= { raw_card_present[1:0], i_card_detect };
+		assign	card_removed = r_card_removed;
+		// }}}
 
+		// card_present: Require a card to be inserted for a period
+		// {{{
+		// of time before declaring it to be present.  This helps
+		// to unbounce any card detection logic.
 		initial	card_detect_counter = 0;
 		always @(posedge i_clk)
-		if (i_reset || !raw_card_present[2] || o_soft_reset)
+		if (i_reset || !raw_card_present[2])
 			card_detect_counter <= 0;
 		else if (!(&card_detect_counter))
 			card_detect_counter <= card_detect_counter + 1;
@@ -551,7 +748,7 @@ module	sdwb #(
 			r_card_present <= 1'b1;
 
 		assign	card_present = r_card_present;
-		assign	card_removed = r_card_removed;
+		// }}}
 
 	end else begin : NO_CARD_DETECT_SIGNAL
 
@@ -581,10 +778,19 @@ module	sdwb #(
 		o_int <= 1'b0;
 	else begin
 		o_int <= 1'b0;
+		// 3 Types of interrupts:
+		//
+		// A) Command operation is complete, response is ready
 		if (i_cmd_done && cmd_busy)
 			o_int <= 1'b1;
-		if (o_tx_en && o_tx_mem_valid && o_tx_mem_last)
+		//
+		// B) Transmit to card operation is complete, and is now ready
+		//	for another command (if desired)
+		if (o_tx_en && r_tx_sent && !i_tx_busy)
 			o_int <= 1'b1;
+		//
+		// C) A block has been received.  We are now ready to receive
+		//	another block (if desired)
 		if (o_rx_en && i_rx_done)
 			o_int <= 1'b1;
 	end
@@ -629,7 +835,8 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		o_tx_mem_valid <= 0;
-	else if (!o_tx_en ||(o_tx_mem_valid && i_tx_mem_ready && o_tx_mem_last))
+	else if (!o_tx_en || r_tx_sent
+			|| (o_tx_mem_valid && i_tx_mem_ready && o_tx_mem_last))
 		{ o_tx_mem_valid, tx_pipe_valid } <= 0;
 	else if (!o_tx_mem_valid || i_tx_mem_ready || !tx_pipe_valid)
 		{ o_tx_mem_valid, tx_pipe_valid } <= { tx_pipe_valid, 1'b1 };
@@ -652,8 +859,11 @@ module	sdwb #(
 
 	always @(*)
 		blk_words = (1<<(lgblk-2))-1;
+
+	// Verilator lint_off WIDTH
 	always @(*)
 		pre_tx_last = o_tx_en && (tx_mem_addr[LGFIFO32-1:$clog2(MW/32)] >= blk_words);
+	// Verilator lint_on  WIDTH
 
 	always @(posedge i_clk)
 	if (!o_tx_mem_valid || i_tx_mem_ready || r_fifo)
@@ -706,10 +916,13 @@ module	sdwb #(
 	// {{{
 	// WARNING: This isn't a proper arbiter.  There is no ability to stall
 	// at present if multiple sources attempt to write to the FIFO at the
-	// same time.  Hence:
+	// same time.  Hence always make sure to write to the FIFO that isn't
+	// currently in use.  It is the software's responsibility to ping-pong.
+	// Failing to ping pong may result in corruption.
 	//
-	//	- When reading from SD/eMMC, do not write to the FIFO
-	//
+
+	// mem_wr_[strb|addr|data]_a: Arbitrate writes to FIFO A
+	// {{{
 	initial	mem_wr_strb_a = 0;
 	always @(posedge i_clk)
 	begin
@@ -740,7 +953,10 @@ module	sdwb #(
 		if (i_reset || o_soft_reset)
 			mem_wr_strb_a <= 0;
 	end
+	// }}}
 
+	// mem_wr_[strb|addr|data]_b: Arbitrate writes to FIFO B
+	// {{{
 	initial	mem_wr_strb_b = 0;
 	always @(posedge i_clk)
 	begin
@@ -771,6 +987,13 @@ module	sdwb #(
 		if (i_reset || o_soft_reset)
 			mem_wr_strb_b <= 0;
 	end
+	// }}}
+
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset)
+		assert(!i_cmd_mem_valid || !i_rx_mem_valid);
+`endif
 	// }}}
 
 	// Actually write to the memories
@@ -876,7 +1099,7 @@ module	sdwb #(
 	wire	[F_LGDEPTH-1:0]	fwb_nacks, fwb_nreqs, fwb_outstanding;
 
 	fwb_slave #(
-		.AW(3), .DW(MW),
+		.AW(3), .DW(32),
 		.F_LGDEPTH(3)
 	) fwb (
 		// {{{
@@ -989,6 +1212,7 @@ module	sdwb #(
 	// {{{
 	////////////////////////////////////////////////////////////////////////
 	//
+	//
 
 	always @(*)
 	if (!o_rx_en)
@@ -997,6 +1221,15 @@ module	sdwb #(
 	always @(*)
 	if (!i_reset)
 		assert(!r_rx_request || !o_rx_en);
+
+	always @(*)
+	if (!i_reset)
+		assert(!(r_rx_request || o_rx_en)|| !(r_tx_request || o_tx_en));
+
+	always @(*)
+	if (!i_reset)
+		assert(!(cmd_busy && o_cmd_type == R2_REPLY)
+			|| !(r_rx_request || o_rx_en));
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -1072,7 +1305,7 @@ module	sdwb #(
 
 	// Need to relate f_txaddr to tx_mem_addr
 	always @(*)
-	if (!i_reset && o_tx_en)
+	if (!i_reset && o_tx_en && !r_tx_sent)
 	begin
 		assert(r_fifo == f_txaddr[LGFIFO32]);
 		assert(tx_mem_addr[LGFIFO32-1:0] == f_txaddr[LGFIFO32-1:0]
@@ -1100,6 +1333,9 @@ module	sdwb #(
 			assert(tx_mem_addr == 1);
 	end
 
+	always @(*)
+	if (!i_reset && o_tx_en && r_tx_sent)
+		assert(!tx_pipe_valid && !o_tx_mem_valid);
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////

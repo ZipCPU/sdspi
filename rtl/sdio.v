@@ -96,7 +96,7 @@ module	sdio #(
 		output	wire		o_afifo_reset_n,
 		//
 		input	wire	[1:0]	i_cmd_strb, i_cmd_data,
-		input	wire		i_cmd_busy,
+		input	wire		i_card_busy,
 		input	wire	[1:0]	i_rx_strb,
 		input	wire	[15:0]	i_rx_data,
 		//
@@ -208,6 +208,7 @@ module	sdio #(
 		.o_tx_mem_valid(tx_mem_valid),
 			.i_tx_mem_ready(tx_mem_ready && tx_en),
 		.o_tx_mem_data(tx_mem_data), .o_tx_mem_last(tx_mem_last),
+		.i_tx_busy(o_data_en),
 		// }}}
 		// RX interface
 		// {{{
@@ -219,6 +220,7 @@ module	sdio #(
 		.i_rx_done(rx_done), .i_rx_err(rx_err),
 		// }}}
 		.i_card_detect(i_card_detect),
+		.i_card_busy(i_card_busy),
 		.o_int(o_int)
 		// }}}
 	);
@@ -319,7 +321,7 @@ module	sdio #(
 	// verilator coverage_off
 	// verilator lint_off UNUSED
 	wire	unused;
-	assign	unused = &{ 1'b0, i_cmd_busy };
+	assign	unused = &{ 1'b0 };
 	// verilator lint_on  UNUSED
 	// verilator coverage_on
 	// }}}

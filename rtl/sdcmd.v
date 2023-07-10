@@ -293,7 +293,7 @@ module	sdcmd #(
 	// {{{
 	initial	o_cmd_response = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || !waiting_on_response || cmd_type == R_NONE)
+	if (i_reset || !waiting_on_response || cmd_type == R_NONE || o_cmd_response)
 		o_cmd_response <= 1'b0;
 	else if (!cmd_type[1])
 		o_cmd_response <= (resp_count == 48) && !r_done;
@@ -567,7 +567,7 @@ module	sdcmd #(
 `ifdef	FORMAL
 	always @(*)
 	if (!i_reset)
-	begin			// !!!
+	begin
 		assert(r_busy == (active || waiting_on_response ||o_done));
 		if (o_done)
 			assert(r_busy);
@@ -639,6 +639,18 @@ module	sdcmd #(
 		if ($past(o_done))
 			assert(!r_busy);
 	end
+
+	always @(posedge i_clk)
+	if (!i_reset && r_busy && !r_done && cmd_type != R_R2)
+		assert(!o_err && o_ercode == 2'b00);
+
+	always @(*)
+	if (!i_reset && !o_err)
+		assert(o_ercode == ECODE_OKAY || o_ercode == ECODE_TIMEOUT);
+
+	always @(posedge i_clk)
+	if (!i_reset && $past(o_cmd_response))
+		assert(!o_cmd_response);
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -732,12 +744,12 @@ module	sdcmd #(
 		assume(i_cmd_strb != 2'b11);
 
 	always @(*)
-	if (!i_reset && active)			// !!!
+	if (!i_reset && active)
 		assert(waiting_on_response == (cmd_type != R_NONE));
 
 	always @(*)
 	if (!i_reset && (active || waiting_on_response))
-		assert(r_busy);			// !!!
+		assert(r_busy);
 
 	always @(*)
 	if (!i_reset)

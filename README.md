@@ -110,25 +110,25 @@ Several key steps remain before it will be a viable product:
 - **Multi-block**: While simulation tests have demonstrated CMD17,
   `READ_SINGLE_BLOCK`, and CMD24, `WRITE_BLOCK`, the multiple block commands
   have not yet been tested.  These include CMD18, `READ_MULTIPLE_BLOCK`, and
-  CMD25, `WRITE_MULTIPLE_BLOCK`.
+  CMD25, `WRITE_MULTIPLE_BLOCK`.  Key features, such as the ability to read
+  or write multiple blocks, or the ability to issue a command while a read or
+  write operation is ongoing, are already drafted within the IP--they just
+  need to be tested.
 
-- **R1b**: Busy bit (R1b) functionality may have been forgotten.
-
-- **SW**: Control software is still being written.
+- **SW**: Control software has been written, and now needs to be tested.
+  An eMMC controller still needs to be drafted.
 
 - **CRC Tokens**: eMMC CRC tokens are not (yet) supported.
-
-- **DW > 32bits**: The controller currently only works with a Wishbone bus
-  width of 32-bits.  An extension is planned to extend the bus to arbitrary
-  widths for greater throughput.  The goal of this extension would be to allow
-  an external DMA to drive data through this design at the full speed of the
-  bus.
 
 - **OPT_DMA**: An optional DMA extension is planned, to allow data blocks to
   be transferred to memory at the full speed of the internal bus without
   CPU intervention.
 
-- **eMMC Boot mode**: No plan exists to support eMMC boot mode at present.
+  The DMA will be the focus of how the SDIO controller handles wider bus
+  widths for higher throughput.
+
+- **eMMC Boot mode**: No plan exists to support eMMC boot mode (at present).
+  This decision will likely be revisited in the future.
 
 # Commercial Applications
 

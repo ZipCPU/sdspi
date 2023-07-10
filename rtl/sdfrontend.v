@@ -58,13 +58,13 @@ module	sdfrontend #(
 		input	wire		i_cmd_en,
 		input	wire		i_pp_cmd,	// Push/pull cmd lines
 		input	wire	[1:0]	i_cmd_data,
-		output	wire		o_cmd_busy,
 		//
 		input	wire		i_data_en,
 		input	wire		i_pp_data,	// Push/pull data lines
 		input	wire	[31:0]	i_tx_data,
 		input	wire		i_afifo_reset_n,
 		// }}}
+		output	wire		o_data_busy,
 		// Synchronous Rx path
 		// {{{
 		output	wire	[1:0]	o_cmd_strb,
@@ -104,7 +104,7 @@ module	sdfrontend #(
 	);
 
 	genvar		gk;
-	reg		cmd_busy, wait_for_busy;
+	reg		dat0_busy, wait_for_busy;
 `ifndef	VERILATOR
 	wire			io_cmd_tristate, i_cmd, o_cmd;
 	wire	[NUMIO-1:0]	io_dat_tristate, i_dat, o_dat;
@@ -185,7 +185,7 @@ module	sdfrontend #(
 			pck_sreg <= { pck_sreg[0], next_pedge };
 
 		always @(*)
-		if (!i_afifo_reset_n || i_data_en)
+		if (i_cmd_en)
 			cmd_sample_ck = 0;
 		else
 			// Verilator lint_off WIDTH
@@ -205,28 +205,22 @@ module	sdfrontend #(
 		else if (!i_dat[0] && sample_ck)
 			io_started <= 1'b1;
 
-		// cmd_busy, wait_for_busy
+		// dat0_busy, wait_for_busy
 		// {{{
-		initial	{ cmd_busy, wait_for_busy } = 2'b01;
+		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
-		/*
-		if (i_reset)
+		if (i_cmd_en || i_data_en)
 		begin
-			cmd_busy <= 1'b0;
+			dat0_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
-		end else */
-		if (i_cmd_en)
+		end else if (wait_for_busy && !i_dat[0])
 		begin
-			cmd_busy <= 1'b0;
-			wait_for_busy <= 1'b1;
-		end else if (wait_for_busy && !r_cmd_data)
-		begin
-			cmd_busy <= 1'b1;
+			dat0_busy <= 1'b1;
 			wait_for_busy <= 1'b0;
-		end else if (!wait_for_busy && r_cmd_data)
-			cmd_busy <= 1'b0;
+		end else if (!wait_for_busy && i_dat[0])
+			dat0_busy <= 1'b0;
 
-		assign	o_cmd_busy = cmd_busy;
+		assign	o_data_busy = dat0_busy;
 		// }}}
 
 		initial	last_ck = 1'b0;
@@ -459,30 +453,24 @@ module	sdfrontend #(
 				&& ((sample_ck & { w_dat[8], w_dat[0] }) == 0))
 			io_started <= 1'b1;
 
-		// cmd_busy, wait_for_busy
+		// dat0_busy, wait_for_busy
 		// {{{
-		initial	{ cmd_busy, wait_for_busy } = 2'b01;
+		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
-		/*
-		if (i_reset)
+		if (i_cmd_en || i_data_en)
 		begin
-			cmd_busy <= 1'b0;
-			wait_for_busy <= 1'b1;
-		end else */
-		if (i_cmd_en)
-		begin
-			cmd_busy <= 1'b0;
+			dat0_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
 		end else if (wait_for_busy && (cmd_sample_ck != 0)
 				&& (cmd_sample_ck & {w_dat[8],w_dat[0]})==2'b0)
 		begin
-			cmd_busy <= 1'b1;
+			dat0_busy <= 1'b1;
 			wait_for_busy <= 1'b0;
-		end else if (!wait_for_busy
+		end else if (!wait_for_busy && (cmd_sample_ck != 0)
 				&& (cmd_sample_ck & {w_dat[8],w_dat[0]})!=2'b0)
-			cmd_busy <= 1'b0;
+			dat0_busy <= 1'b0;
 
-		assign	o_cmd_busy = cmd_busy;
+		assign	o_data_busy = dat0_busy;
 		// }}}
 
 		initial	last_ck = 1'b0;
@@ -555,7 +543,8 @@ module	sdfrontend #(
 		// Verilator lint_off UNUSED
 		wire	unused_ddr;
 		assign	unused_ddr = &{ 1'b0, i_hsclk, i_ds, i_tx_data[23:0],
-				i_sdclk[6:4], i_sdclk[2:0] };
+				i_sdclk[6:4], i_sdclk[2:0], i_afifo_reset_n,
+				i_sample_shift[1:0] };
 		// Verilator lint_on  UNUSED
 		// Verilator coverage_on
 		// }}}
@@ -738,32 +727,27 @@ module	sdfrontend #(
 				busy_data = { w_rx_data[8], w_rx_data[0] };
 		end
 
-		initial	{ cmd_busy, wait_for_busy } = 2'b01;
+		// dat0_busy, wait_for_busy
+		// {{{
+		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
-		/*
-		if (i_reset)
+		if (i_cmd_en || i_data_en)
 		begin
-			cmd_busy <= 1'b0;
-			wait_for_busy <= 1'b1;
-		end else
-		*/
-		if (i_cmd_en)
-		begin
-			cmd_busy <= 1'b0;
+			dat0_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
 		end else if (wait_for_busy)
 		begin
 			if ((busy_strb[0] && !busy_data[0])
-				||(busy_strb == 2'b10 && !busy_data[1]))
+				||(busy_strb[1] && !busy_data[1]))
 			begin
-				cmd_busy <= 1'b1;
+				dat0_busy <= busy_strb[0] && !busy_data[0];
 				wait_for_busy <= 1'b0;
 			end
 		end else if ((busy_strb[0] && busy_data[0])
-				|| (busy_strb == 2'b10 && busy_data[1]))
-			cmd_busy <= 1'b0;
+				|| (busy_strb[1] && busy_data[1]))
+			dat0_busy <= 1'b0;
 
-		assign	o_cmd_busy = cmd_busy;
+		assign	o_data_busy = dat0_busy;
 		// }}}
 
 		////////////////////////////////////////////////////////////////

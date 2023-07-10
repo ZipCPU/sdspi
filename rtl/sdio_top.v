@@ -93,7 +93,7 @@ module sdio_top #(
 	wire		afifo_reset_n;
 		//
 	wire	[1:0]	rply_strb, rply_data;
-	wire		cmd_busy;
+	wire		card_busy;
 	wire	[1:0]	rx_strb;
 	wire	[15:0]	rx_data;
 		//
@@ -137,7 +137,7 @@ module sdio_top #(
 		.o_afifo_reset_n(afifo_reset_n),
 		//
 		.i_cmd_strb(rply_strb), .i_cmd_data(rply_data),
-		.i_cmd_busy(cmd_busy),
+		.i_card_busy(card_busy),
 		.i_rx_strb(rx_strb),
 		.i_rx_data(rx_data),
 		//
@@ -158,7 +158,7 @@ module sdio_top #(
 		// MSB "first" incoming data.
 		.i_sdclk(sdclk),
 		//
-		.i_cmd_en(cmd_en), .i_pp_cmd(pp_cmd), .i_cmd_data(cmd_data),				.o_cmd_busy(cmd_busy),
+		.i_cmd_en(cmd_en), .i_pp_cmd(pp_cmd), .i_cmd_data(cmd_data),				.o_data_busy(card_busy),
 		//
 		.i_data_en(data_en), .i_pp_data(pp_data), .i_tx_data(tx_data),
 			.i_afifo_reset_n(afifo_reset_n),

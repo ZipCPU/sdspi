@@ -302,7 +302,7 @@ begin
 end endtask
 // }}}
 
-task	sdcard_read_block(input[31:0] sector);	// CMD24
+task	sdcard_read_block(input[31:0] sector);	// CMD17
 	// {{{
 	reg	[31:0]	ctrl_reg, phy_reg;
 	integer		ik;

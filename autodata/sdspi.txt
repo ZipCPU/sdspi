@@ -175,35 +175,12 @@
 #ifndef	@$(DEVID)_H
 #define @$(DEVID)_H
 
-#define	@$(DEVID)_SETAUX	0x0000ff
-#define	@$(DEVID)_READAUX	0x0000bf
-#define	@$(DEVID)_CMD		0x000040
-#define	@$(DEVID)_ACMD		(0x040+55) // CMD55
-#define	@$(DEVID)_READREG	0x000200	// Read only
-#define	@$(DEVID)_FIFO_OP	0x000800	// Read only
-#define	@$(DEVID)_WRITEOP	0x000c00	// Write to the FIFO
-#define	@$(DEVID)_ALTFIFO	0x001000
-#define	@$(DEVID)_BUSY		0x004000
-#define	@$(DEVID)_ERROR		0x008000
-#define	@$(DEVID)_CLEARERR	0x008000
-// #define	@$(DEVID)_CRCERR	0x010000
-// #define	@$(DEVID)_ERRTOK	0x020000
-#define	@$(DEVID)_REMOVED	0x040000
-#define	@$(DEVID)_PRESENTN	0x080000
-#define	@$(DEVID)_RESET		0x100000	// Read only
-#define	@$(DEVID)_WATCHDOG	0x200000	// Read only
-#define	@$(DEVID)_GO_IDLE	((@$(DEVID)_REMOVED|@$(DEVID)_CLEARERR|@$(DEVID)_CMD)+0)
-#define	@$(DEVID)_READ_SECTOR	((@$(DEVID)_CMD|@$(DEVID)_CLEARERR|@$(DEVID)_FIFO_OP)+17)
-#define	@$(DEVID)_WRITE_SECTOR	((@$(DEVID)_CMD|@$(DEVID)_CLEARERR|@$(DEVID)_WRITEOP)+24)
-
-typedef	struct @$(DEVID)_S {
-	unsigned	sd_ctrl, sd_data, sd_fifo[2];
-} @$(DEVID);
+struct @$(DEVID)_S;
 
 #endif	// @$(DEVID)_H
 // }}}
 @BDEF.IONAME=_@$(PREFIX)
-@BDEF.IOTYPE=@$(DEVID)
+@BDEF.IOTYPE=struct @$(DEVID)_S
 @BDEF.OSDEF=_BOARD_HAS_@$(DEVID)
 @BDEF.OSVAL=static volatile @$BDEF.IOTYPE *const @$BDEF.IONAME = ((@$BDEF.IOTYPE *)@$[0x%08x](REGBASE));
 @SIM.CLOCK=clk

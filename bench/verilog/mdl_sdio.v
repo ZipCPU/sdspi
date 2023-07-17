@@ -34,6 +34,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
+`timescale 1ns/1ps
 // }}}
 module	mdl_sdio #(
 		parameter [0:0]	OPT_DUAL_VOLTAGE = 1'b0,
@@ -221,8 +222,16 @@ module	mdl_sdio #(
 				(OPT_DUAL_VOLTAGE && cmd_arg[24] && !power_up_busy),
 				ocr[23:8], 8'h0 };
 			reply_crc  <= 1'b0;
-			power_up_busy <= 1'b0;
-			end
+			if (0 == (ocr[23:8] & cmd_arg[23:8]))
+			begin
+				reply_data[31] <= 1'b0;
+				power_up_busy <= 1;
+			end else begin
+				// 5 command/reply cycles at 100kHz
+				// power_up_busy <= #(5*2*48*10000) 1'b0;
+				// or ... 5 command/reply cycles at 1MHz
+				power_up_busy <= #(5*2*48*1000) 1'b0;
+			end end
 			// }}}
 		{ 1'b?, 6'd0 }: begin // CMD0: Go idle
 			// {{{
@@ -246,7 +255,7 @@ module	mdl_sdio #(
 			// }}}
 		{ 1'b?, 6'd2 }: begin // CMD2: ALL_SEND_CID
 			// {{{
-			if (card_selected)
+			if (card_selected && !power_up_busy)
 			begin
 				reply_valid <= #7 1'b1;
 				reply_type <= 1'b1;
@@ -339,7 +348,7 @@ module	mdl_sdio #(
 			// {{{
 			reply_valid <= #7 card_selected;
 			reply <= 6'd55;
-			reply_data <= { {(120-32){1'b0}}, 32'h0 };
+			reply_data <= { {(120-32){1'b0}}, 32'h0120 };
 			cmd_alt <= 1'b1;
 			end
 			// }}}

@@ -106,8 +106,7 @@ module	sdrxframe #(
 	reg			busy, data_phase, load_crc, pending_crc;
 	reg	[LGLEN+4-1:0]	rail_count;
 
-	reg	[15:0]		crc	[0:NUMIO*2-1];
-	reg	[NUMIO*2-1:0]	err;
+	wire	[NUMIO*2-1:0]	err;
 
 	reg	[LGTIMEOUT-1:0]	r_timeout;
 	reg			r_watchdog;
@@ -515,28 +514,31 @@ module	sdrxframe #(
 	//
 
 	generate for(gk=0; gk<NUMIO; gk=gk+1)
-	begin
+	begin : GEN_RAIL_CRC
+		reg	[15:0]		pedge_crc,
+					nedge_crc;
+		reg	[1:0]		lcl_err;
 
-		// crc[gk]: POSEDGE Calculate the CRC for each rail
+		// pedge_crc: POSEDGE Calculate the CRC for each rail
 		// {{{
-		initial	crc[gk] = 0;
+		initial	pedge_crc = 0;
 		always @(posedge i_clk)
 		if (i_reset || !i_rx_en || !i_crc_en ||(!data_phase&&!load_crc))
-			crc[gk] <= 0;
+			pedge_crc <= 0;
 		else if ((gk >= 1 && i_cfg_width == WIDTH_1W)
 				|| (gk >= 4 && i_cfg_width == WIDTH_4W))
-			crc[gk] <= 0;
+			pedge_crc <= 0;
 		else if (!i_cfg_ds || !OPT_DS)
 		begin // CRC based upon synchronous inputs
 			// {{{
 			if (i_rx_strb == 2'b11 && !i_cfg_ddr && !last_strb)
-				crc[gk] <= STEPCRC(STEPCRC(crc[gk],
+				pedge_crc <= STEPCRC(STEPCRC(pedge_crc,
 					i_rx_data[8+gk]),
 					i_rx_data[  gk]);
 			else if (i_rx_strb[1] && (!i_cfg_ddr || !rail_count[0]))
-				crc[gk] <= STEPCRC(crc[gk],i_rx_data[8+gk]);
+				pedge_crc <= STEPCRC(pedge_crc,i_rx_data[8+gk]);
 			else if (i_rx_strb[0] &&  rail_count[0] && i_cfg_ddr)
-				crc[gk] <= STEPCRC(crc[gk],i_rx_data[0+gk]);
+				pedge_crc <= STEPCRC(pedge_crc,i_rx_data[0+gk]);
 			// }}}
 		end else if (S_ASYNC_VALID)
 		begin // Asynchronous CRC generation
@@ -544,12 +546,12 @@ module	sdrxframe #(
 			// Note that in ASYNC mode, all rails are used
 			if (i_cfg_ddr)
 			begin
-				crc[gk] <= STEPCRC( STEPCRC(crc[gk],
+				pedge_crc <= STEPCRC( STEPCRC(pedge_crc,
 					S_ASYNC_DATA[gk+24]),
 					S_ASYNC_DATA[gk+ 8]);
 			end else begin
-				crc[gk] <= STEPCRC( STEPCRC(
-					STEPCRC( STEPCRC(crc[gk],
+				pedge_crc <= STEPCRC( STEPCRC(
+					STEPCRC( STEPCRC(pedge_crc,
 						S_ASYNC_DATA[gk+24]),
 						S_ASYNC_DATA[gk+16]),
 						S_ASYNC_DATA[gk+ 8]),
@@ -559,30 +561,30 @@ module	sdrxframe #(
 		end
 		// }}}
 
-		// crc[NUMIO+gk]: NEGEDGE Calculate the CRC for each rail
+		// nedge_crc: NEGEDGE Calculate the CRC for each rail
 		// {{{
-		initial	crc[NUMIO+gk] = 0;
+		initial	nedge_crc = 0;
 		always @(posedge i_clk)
 		if (i_reset || !i_rx_en || !i_crc_en || (!data_phase&&!load_crc)
 								|| !i_cfg_ddr)
-			crc[NUMIO+gk] <= 0;
+			nedge_crc <= 0;
 		else if ((gk >= 1 && i_cfg_width == WIDTH_1W)
 				|| (gk >= 4 && i_cfg_width == WIDTH_4W))
 			// Zero out any unused rails
-			crc[NUMIO+gk] <= 0;
+			nedge_crc <= 0;
 		else if (!i_cfg_ds || !OPT_DS)
 		begin // CRC based upon synchronous inputs
 			// {{{
 			if (i_rx_strb[1] && rail_count[0])
-				crc[NUMIO+gk] <= STEPCRC(crc[NUMIO+gk], i_rx_data[8+gk]);
+				nedge_crc <= STEPCRC(nedge_crc, i_rx_data[8+gk]);
 			else if (i_rx_strb[0] && !rail_count[0])
-				crc[NUMIO+gk] <= STEPCRC(crc[NUMIO+gk], i_rx_data[0+gk]);
+				nedge_crc <= STEPCRC(nedge_crc, i_rx_data[0+gk]);
 			// }}}
 		end else if (S_ASYNC_VALID)
 		begin // Asynchronous CRC generation
 			// {{{
 			// Note that in ASYNC mode, all rails are used (IIRC)
-			crc[NUMIO+gk] <= STEPCRC( STEPCRC(crc[gk],
+			nedge_crc <= STEPCRC( STEPCRC(nedge_crc,
 						S_ASYNC_DATA[gk+16]),
 						S_ASYNC_DATA[gk   ]);
 			// }}}
@@ -592,14 +594,15 @@ module	sdrxframe #(
 		always @(posedge i_clk)
 		if (i_reset || !i_rx_en || !i_crc_en || data_phase || load_crc)
 		begin
-			err[gk]  <= 0;
-
-			err[NUMIO+gk]  <= 0;
+			lcl_err <= 2'b00;
 		end else begin
-			err[gk]  <= (crc[gk] != 0);
+			lcl_err[0] <= (pedge_crc != 0);
 
-			err[NUMIO+gk]  <= (crc[NUMIO+gk] != 0) && i_cfg_ddr;
+			lcl_err[1] <= (nedge_crc != 0) && i_cfg_ddr;
 		end
+
+		assign	err[gk] = lcl_err[0];
+		assign	err[gk+NUMIO] = lcl_err[1];
 	end endgenerate
 
 	initial	o_done = 0;

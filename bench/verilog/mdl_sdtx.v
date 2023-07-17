@@ -78,17 +78,18 @@ module mdl_sdtx #(
 		r_count <= 0;
 		r_crc   <= 0;
 	end else if (i_valid && o_ready)
-	begin
+	begin // New data
+		// {{{
 		if (!r_active)
 		begin // New data, plus a start bit
 			// {{{
 			if (i_width)
-			begin
+			begin // 4b width
 				if (i_ddr)
 					tx_sreg  <= #FF_HOLD { 8'b00, i_data };
 				else
 					tx_sreg  <= #FF_HOLD { 4'b0, i_data, 4'hf };
-				r_count  <= 36 + (i_ddr ? 4:0);
+				r_count  <= 9 + (i_ddr ? 1:0);
 			end else begin
 				if (i_ddr)
 					tx_sreg  <= #FF_HOLD { 2'b00, i_data, 6'h3f };
@@ -99,10 +100,11 @@ module mdl_sdtx #(
 			// }}}
 		end else begin
 			tx_sreg  <= #FF_HOLD { i_data, 8'hff };
-			r_count  <= 32;
+			r_count  <= (i_width) ? 8 : 32;
 		end
 		r_active <= 1'b1;
 		r_crc    <= 1'b0;
+		// }}}
 	end else if (r_active)
 	begin
 		r_count <= r_count - 1;
@@ -111,7 +113,7 @@ module mdl_sdtx #(
 		else
 			tx_sreg <= #FF_HOLD { tx_sreg[38:0], 1'b1 };
 
-		if (r_crc)
+		if (r_crc || (!r_crc && r_count <= 1))
 		begin
 			if (i_width)
 				tx_sreg <= #FF_HOLD { crc[3][15],
@@ -181,6 +183,8 @@ module mdl_sdtx #(
 	// {{{
 	generate for(gk=0; gk<4; gk=gk+1)
 	begin : GEN_CRC
+		reg	[15:0]	pedge_crc, nedge_crc;
+
 		always @(posedge sd_clk)
 		if (!i_en && !r_active)
 			crc[gk] <= 0;
@@ -190,12 +194,15 @@ module mdl_sdtx #(
 			crc[gk] <= crc[gk] << 1;
 
 		always @(negedge sd_clk)
-		if (!i_ddr || (!i_en && !r_active))
+		if (!i_ddr || (!i_en && !r_active) || !i_ddr)
 			crc[4+gk] <= 0;
 		else if (!r_crc)
 			crc[4+gk] <= STEPCRC(crc[4+gk], sd_dat[gk]);
 		else
 			crc[4+gk] <= crc[4+gk] << 1;
+
+		always @(*) pedge_crc = crc[  gk];
+		always @(*) nedge_crc = crc[4+gk];
 
 	end endgenerate
 	// }}}

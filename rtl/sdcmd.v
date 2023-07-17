@@ -59,7 +59,7 @@ module	sdcmd #(
 		// {{{
 		input	wire			i_cmd_request,
 		input	wire	[1:0]		i_cmd_type,
-		input	wire	[5:0]		i_cmd,
+		input	wire	[6:0]		i_cmd,
 		input	wire	[31:0]		i_arg,
 
 		output	wire			o_busy,
@@ -167,8 +167,8 @@ module	sdcmd #(
 	if (i_reset)
 		tx_sreg <= 48'hffff_ffff_ffff;
 	else if (i_cmd_request && !o_busy)
-		tx_sreg <= { 2'b01, i_cmd, i_arg,
-				CMDCRC({ 2'b01, i_cmd, i_arg }), 1'b1 };
+		tx_sreg <= { 1'b0, i_cmd, i_arg,
+				CMDCRC({ 1'b0, i_cmd, i_arg }), 1'b1 };
 	else if (i_ckstb)
 	begin
 		if (cfg_dbl)
@@ -420,14 +420,17 @@ module	sdcmd #(
 	always @(posedge i_clk)
 	if (i_reset || !waiting_on_response)
 		crc_fill <= 0;
-	else if ((OPT_DS && cfg_ds && S_ASYNC_VALID)
-			|| ((!OPT_DS || !cfg_ds) && i_cmd_strb == 2'b11))
+	else if (i_cmd_type[0] || resp_count > 7)
 	begin
-		if (resp_count >= 6)
+		if (OPT_DS && cfg_ds && S_ASYNC_VALID)
+			crc_fill <= STEPCRC(STEPCRC(crc_fill,
+					S_ASYNC_DATA[1]), S_ASYNC_DATA[0]);
+		else if ((!OPT_DS || !cfg_ds) && i_cmd_strb == 2'b11)
 			crc_fill <= STEPCRC(STEPCRC(crc_fill,
 					i_cmd_data[1]), i_cmd_data[0]);
-	end else if (!i_cfg_ds && i_cmd_strb[1])
-		crc_fill <= STEPCRC(crc_fill, i_cmd_data[1]);
+		else if ((!OPT_DS || !cfg_ds) && i_cmd_strb[1])
+			crc_fill <= STEPCRC(crc_fill, i_cmd_data[1]);
+	end
 
 	assign	crc_err = w_done && (crc_fill != CRC_POLYNOMIAL);
 
@@ -676,7 +679,7 @@ module	sdcmd #(
 
 	always @(posedge i_clk)
 	if (i_cmd_request && !o_busy)
-		f_tx_reg <= { 2'b01, i_cmd, i_arg, CMDCRC({ 2'b01, i_cmd, i_arg }), 1'b1 };
+		f_tx_reg <= { 1'b0, i_cmd, i_arg, CMDCRC({ 1'b0, i_cmd, i_arg }), 1'b1 };
 
 	assign	f_txshift = 48 - srcount;
 

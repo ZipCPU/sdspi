@@ -143,8 +143,7 @@ module	mdl_sdcmd #(
 		if (i_type)
 		begin
 			// 136b response
-			oreg <= { 2'b00, i_reply, i_arg, REGCRC({2'b00, i_reply,
-						i_arg }), 1'b1 };
+			oreg <= { 2'b00, i_reply, i_arg, REGCRC(i_arg), 1'b1 };
 		end else begin
 			oreg <= { 2'b00, i_reply, i_arg[31:0],
 					CMDCRC({2'b00, i_reply, i_arg[31:0] }),
@@ -210,15 +209,15 @@ module	mdl_sdcmd #(
 	end endfunction
 	// }}}
 
-	function automatic [6:0] REGCRC(input [127:0] cmd);
+	function automatic [6:0] REGCRC(input [119:0] cmd);
 		// {{{
 		reg	[6:0]	fill;
 		integer		icrc;
 	begin
 		fill = 0;
 
-		for(icrc=0; icrc<128; icrc=icrc+1)
-			fill = STEPCRC(fill, cmd[127-icrc]);
+		for(icrc=0; icrc<120; icrc=icrc+1)
+			fill = STEPCRC(fill, cmd[119-icrc]);
 
 		REGCRC = fill;
 	end endfunction

@@ -131,12 +131,13 @@ module	sdio #(
 	wire	[1:0]		cfg_width;
 
 	wire			clk_stb, clk_half;
-	wire	[7:0]		w_sdclk;
+	wire	[7:0]		w_sdclk, clk_ckspd;
 
 	wire			cmd_request, cmd_err, cmd_busy, cmd_done;
 	wire	[1:0]		cmd_type, cmd_ercode;
 	wire			rsp_stb;
-	wire	[5:0]		cmd_id, rsp_id;
+	wire	[6:0]		cmd_id;
+	wire	[5:0]		rsp_id;
 	wire	[31:0]		cmd_arg, rsp_arg;
 	wire			cmd_mem_valid;
 	wire	[MW/8-1:0]	cmd_mem_strb;
@@ -185,6 +186,7 @@ module	sdio #(
 			.o_cfg_ddr(o_cfg_ddr),
 		.o_pp_cmd(o_pp_cmd), .o_pp_data(o_pp_data),
 		.o_cfg_sample_shift(o_cfg_sample_shift),
+		.i_ckspd(clk_ckspd),
 		// }}}
 		.o_soft_reset(soft_reset),
 		// CMD control interface
@@ -235,7 +237,8 @@ module	sdio #(
 		.i_cfg_clk90(cfg_clk90), .i_cfg_ckspd(cfg_ckspeed),
 		.i_cfg_shutdown(cfg_clk_shutdown),
 	
-		.o_ckstb(clk_stb), .o_hlfck(clk_half), .o_ckwide(w_sdclk)
+		.o_ckstb(clk_stb), .o_hlfck(clk_half), .o_ckwide(w_sdclk),
+		.o_ckspd(clk_ckspd)
 		// }}}
 	);
 

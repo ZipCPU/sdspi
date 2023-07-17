@@ -73,6 +73,7 @@ module	sdwb #(
 		output	reg			o_cfg_ds, o_cfg_ddr,
 		output	reg			o_pp_cmd, o_pp_data,
 		output	reg	[4:0]		o_cfg_sample_shift,
+		input	wire	[7:0]		i_ckspd,
 
 		output	reg			o_soft_reset,
 		// }}}
@@ -80,7 +81,7 @@ module	sdwb #(
 		// {{{
 		output	reg			o_cmd_request,
 		output	reg	[1:0]		o_cmd_type,
-		output	wire	[5:0]		o_cmd_id,
+		output	wire	[6:0]		o_cmd_id,
 		output	wire	[31:0]		o_arg,
 		//
 		input	wire			i_cmd_busy, i_cmd_done,
@@ -136,10 +137,13 @@ module	sdwb #(
 				ADDR_FIFOB = 3,
 				ADDR_PHY   = 4;
 
-	localparam	[1:0]	CMD_PREFIX = 2'b01;
-	localparam	[1:0]	R2_REPLY = 2'b10;
+	localparam	[1:0]	CMD_PREFIX = 2'b01,
+				NUL_PREFIX = 2'b00;
+	localparam	[1:0]	RNO_REPLY = 2'b00,
+				R2_REPLY = 2'b10;
 	localparam		CARD_REMOVED_BIT = 18,
 				// ERR_BIT       = 15,
+				USE_DMA_BIT      = 13,
 				FIFO_ID_BIT      = 12,
 				USE_FIFO_BIT     = 11,
 				FIFO_WRITE_BIT   = 10;
@@ -209,12 +213,16 @@ module	sdwb #(
 	always @(*)
 	begin
 		new_cmd_request = !cmd_busy && wb_cmd_stb && i_wb_sel[0]
-			&& (i_wb_data[7:6] == CMD_PREFIX);
+			&& (i_wb_data[7:6] == CMD_PREFIX
+				|| (i_wb_data[7:6] == NUL_PREFIX && i_wb_sel[1]
+					&& !i_wb_data[USE_DMA_BIT]
+					&& !i_wb_data[USE_FIFO_BIT]
+					&& i_wb_data[9:8] == RNO_REPLY));
 
 		new_data_request = wb_cmd_stb && (&i_wb_sel[1:0])
 			&& ((!cmd_busy && i_wb_data[7:6] == CMD_PREFIX)
-						|| i_wb_data[7:6] == 2'b00)
-			&& ((i_wb_data[13] && OPT_DMA)
+						|| i_wb_data[7:6] == NUL_PREFIX)
+			&& ((i_wb_data[USE_DMA_BIT] && OPT_DMA)
 					|| i_wb_data[USE_FIFO_BIT]
 				||(!cmd_busy && i_wb_data[7:6] == CMD_PREFIX
 						&& i_wb_data[9:8] == R2_REPLY));
@@ -238,7 +246,7 @@ module	sdwb #(
 		// transfer, and the data channels are still busy, then we
 		// must refuse the command.
 		if ((o_tx_en || r_tx_request || o_rx_en || r_rx_request)
-			&&((i_wb_data[13] && OPT_DMA)
+			&&((i_wb_data[USE_DMA_BIT] && OPT_DMA)
 					|| i_wb_data[USE_FIFO_BIT]))
 			new_cmd_request = 1'b0;
 		// }}}
@@ -281,14 +289,12 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		r_cmd <= 7'b0;
-	else if (!cmd_busy && wb_cmd_stb && i_wb_sel[0])
-	begin
-		if (i_wb_data[7:6] == CMD_PREFIX)
-			r_cmd <= i_wb_data[6:0];
-	end else if (i_cmd_response)
+	else if (new_cmd_request)
+		r_cmd <= i_wb_data[6:0];
+	else if (i_cmd_response)
 		r_cmd <= { 1'b0, i_resp };
 
-	assign	o_cmd_id = r_cmd[5:0];
+	assign	o_cmd_id = r_cmd[6:0];
 	// }}}
 
 	// o_cmd_type: What response to expect?  None, R1, R2, or R1b
@@ -362,7 +368,7 @@ module	sdwb #(
 		r_rx_request <= 1'b0;
 	else if (new_data_request && !i_wb_data[FIFO_WRITE_BIT]
 			&& (i_wb_data[9:8] != R2_REPLY
-						|| i_wb_data[7:6] == 2'b00))
+					|| i_wb_data[7:6] == NUL_PREFIX))
 		r_rx_request <= 1'b1;
 	else if (!cmd_busy && !o_cmd_request)
 		r_rx_request <= 1'b0;
@@ -401,7 +407,7 @@ module	sdwb #(
 	// if (i_reset || !OPT_DMA)
 	//	r_dma <= 1'b0;
 	// else if (!i_cmd_busy && i_wb_stb && i_wb_addr == 0 && i_wb_sel[1:0])
-	//	r_dma <= i_wb_data[13];
+	//	r_dma <= i_wb_data[USE_DMA_BIT];
 
 	// r_cmd_err
 	// {{{
@@ -409,29 +415,24 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		r_cmd_err <= 1'b0;
-	else if (!cmd_busy && wb_cmd_stb && i_wb_sel[0]
-			&& (!r_cmd_err || (i_wb_sel[1] && i_wb_data[15])))
-	begin
-		if (i_wb_data[7:6] == CMD_PREFIX)
-			r_cmd_err <= 1'b0;
-	end else if (i_cmd_err || i_rx_err)
+	// else if (new_cmd_request)
+	else if (wb_cmd_stb && i_wb_sel[1] && i_wb_data[15])
 		r_cmd_err <= 1'b0;
+	else if (i_cmd_err || i_rx_err)
+		r_cmd_err <= 1'b1;
 
 	initial	r_cmd_ecode = 2'b0;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		r_cmd_ecode <= 2'b0;
-	else if (!cmd_busy && wb_cmd_stb && i_wb_sel[0]
-			&& (!r_cmd_err || (i_wb_sel[1] && i_wb_data[15])))
+	else if (new_cmd_request)
+		r_cmd_ecode <= 2'b0;
+	else if (!r_cmd_err)
 	begin
-		if (i_wb_data[7:6] == CMD_PREFIX)
-			r_cmd_ecode <= 2'b0;
-	end else if (!r_cmd_err)
-	begin
-		if (cmd_busy || i_cmd_err || i_cmd_done)
-			r_cmd_ecode <= i_cmd_ercode;
 		if (i_rx_err)
 			r_cmd_ecode <= 2'b10;
+		if (i_cmd_done)
+			r_cmd_ecode <= i_cmd_ercode;
 	end
 	// }}}
 
@@ -677,7 +678,7 @@ module	sdwb #(
 		w_phy_ctrl[12]    = o_pp_data;	// Push-pull DAT line(s)
 		w_phy_ctrl[11:10] = r_width;
 		w_phy_ctrl[9:8]   = { o_cfg_ds, o_cfg_ddr };
-		w_phy_ctrl[7:0]   = r_ckspeed;
+		w_phy_ctrl[7:0]   = i_ckspd; // r_ckspeed;
 	end
 	// }}}
 
@@ -807,7 +808,8 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		fif_wraddr <= 0;
-	else if (wb_cmd_stb && i_wb_sel[1] && i_wb_data[11])
+	else if (wb_cmd_stb && i_wb_sel[1]
+			&& (i_wb_data[11] || i_wb_data[9:8] == 2'b10))
 		fif_wraddr <= 0;
 	else if (i_wb_stb && !o_wb_stall && i_wb_we && i_wb_sel[0]
 					&& (i_wb_addr == ADDR_FIFOA || i_wb_addr == ADDR_FIFOB))
@@ -820,7 +822,9 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		fif_rdaddr <= 0;
-	else if (wb_cmd_stb && i_wb_sel[1] && i_wb_data[11])
+	else if (wb_cmd_stb && i_wb_sel[1]
+			&& (i_wb_data[11] || i_wb_data[9:8] == 2'b10
+				|| r_fifo != i_wb_data[FIFO_ID_BIT]))
 		fif_rdaddr <= 0;
 	else if (i_wb_stb && !i_wb_we && i_wb_sel[0]
 					&& (i_wb_addr == ADDR_FIFOA || i_wb_addr == ADDR_FIFOB))
@@ -1351,8 +1355,8 @@ module	sdwb #(
 	// {{{
 	fwb_register #(
 		.AW(3), .DW(MW), .ADDR(ADDR_PHY),
-		.MASK(32'h0018_b1fc
-			| (OPT_SERDES ? 32'h001f_02ff : 32'h00)
+		.MASK(32'h0018_b100
+			| (OPT_SERDES ? 32'h001f_0200 : 32'h00)
 			| (OPT_DDR    ? 32'h001c_0000 : 32'h00)),
 		.FIXED_BIT_MASK(32'hf0e0_0000
 			| (OPT_SERDES ? 32'h00: 32'h0003_0200)

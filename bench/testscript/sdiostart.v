@@ -123,7 +123,7 @@ task	sdcard_go_idle;					// CMD0
 	reg	[31:0]	ctrl_reg;
 begin
 	// Send a command 0
-	u_bfm.writeio(ADDR_SDDATA, 32'h0);
+	u_bfm.writeio(ADDR_SDDATA, 32'h0); // 0x048040
 	u_bfm.writeio(ADDR_SDCARD, SDIO_CMD | SDIO_RNONE | SDIO_ERR);
 
 	sdio_wait_while_busy;
@@ -139,7 +139,7 @@ task	sdcard_all_send_cid;				// CMD2
 begin
 	// Send CMD2: ALL_SEND_CID
 	u_bfm.writeio(ADDR_SDDATA, 32'h0);
-	u_bfm.writeio(ADDR_SDCARD, SDIO_READCID);
+	u_bfm.writeio(ADDR_SDCARD, SDIO_READCID);	// 0x08242
 
 	sdio_wait_while_busy;
 
@@ -190,7 +190,7 @@ begin
 
 	// Send CMD*: SEND_IF_COND
 	u_bfm.writeio(ADDR_SDDATA, ifcond);
-	u_bfm.writeio(ADDR_SDCARD, SDIO_READREG + 8);
+	u_bfm.writeio(ADDR_SDCARD, SDIO_READREG + 8); // 0x8148
 
 	sdio_wait_while_busy;
 
@@ -207,8 +207,8 @@ begin
 	sdcard_send_app_cmd;
 
 	// Send a command 41
-	u_bfm.writeio(ADDR_SDDATA, op_cond);
-	u_bfm.writeio(ADDR_SDCARD, SDIO_READREG + 32'd41);
+	u_bfm.writeio(ADDR_SDDATA, op_cond);			// 0x4000_0000
+	u_bfm.writeio(ADDR_SDCARD, SDIO_READREG + 32'd41); // 0x8169
 
 	sdio_wait_while_busy;
 
@@ -239,7 +239,7 @@ task	sdcard_send_app_cmd;				// CMD 55
 	reg	[31:0]	ctrl_reg;
 begin
 	u_bfm.writeio(ADDR_SDDATA, 32'h0);
-	u_bfm.writeio(ADDR_SDCARD, SDIO_READREG + 55);
+	u_bfm.writeio(ADDR_SDCARD, SDIO_READREG + 55); // 0x8177
 
 	sdio_wait_while_busy;
 
@@ -350,11 +350,16 @@ begin
 		end while(op_cond[31]);
 	end else begin
 		assert(if_cond[7:0] == 8'ha5);
+
+		op_cond = 32'h4000_0000;
+		op_cond[24] = 1'b0; // OPT_DUAL_VOLTAGE;
+		sdcard_send_op_cond(op_cond);
+
 		do begin
-			op_cond = 32'h4000_0000;
+			op_cond = 32'h40ff_8000;
 			op_cond[24] = 1'b0; // OPT_DUAL_VOLTAGE;
 			sdcard_send_op_cond(op_cond);
-		end while(op_cond[31]);
+		end while(1'b0 === op_cond[31]);
 	end
 	$display("OP-COND: %08x", op_cond);
 

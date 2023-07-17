@@ -90,15 +90,6 @@ Several key steps remain before it will be a viable product:
   it is similar to the SDSPI interface, it is different enough to require a
   new user guide.
 
-- **SDIO Data Receiver**: While the [SDIO receiver](rtl/sdrxframe.v) works in
-  a [simulated test bench environment](bench/verilog/tb_sdio.v), it has not
-  yet been formally verified.  A proper formal proof of this component is
-  still needed.
-
-- **Formal Contracts**: Not all formal proofs properly test the "contract",
-  that data provided on the incoming interface will be properly transferred
-  to the downstream interface.
-
 - **Test bench status**: While [test script(s) exist](bench/testscript), the
   [primary test driver](bench/verilog/sim_sdio.pl) does not properly return
   the status of any test back to its environment at present.

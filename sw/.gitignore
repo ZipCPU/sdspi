@@ -1,0 +1,4 @@
+*.o
+diskio.h
+ff.h
+ffconf.h

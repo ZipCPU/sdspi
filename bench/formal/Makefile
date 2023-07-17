@@ -36,7 +36,7 @@
 ##
 ## }}}
 .PHONY: all
-all:	sdspi llsdspi spicmd spitxdata spirxdata sdcmd sdwb sdckgen sdtxframe report
+all:	sdspi llsdspi spicmd spitxdata spirxdata sdcmd sdwb sdckgen sdtxframe sdrxframe report
 
 RTL := ../../rtl
 ## SDSPI components
@@ -156,9 +156,11 @@ $(SDTX)_cvr/PASS: $(RTL)/$(SDTX).v $(SDTX).sby
 
 .PHONY: $(SDRX)
 ## {{{
-$(SDRX): $(SDRX)_prf/PASS $(SDRX)_cvr/PASS
+$(SDRX): $(SDRX)_prf/PASS $(SDRX)_prfs/PASS $(SDRX)_cvr/PASS
 $(SDRX)_prf/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
 	sby -f $(SDRX).sby prf
+$(SDRX)_prfs/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
+	sby -f $(SDRX).sby prfs
 $(SDRX)_cvr/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
 	sby -f $(SDRX).sby cvr
 ## }}}

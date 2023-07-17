@@ -75,6 +75,7 @@ module	sdio #(
 		output	wire [MW-1:0]	o_wb_data,
 		// }}}
 		input	wire		i_card_detect,
+		output	wire		o_1p8v,
 		output	wire		o_int,
 		// Interface to PHY
 		// {{{
@@ -221,6 +222,7 @@ module	sdio #(
 		// }}}
 		.i_card_detect(i_card_detect),
 		.i_card_busy(i_card_busy),
+		.o_1p8v(o_1p8v),
 		.o_int(o_int)
 		// }}}
 	);
@@ -297,6 +299,7 @@ module	sdio #(
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset || soft_reset),
 		//
+		.i_cfg_ddr(o_cfg_ddr),
 		.i_cfg_ds(cfg_ds), .i_cfg_width(cfg_width),
 		.i_rx_en(rx_en), .i_crc_en(crc_en), .i_length(rx_length),
 		//

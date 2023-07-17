@@ -161,7 +161,7 @@ module	sdfrontend #(
 		// {{{
 		initial	ck_sreg = 0;
 		always @(posedge i_clk)
-		if (i_data_en)
+		if (i_reset || i_data_en)
 			ck_sreg <= 0;
 		else
 			ck_sreg <= { ck_sreg[0], next_dedge };
@@ -179,7 +179,7 @@ module	sdfrontend #(
 		// cmd_sample_ck: When do we sample the command line?
 		// {{{
 		always @(posedge i_clk)
-		if (i_cmd_en)
+		if (i_reset || i_cmd_en)
 			pck_sreg <= 0;
 		else
 			pck_sreg <= { pck_sreg[0], next_pedge };
@@ -194,13 +194,13 @@ module	sdfrontend #(
 		// }}}
 
 		always @(posedge i_clk)
-		if (i_cmd_en)
+		if (i_reset || i_cmd_en)
 			resp_started <= 1'b0;
 		else if (!i_cmd && cmd_sample_ck)
 			resp_started <= 1'b1;
 
 		always @(posedge i_clk)
-		if (i_data_en)
+		if (i_reset || i_data_en)
 			io_started <= 1'b0;
 		else if (!i_dat[0] && sample_ck)
 			io_started <= 1'b1;
@@ -209,7 +209,7 @@ module	sdfrontend #(
 		// {{{
 		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
-		if (i_cmd_en || i_data_en)
+		if (i_reset || i_cmd_en || i_data_en)
 		begin
 			dat0_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
@@ -266,10 +266,7 @@ module	sdfrontend #(
 		always @(*)
 		begin
 			w_out = 0;
-			if (io_dat_tristate)
-				w_out[NUMIO-1:0] = i_dat;
-			else
-				w_out[NUMIO-1:0] = o_dat;
+			w_out[NUMIO-1:0] = i_dat;
 		end
 
 		assign	o_debug = {

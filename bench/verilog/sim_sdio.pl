@@ -129,11 +129,40 @@ sub simline($) {
 			## {{{
 			$tstamp = timestamp();
 			system "echo \"$tstamp -- Simulation complete\" | tee -a $sim_log";
+			$msg = sprintf("%s IVerilog  -- %s", $tstamp, $tstname);
 			## }}}
 
 			## Look through the log file(s) for any errors and
 			## report them
 			## {{{
+			system "grep \'ERROR\' $sim_log | sort -u";
+			system "grep -q \'ERROR\' $sim_log";
+			$errE = $?;
+
+			system "grep -iq \'assert.*fail\' $sim_log";
+			$errA = $?;
+
+			system "grep -iq \'timing violation\' $sim_log";
+			$errT = $?;
+
+			system "grep -iq \'fail\' $sim_log";
+			$errF = $?;
+
+			system "grep -iq \'TEST PASS\' $sim_log";
+			$errS = $?;
+
+			if ($errE == 0 or $errA == 0 or $errF == 0) {
+				## ERRORs found, either assertion or other fail
+				print     "ERRORS    $msg\n";
+			} elsif ($errT == 0) {
+				# Timing violations present
+				print     "TIMING-ER $msg\n";
+			} elsif ($errS != 0) {
+				# No success (TEST_PASS) message present
+				print     "FAIL      $msg\n";
+			} else {
+				print     "Pass      $msg\n";
+			}
 			## }}}
 			## }}}
 		} else {

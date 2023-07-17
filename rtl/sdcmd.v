@@ -162,15 +162,6 @@ module	sdcmd #(
 			srcount <= srcount - 1;
 		end
 	end
-`ifdef	FORMAL
-	always @(*)
-		assert(srcount <= 48);
-	always @(*)
-		assert(active == (srcount != 0));
-	always @(*)
-	if (active && !i_reset && cfg_dbl)
-		assert(srcount[0] == 1'b0);
-`endif
 	
 	always @(posedge i_clk)
 	if (i_reset)
@@ -283,11 +274,6 @@ module	sdcmd #(
 						// Verilator lint_off WIDTH
 						&& (srcount == 1 + cfg_dbl));
 						// Verilator lint_on  WIDTH
-`ifdef	FORMAL
-	always @(*)
-	if (!i_reset && cmd_type == R_NONE)
-		assert(!waiting_on_response);
-`endif
 
 	// o_cmd_response
 	// {{{
@@ -331,7 +317,7 @@ module	sdcmd #(
 	initial	o_mem_valid = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || cmd_type != R_R2 || !waiting_on_response
-							|| mem_addr >= 4)
+					|| rx_timeout || mem_addr >= 4)
 		o_mem_valid <= 1'b0;
 	else
 		o_mem_valid <= new_data
@@ -404,13 +390,13 @@ module	sdcmd #(
 	initial	rx_timeout = 0;
 	initial	rx_timeout_counter = -1;
 	always @(posedge i_clk)
-	if (i_reset || !waiting_on_response || active || o_done)
+	if (i_reset || !waiting_on_response || active || r_done)
 	begin
 		rx_timeout <= 0;
 		rx_timeout_counter <= -1;
-	end else if (// (cmd_type == R_R1b && i_dat_busy) ||
+	end else if (!rx_timeout && (
 			(OPT_DS && i_cfg_ds && S_ASYNC_VALID)
-			|| (!i_cfg_ds && i_cmd_strb != 0))
+			|| ((!OPT_DS || !i_cfg_ds) && i_cmd_strb != 0)))
 	begin
 		// Recommended timeout is 500ms
 		rx_timeout <= 0;
@@ -422,14 +408,6 @@ module	sdcmd #(
 		if (rx_timeout_counter <= 1)
 			rx_timeout <= 1;
 	end
-`ifdef	FORMAL
-	always @(*)
-		assert(rx_timeout == (rx_timeout_counter == 0));
-	always @(*)
-	if (!i_reset || !r_busy)
-		assert(!rx_timeout);
-`endif
-
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -489,63 +467,40 @@ module	sdcmd #(
 
 	initial { o_err, o_ercode } = 3'h0;
 	always @(posedge i_clk)
-	if (i_reset || active || (i_cmd_request && !o_busy) || w_no_response)
-	begin
+	if (i_reset || o_done || w_no_response)
 		o_err <= 1'b0;
-		o_ercode <= 2'b00;
-	end else if (rx_timeout)
-	begin
+	else if (rx_timeout && !r_done)
 		o_err <= 1'b1;
-		o_ercode <= ECODE_TIMEOUT;
-	end else if (w_done)
+	else if (r_done && i_ckstb)
+		o_err <= (o_ercode != ECODE_OKAY);
+
+	initial o_ercode = 2'h0;
+	always @(posedge i_clk)
+	if (i_reset || active || (i_cmd_request && !o_busy) || w_no_response
+			|| o_done)
+		o_ercode <= 2'b00;
+	else if (!r_done)
 	begin
-		{ o_err, o_ercode } <= { 1'b0, ECODE_OKAY };
-		if (frame_err)
-			{ o_err, o_ercode } <= { 1'b1, ECODE_FRAMEERR };
-		if (crc_err)
-			{ o_err, o_ercode } <= { 1'b1, ECODE_BADCRC };
+		if (w_done)
+		begin
+			o_ercode <= ECODE_OKAY;
+			if (frame_err)
+				o_ercode <= ECODE_FRAMEERR;
+			if (crc_err)
+				o_ercode <= ECODE_BADCRC;
+		end else if (rx_timeout)
+			o_ercode <= ECODE_TIMEOUT;
 	end
-`ifdef	FORMAL
-	always @(*)
-	if (!i_reset && active)
-		assert(!o_err && o_ercode == 2'b00);
-`endif
 	// }}}
 
 	initial	r_done = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || rx_timeout || w_no_response || o_done)
+	if (i_reset || w_no_response || o_done)
 		r_done <= 1'b0;
-	else if (w_done)
+	else if (w_done || rx_timeout)
 		r_done <= 1'b1;
 	// else // if (i_ckstb)
 	//	r_done <= 1'b0;
-`ifdef	FORMAL
-	always @(*)
-	if (!i_reset)
-	begin
-		if (!r_busy)
-		begin
-			assert(!r_done);
-		end
-		if (active)
-		begin
-			assert(!r_done);
-		end
-		if (cmd_type[0] && resp_count < 48)
-		begin
-			assert(!r_done);
-		end
-		if (cmd_type == R_R2 && resp_count < 136)
-		begin
-			assert(!r_done);
-		end
-		if (cmd_type == R_NONE)
-		begin
-			assert(!waiting_on_response);
-		end
-	end
-`endif
 
 	initial	o_done = 1'b0;
 	always @(posedge i_clk)
@@ -564,15 +519,6 @@ module	sdcmd #(
 		r_busy <= 1'b1;
 	else if (o_done)
 		r_busy <= 1'b0;
-`ifdef	FORMAL
-	always @(*)
-	if (!i_reset)
-	begin
-		assert(r_busy == (active || waiting_on_response ||o_done));
-		if (o_done)
-			assert(r_busy);
-	end
-`endif
 
 	assign	o_busy = r_busy || !i_ckstb;
 
@@ -597,7 +543,11 @@ module	sdcmd #(
 ////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
 	(* anyconst *) reg f_nvr_request;
-	reg	f_past_valid;
+	reg	f_past_valid, f_busy;
+	reg	[7:0]	f_last_resp_count;
+	reg	[47:0]	f_tx_reg, f_tx_now;
+	wire	[5:0]	f_txshift;
+
 
 	initial	f_past_valid = 0;
 	always @(posedge i_clk)
@@ -628,16 +578,39 @@ module	sdcmd #(
 		assume($stable(i_cmd_type));
 	end
 
+	initial	f_busy = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset)
+		f_busy <= 1'b0;
+	else if (i_cmd_request && !o_busy)
+		f_busy <= 1'b1;
+	else if (o_done)
+		f_busy <= 1'b0;
+
+
+	always @(posedge i_clk)
+	if (!i_reset && f_busy)
+	begin
+		assume($stable(i_cfg_ds));
+		assume($stable(i_cfg_dbl));
+	end
+
 	always @(posedge i_clk)
 	if (!f_past_valid || $past(i_reset))
 	begin
+		assert(!f_busy);
 		assert(!r_busy);
 		assert(!o_done);
 	end else begin
+		if (!f_busy)
+			assert(!r_busy);
 		if (!r_busy)
 			assert(!active);
 		if ($past(o_done))
+		begin
 			assert(!r_busy);
+			assert(!f_busy);
+		end
 	end
 
 	always @(posedge i_clk)
@@ -645,8 +618,12 @@ module	sdcmd #(
 		assert(!o_err && o_ercode == 2'b00);
 
 	always @(*)
-	if (!i_reset && !o_err)
-		assert(o_ercode == ECODE_OKAY || o_ercode == ECODE_TIMEOUT);
+	if (!i_reset && o_err)
+		assert(o_done);
+
+	always @(*)
+	if (!i_reset && !r_done)
+		assert(o_ercode == ECODE_TIMEOUT);
 
 	always @(posedge i_clk)
 	if (!i_reset && $past(o_cmd_response))
@@ -697,9 +674,6 @@ module	sdcmd #(
 	//
 	//
 
-	reg	[47:0]	f_tx_reg, f_tx_now;
-	wire	[5:0]	f_txshift;
-
 	always @(posedge i_clk)
 	if (i_cmd_request && !o_busy)
 		f_tx_reg <= { 2'b01, i_cmd, i_arg, CMDCRC({ 2'b01, i_cmd, i_arg }), 1'b1 };
@@ -731,7 +705,6 @@ module	sdcmd #(
 
 
 	// }}}
-	reg	[7:0]	f_last_resp_count;
 	always @(posedge i_clk)
 		f_last_resp_count <= resp_count;
 
@@ -763,10 +736,10 @@ module	sdcmd #(
 		if (resp_count < 8+32 || cmd_type != R_R2 || active)
 		begin
 			assert(mem_addr == 0);
-		end else if (r_done)
+		end else if (r_done && !rx_timeout)
 		begin
 			assert(mem_addr == 4);
-		end else if (waiting_on_response)
+		end else if (waiting_on_response && !rx_timeout)
 		begin
 			assert(mem_addr + o_mem_valid == ((f_last_resp_count-8)>>5));
 		end
@@ -808,6 +781,107 @@ module	sdcmd #(
 
 	end
 
+	always @(*)
+		assert(srcount <= 48);
+	always @(*)
+		assert(active == (srcount != 0));
+	always @(*)
+	if (active && !i_reset && cfg_dbl)
+		assert(srcount[0] == 1'b0);
+
+	always @(*)
+	if (!i_reset && cmd_type == R_NONE)
+		assert(!waiting_on_response);
+
+	always @(*)
+		assert(rx_timeout == (rx_timeout_counter == 0));
+
+	always @(*)
+	if (!i_reset && !r_busy)
+		assert(!rx_timeout);
+
+	always @(*)
+	if (!i_reset && active)
+		assert(!o_err && o_ercode == 2'b00);
+
+	always @(*)
+	if (!i_reset)
+	begin
+		if (!r_busy)
+		begin
+			assert(!r_done);
+		end
+		if (active)
+		begin
+			assert(!r_done);
+		end
+
+		if (!rx_timeout)
+		begin
+			if (cmd_type[0] && resp_count < 48)
+			begin
+				assert(!r_done);
+			end
+
+			if (cmd_type == R_R2 && resp_count < 136)
+			begin
+				assert(!r_done);
+			end
+		end
+		if (cmd_type == R_NONE)
+		begin
+			assert(!waiting_on_response);
+		end
+	end
+
+	always @(*)
+	if (!i_reset)
+	begin
+		assert(r_busy == (active || waiting_on_response ||o_done));
+		if (o_done)
+			assert(r_busy);
+	end
+
+	always @(*)
+	if (!i_reset && !f_busy)
+		assert(!o_done);
+
+	// always @(*) if (!i_reset && r_done) assert(!r_busy || o_done);
+
+	always @(*)
+	if (!i_reset)
+		assert(f_busy == r_busy);
+
+	always @(*)
+	if (!i_reset && o_err)
+		assert(o_ercode != ECODE_OKAY);
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Coverage
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
+
+
+	always @(posedge i_clk)
+	if (!i_reset && o_done)
+		cover(i_cmd_type == R_NONE);
+
+	always @(posedge i_clk)
+	if (!i_reset && o_done)
+	begin
+		cover(i_cmd_type == R_R1 && !o_err);
+		cover(i_cmd_type == R_R1 && o_err && o_ercode == ECODE_BADCRC);
+		cover(i_cmd_type == R_R1 && o_err && o_ercode== ECODE_FRAMEERR);
+
+		// Caution!  These will take at least 136+49+2 clocks!
+		cover(i_cmd_type == R_R2 && !o_err);
+		cover(i_cmd_type == R_R2 && o_err && o_ercode == ECODE_BADCRC);
+		cover(i_cmd_type == R_R2 && o_err && o_ercode== ECODE_FRAMEERR);
+	end
+
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Careless assumptions
@@ -815,9 +889,6 @@ module	sdcmd #(
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
-
-	always @(*)
-		assume(!rx_timeout);
 
 	// }}}
 `endif	// FORMAL

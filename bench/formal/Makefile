@@ -118,13 +118,13 @@ $(SDSPIRX)_cvr/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
 
 .PHONY: $(SDCMD)
 ## {{{
-$(SDCMD): $(SDCMD)_prf/PASS $(SDCMD)_prfds/PASS # $(SDCMD)_cvr/PASS
+$(SDCMD): $(SDCMD)_prf/PASS $(SDCMD)_prfds/PASS $(SDCMD)_cvr/PASS
 $(SDCMD)_prf/PASS: $(RTL)/$(SDCMD).v $(SDCMD).sby
 	sby -f $(SDCMD).sby prf
 $(SDCMD)_prfds/PASS: $(RTL)/$(SDCMD).v $(SDCMD).sby
 	sby -f $(SDCMD).sby prfds
-# $(SDCMD)_cvr/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
-#	sby -f $(SDSPIRX).sby cvr
+$(SDCMD)_cvr/PASS: $(RTL)/$(SDCMD).v $(SDCMD).sby
+	sby -f $(SDCMD).sby cvr
 ## }}}
 
 .PHONY: $(SDWB)

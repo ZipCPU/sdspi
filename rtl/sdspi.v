@@ -475,7 +475,7 @@ module	sdspi #(
 	if (!r_cmd_busy && wb_cmd_stb)
 		r_fifo_id  <= wb_data[FIFO_ID_BIT];
 	// }}}
-
+	// }}}
 	// r_cmd_busy, tx_start, rx_start, r_use_fifo, write_to_card
 	// {{{
 	initial	r_cmd_busy = 0;

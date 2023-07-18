@@ -144,7 +144,7 @@ begin
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(!ctrl_reg[15] && ctrl_reg[17:16] == 2'b01);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 
 	// We leave the CID in the FIFO to be read out later
 end endtask
@@ -161,7 +161,7 @@ begin
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(!ctrl_reg[15] && ctrl_reg[17:16] == 2'b01);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 	u_bfm.readio(ADDR_SDDATA, r6);
 end endtask
 // }}}
@@ -177,7 +177,7 @@ begin
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(!ctrl_reg[15] && ctrl_reg[17:16] == 2'b01);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 	// u_bfm.readio(ADDR_SDDATA, r6);
 end endtask
 // }}}
@@ -195,7 +195,7 @@ begin
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(!ctrl_reg[15] && ctrl_reg[17:16] == 2'b01);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 	u_bfm.readio(ADDR_SDDATA, ifcond);
 end endtask
 // }}}
@@ -230,7 +230,7 @@ begin
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(!ctrl_reg[15] && ctrl_reg[17:16] == 2'b01);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 end endtask
 // }}}
 
@@ -298,7 +298,7 @@ begin
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(!ctrl_reg[15] && ctrl_reg[17:16] == 2'b01);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 end endtask
 // }}}
 
@@ -320,7 +320,7 @@ begin
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(!ctrl_reg[15] && ctrl_reg[17:16] == 2'b01);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 
 	for(ik=0; ik<512/4; ik=ik+1)
 		u_bfm.writeio(ADDR_FIFOA, $random);
@@ -334,6 +334,9 @@ task	testscript;
 begin
 	// u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_100KHZ | SDIO_W1);
 	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_1MHZ | SDIO_W1);
+	do begin
+		u_bfm.readio(ADDR_SDPHY, read_data);
+	end while(read_data[7:0] != SPEED_1MHZ[7:0]);
 	u_bfm.readio(ADDR_SDCARD, read_data);
 	sdcard_go_idle;
 
@@ -393,6 +396,9 @@ begin
 	sdcard_select_card(rca);
 
 	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDIO_W1);
+	do begin
+		u_bfm.readio(ADDR_SDPHY, read_data);
+	end while(read_data[7:0] != SPEED_DS[7:0]);
 
 	// ACMD51	SEND_SCR -- can be used to determine what bus widths
 	//			are supported

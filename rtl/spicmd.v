@@ -28,7 +28,6 @@
 // with this program.  (It's in the $(ROOT)/doc directory, run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
-//
 // }}}
 // License:	GPL, v3, as defined and found on www.gnu.org,
 // {{{

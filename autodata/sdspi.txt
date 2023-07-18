@@ -134,9 +134,10 @@
 	//
 
 	sdspi
-	@$(PREFIX)i(
+	u_@$(PREFIX)(
 		// {{{
-		.i_clk(i_clk), .i_sd_reset(sd_reset),
+		.i_clk(@$(SLAVE.BUS.CLOCK.WIRE)),
+		.i_sd_reset(@$(SLAVE.BUS.CLOCK.RESET)),
 		@$(SLAVE.ANSIPORTLIST),
 		.o_cs_n(w_@$(PREFIX)_cs_n),
 		.o_sck(o_@$(PREFIX)_sck),

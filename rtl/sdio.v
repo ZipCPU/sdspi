@@ -59,7 +59,7 @@ module	sdio #(
 		parameter [0:0]	OPT_SERDES = 1'b0,
 		parameter [0:0]	OPT_DDR = 1'b0,
 		parameter [0:0]	OPT_CARD_DETECT = 1'b1,
-		parameter	LGTIMEOUT = 6
+		parameter	LGTIMEOUT = 23
 		// }}}
 	) (
 		// {{{
@@ -92,7 +92,7 @@ module	sdio #(
 		output	wire		o_cmd_en, o_pp_cmd,
 		output	wire	[1:0]	o_cmd_data,
 		//
-		output	wire		o_data_en, o_pp_data,
+		output	wire		o_data_en, o_pp_data, o_rx_en,
 		output	wire	[31:0]	o_tx_data,
 		output	wire		o_afifo_reset_n,
 		//
@@ -147,7 +147,7 @@ module	sdio #(
 	wire			tx_en, tx_mem_valid, tx_mem_ready, tx_mem_last;
 	wire	[31:0]		tx_mem_data;
 
-	wire			rx_en, crc_en;
+	wire			crc_en;
 	wire	[LGFIFO:0]	rx_length;
 	wire			rx_mem_valid;
 	wire	[LGFIFO-$clog2(MW/8)-1:0]	rx_mem_addr;
@@ -215,7 +215,7 @@ module	sdio #(
 		// }}}
 		// RX interface
 		// {{{
-		.o_rx_en(rx_en), .o_crc_en(crc_en), .o_length(rx_length),
+		.o_rx_en(o_rx_en), .o_crc_en(crc_en), .o_length(rx_length),
 		//
 		.i_rx_mem_valid(rx_mem_valid), .i_rx_mem_strb(rx_mem_strb),
 			.i_rx_mem_addr(rx_mem_addr),.i_rx_mem_data(rx_mem_data),
@@ -304,7 +304,7 @@ module	sdio #(
 		//
 		.i_cfg_ddr(o_cfg_ddr),
 		.i_cfg_ds(cfg_ds), .i_cfg_width(cfg_width),
-		.i_rx_en(rx_en), .i_crc_en(crc_en), .i_length(rx_length),
+		.i_rx_en(o_rx_en), .i_crc_en(crc_en), .i_length(rx_length),
 		//
 		.i_rx_strb(i_rx_strb), .i_rx_data(i_rx_data),
 		.S_ASYNC_VALID(S_AD_VALID), .S_ASYNC_DATA(S_AD_DATA),
@@ -316,7 +316,7 @@ module	sdio #(
 		// }}}
 	);
 
-	assign	o_afifo_reset_n = cfg_ds && rx_en;
+	assign	o_afifo_reset_n = cfg_ds && o_rx_en;
 
 	always @(posedge i_clk)
 		o_sdclk <= w_sdclk;

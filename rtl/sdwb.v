@@ -416,10 +416,10 @@ module	sdwb #(
 	if (i_reset || o_soft_reset)
 		r_cmd_err <= 1'b0;
 	// else if (new_cmd_request)
+	else if (i_cmd_err || (o_rx_en && i_rx_err))
+		r_cmd_err <= 1'b1;
 	else if (wb_cmd_stb && i_wb_sel[1] && i_wb_data[15])
 		r_cmd_err <= 1'b0;
-	else if (i_cmd_err || i_rx_err)
-		r_cmd_err <= 1'b1;
 
 	initial	r_cmd_ecode = 2'b0;
 	always @(posedge i_clk)
@@ -1073,7 +1073,7 @@ module	sdwb #(
 	// Keep Verilator happy
 	// {{{
 	wire	unused;
-	assign	unused = &{ 1'b0, i_rx_err, next_tx_mem };
+	assign	unused = &{ 1'b0, next_tx_mem };
 	// }}}
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////

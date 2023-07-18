@@ -61,7 +61,7 @@ module	sdfrontend #(
 		input	wire		i_pp_cmd,	// Push/pull cmd lines
 		input	wire	[1:0]	i_cmd_data,
 		//
-		input	wire		i_data_en,
+		input	wire		i_data_en, i_rx_en,
 		input	wire		i_pp_data,	// Push/pull data lines
 		input	wire	[31:0]	i_tx_data,
 		input	wire		i_afifo_reset_n,
@@ -201,7 +201,7 @@ module	sdfrontend #(
 			resp_started <= 1'b1;
 
 		always @(posedge i_clk)
-		if (i_reset || i_data_en)
+		if (i_reset || i_data_en || !i_rx_en)
 			io_started <= 1'b0;
 		else if (!i_dat[0] && sample_ck)
 			io_started <= 1'b1;
@@ -236,7 +236,7 @@ module	sdfrontend #(
 			else
 				r_cmd_strb <= 1'b0;
 
-			if (i_data_en || !sample_ck)
+			if (i_data_en || !sample_ck || !i_rx_en)
 				r_rx_strb <= 1'b0;
 			else if (io_started || i_dat[0] == 0)
 				r_rx_strb <= 1'b1;
@@ -413,7 +413,7 @@ module	sdfrontend #(
 
 		initial	sample_ck = 0;
 		always @(*)
-		if (i_data_en)
+		if (i_data_en || !i_rx_en)
 			sample_ck = 0;
 		else
 			// Verilator lint_off WIDTH
@@ -445,7 +445,7 @@ module	sdfrontend #(
 			resp_started <= 1'b1;
 
 		always @(posedge i_clk)
-		if (i_data_en)
+		if (i_data_en || !i_rx_en)
 			io_started <= 1'b0;
 		else if (sample_ck != 0
 				&& ((sample_ck & { w_dat[8], w_dat[0] }) == 0))
@@ -476,6 +476,8 @@ module	sdfrontend #(
 		begin
 			last_ck <= i_sdclk[3];
 
+			// The command response
+			// {{{
 			if (i_cmd_en || cmd_sample_ck == 0)
 			begin
 				r_cmd_strb <= 1'b0;
@@ -491,13 +493,17 @@ module	sdfrontend #(
 				r_cmd_data <= 1'b0;
 			end else
 				r_cmd_strb <= 1'b0;
+			// }}}
 
+			// The data response
+			// {{{
 			if (i_data_en || sample_ck == 0)
 				r_rx_strb <= 1'b0;
 			else if (io_started)
 				r_rx_strb <= 1'b1;
 			else
 				r_rx_strb <= 1'b0;
+			// }}}
 
 			if (sample_ck[1])
 				r_rx_data <= w_dat[15:8];
@@ -524,9 +530,8 @@ module	sdfrontend #(
 		end
 
 		assign	o_debug = {
-				i_cmd_en || i_data_en,
-				5'h0,
-				i_sdclk[7], i_sdclk[3],
+				i_cmd_en || i_data_en, 2'h0, i_rx_en,
+				sample_ck, i_sdclk[7], i_sdclk[3],
 				i_cmd_en, i_cmd_data[1:0],
 					(&w_cmd), r_cmd_strb, r_cmd_data,
 				i_data_en, r_rx_strb, r_rx_data,

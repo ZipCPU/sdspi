@@ -107,6 +107,7 @@
 @MAIN.DEFNS=
 	// @$(NAME) definitions
 	// Verilator lint_off UNUSED
+	wire		w_@$(PREFIX)_1p8v;
 	wire	[31:0]	@$(PREFIX)_debug;
 	// Verilator lint_on  UNUSED
 @MAIN.INSERT=
@@ -144,6 +145,7 @@
 		.io_dat(io_@$(PREFIX)_dat),
 `endif
 		.i_card_detect(i_@$(PREFIX)_detect),
+		.o_1p8v(w_@$(PREFIX)_1p8v),
 		.o_int(@$(PREFIX)_int),
 		.o_debug(@$(PREFIX)_debug)
 		// }}}
@@ -178,10 +180,10 @@
 //
 
 // These will be defined in sdiodrv.h for the SDIO controller
-
+struct @$(DEVID)_S;
 // }}}
 @BDEF.IONAME=_sdcard
-@BDEF.IOTYPE=@$(DEVID)
+@BDEF.IOTYPE=struct @$(DEVID)_S
 @BDEF.OSDEF=_BOARD_HAS_@$(DEVID)
 @BDEF.OSVAL=static volatile @$BDEF.IOTYPE *const @$BDEF.IONAME = ((@$BDEF.IOTYPE *)@$[0x%08x](REGBASE));
 @SIM.CLOCK=clk

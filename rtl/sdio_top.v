@@ -29,6 +29,7 @@
 // <http://www.gnu.org/licenses/> for a copy.
 // }}}
 // License:	GPL, v3, as defined and found on www.gnu.org,
+// {{{
 //		http://www.gnu.org/licenses/gpl.html
 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,7 +42,7 @@ module sdio_top #(
 		parameter [0:0]	OPT_SERDES=0,
 		parameter [0:0]	OPT_DDR=1,
 		parameter [0:0]	OPT_CARD_DETECT=1,
-		parameter	LGTIMEOUT = 6
+		parameter	LGTIMEOUT = 23
 		// }}}
 	) (
 		// {{{
@@ -89,7 +90,7 @@ module sdio_top #(
 	wire		cmd_en, pp_cmd;
 	wire	[1:0]	cmd_data;
 		//
-	wire		data_en, pp_data;
+	wire		data_en, pp_data, rx_en;
 	wire	[31:0]	tx_data;
 	wire		afifo_reset_n;
 		//
@@ -134,7 +135,7 @@ module sdio_top #(
 		.o_cmd_en(cmd_en), .o_pp_cmd(pp_cmd),
 		.o_cmd_data(cmd_data),
 		//
-		.o_data_en(data_en), .o_pp_data(pp_data),
+		.o_data_en(data_en), .o_rx_en(rx_en), .o_pp_data(pp_data),
 		.o_tx_data(tx_data),
 		.o_afifo_reset_n(afifo_reset_n),
 		//
@@ -167,6 +168,7 @@ module sdio_top #(
 		// }}}
 		// Synchronous Rx path
 		// {{{
+		.i_rx_en(rx_en),
 		.o_cmd_strb(rply_strb),
 		.o_cmd_data(rply_data),
 		//

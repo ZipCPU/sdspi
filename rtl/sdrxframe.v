@@ -340,7 +340,7 @@ module	sdrxframe #(
 	end
 
 	generate if (OPT_LITTLE_ENDIAN)
-	begin
+	begin : GEN_LIL_ENDIAN_SWAP
 		reg	[MW/8-1:0]	swap_strb;
 		reg	[MW-1:0]	swap_data;
 		integer			ik;
@@ -354,7 +354,7 @@ module	sdrxframe #(
 
 		assign	o_mem_strb  = swap_strb;
 		assign	o_mem_data  = swap_data;
-	end else begin
+	end else begin : NO_ENDIAN_SWAP
 		assign	o_mem_strb  = mem_strb;
 		assign	o_mem_data  = mem_data;
 	end endgenerate

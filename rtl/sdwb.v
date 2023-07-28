@@ -8,6 +8,25 @@
 //		Configures clock division, and IO speed and parameters.
 //	Issues commands to the command handler, TX and RX handlers.
 //
+//
+//	Basic command types:
+//		0x0040	Broadcast command, no response expected
+//		0x0140	Standard command, R1 expected response
+//		0x0240	Command expecting an R2 return
+//		0x0940	Read request, read data to follow
+//		0x0d40	Write request, data to follow
+//		0x0800	Continues a data read into a second sector
+//		0x0c00	Continues a data write into a second sector
+//		0x0168	(CMD40) GO_IRQ_STATE eMMC command (open drain response)
+//	   How to break an interrupt?
+//			0x0328, but only if in push-pull (?)
+//	   How to reset an error without doing anything?
+//			0x8080
+//	   How to reset the FIFO pointer without doing anything?
+//			0x0080
+//	   How to keep the command controller from timing out while
+//			waiting for an interrupt?
+//
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
 //

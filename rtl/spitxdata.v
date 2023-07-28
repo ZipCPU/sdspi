@@ -214,7 +214,7 @@ module spitxdata #(
 	// }}}
 
 	generate if (OPT_LITTLE_ENDIAN)
-	begin
+	begin : GEN_LILEND
 		assign	o_ll_byte = gearbox[7:0];
 	end else begin : GEN_BIG_ENDIAN
 		assign	o_ll_byte = gearbox[39:32];

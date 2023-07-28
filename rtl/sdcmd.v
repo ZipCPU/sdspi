@@ -327,9 +327,9 @@ module	sdcmd #(
 	// o_mem_strb
 	// {{{
 	generate if (MW==32)
-	begin
+	begin : GEN_FULL_STRB
 		assign	o_mem_strb = 4'hf;
-	end else begin
+	end else begin : GEN_SUBSTRB
 		reg	[MW/8-1:0]	r_mem_strb;
 
 		initial	r_mem_strb = 0;

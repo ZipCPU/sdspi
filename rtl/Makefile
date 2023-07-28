@@ -40,12 +40,12 @@
 .PHONY: all
 all:
 VERILATOR:= verilator
-# VOB := $(HOME)/src/verilog/vopro
+# VOB := $(HOME)/src/verilog/vopro	## Verilog scrambler
 VOB := cat
 VOBJ:= obj_dir
 VFLAGS := -MMD -Wall -trace -cc
 SUBMAKE:= $(MAKE) --no-print-directory -C
-all: rtl export.v $(VOBJ)/Vsdspi__ALL.so
+all: rtl export $(VOBJ)/Vsdspi__ALL.so
 
 .PHONY: rtl
 ## {{{
@@ -58,8 +58,15 @@ $(VOBJ)/Vsdspi__ALL.so: $(VOBJ)/Vsdspi.h
 	$(SUBMAKE) $(VOBJ) -f Vsdspi.mk
 
 #
-# Create a single file to encapsulate this whole core
-export.v: sdspi.v spicmd.v spitxdata.v spirxdata.v llsdspi.v
+# Create a single file to encapsulate the SDSPI core
+.PHONY: export
+export: exportspi.v exportsd.v
+exportspi.v: sdspi.v spicmd.v spitxdata.v spirxdata.v llsdspi.v
+	$(VOB) $^ > $@
+
+#
+# Create a single file to encapsulate the SDSPI core
+exportsd.v: sdio_top.v sdfrontend.v sdio.v sdwb.v sdckgen.v sdcmd.v sdrxframe.v sdtxframe.v
 	$(VOB) $^ > $@
 
 .PHONY: clean

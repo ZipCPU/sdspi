@@ -475,7 +475,7 @@ module	sdspi #(
 	if (!r_cmd_busy && wb_cmd_stb)
 		r_fifo_id  <= wb_data[FIFO_ID_BIT];
 	// }}}
-
+	// }}}
 	// r_cmd_busy, tx_start, rx_start, r_use_fifo, write_to_card
 	// {{{
 	initial	r_cmd_busy = 0;
@@ -1063,10 +1063,10 @@ endmodule
 // with this program.  (It's in the $(ROOT)/doc directory, run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
-//
+// }}}
 // License:	GPL, v3, as defined and found on www.gnu.org,
+// {{{
 //		http://www.gnu.org/licenses/gpl.html
-//
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -1761,7 +1761,7 @@ module spitxdata #(
 	// }}}
 
 	generate if (OPT_LITTLE_ENDIAN)
-	begin
+	begin : GEN_LILEND
 		assign	o_ll_byte = gearbox[7:0];
 	end else begin : GEN_BIG_ENDIAN
 		assign	o_ll_byte = gearbox[39:32];
@@ -3125,8 +3125,7 @@ module	llsdspi #(
 	wire			byte_accepted;
 	reg			restart_counter;
 
-	wire			bus_grant;
-	reg	startup_hold, powerup_hold;
+	wire			bus_grant, startup_hold, powerup_hold;
 `ifdef	FORMAL
 	reg	f_past_valid;
 `endif
@@ -3141,21 +3140,23 @@ module	llsdspi #(
 		// {{{
 		localparam	POWERUP_BITS = $clog2(POWERUP_IDLE);
 		reg	[POWERUP_BITS-1:0]	powerup_counter;
+		reg				r_powerup_hold;
 
 		initial powerup_counter = POWERUP_IDLE[POWERUP_BITS-1:0];
-		initial	powerup_hold = 1;
+		initial	r_powerup_hold = 1;
 		always @(posedge i_clk)
 		if (i_reset)
 		begin
 			powerup_counter <= POWERUP_IDLE;
-			powerup_hold    <= 1;
+			r_powerup_hold    <= 1;
 		end else if (powerup_hold)
 		begin
 			if (|powerup_counter)
 				powerup_counter <= powerup_counter - 1;
-			powerup_hold <= (powerup_counter > 0);
+			r_powerup_hold <= (powerup_counter > 0);
 		end
 
+		assign	powerup_hold = r_powerup_hold;
 `ifdef	FORMAL
 		always @(*)
 		if (!f_past_valid)
@@ -3165,10 +3166,9 @@ module	llsdspi #(
 			assert(powerup_hold);
 `endif
 		// }}}
-	end else begin
+	end else begin : NO_POWERUP_HOLD
 
-		always @(*)
-			powerup_hold = 0;
+		assign	powerup_hold = 0;
 	end endgenerate
 	// }}}
 
@@ -3179,21 +3179,23 @@ module	llsdspi #(
 		// {{{
 		localparam	STARTUP_BITS = $clog2(STARTUP_CLOCKS);
 		reg	[STARTUP_BITS-1:0]	startup_counter;
+		reg				r_startup_hold;
 
 		initial startup_counter = STARTUP_CLOCKS[STARTUP_BITS-1:0];
-		initial	startup_hold = 1;
+		initial	r_startup_hold = 1;
 		always @(posedge i_clk)
 		if (i_reset || powerup_hold)
 		begin
 			startup_counter <= STARTUP_CLOCKS;
-			startup_hold    <= 1;
+			r_startup_hold    <= 1;
 		end else if (startup_hold && r_z_counter && !o_sclk)
 		begin
 			if (|startup_counter)
 				startup_counter <= startup_counter - 1;
-			startup_hold <= (startup_counter > 0);
+			r_startup_hold <= (startup_counter > 0);
 		end
 
+		assign	startup_hold = r_startup_hold;
 `ifdef	FORMAL
 		always @(*)
 		if (!f_past_valid)
@@ -3203,10 +3205,9 @@ module	llsdspi #(
 			assert(startup_hold);
 `endif
 		// }}}
-	end else begin
+	end else begin : NO_STARTUP_HOLD
 
-		always @(*)
-			startup_hold = 0;
+		assign	startup_hold = 0;
 
 	end endgenerate
 	// }}}

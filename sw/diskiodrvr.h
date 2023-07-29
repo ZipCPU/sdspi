@@ -39,18 +39,23 @@
 #ifndef	DISKIODRVR_H
 #define	DISKIODRVR_H
 
+#include <stddef.h>
+
+typedef	struct DISKIODRVR_S *(*DIO_INIT_FN)(void *io_addr);
+typedef	int (*DIO_WRITE_FN)(void *, const unsigned, const unsigned, const char *);
+typedef	int (*DIO_READ_FN)(void *, const unsigned, const unsigned, char *);
+typedef	int (*DIO_IOCTL_FN)(void *, const char, char *);
 typedef	struct	DISKIODRVR_S {
-	void	*(*dio_init)(void *io_addr);
-	DISKIODRVR_S * (*dio_init)(void *io_addr);
-	int	(*dio_write)(void *dev, const unsigned sector,
-				const unsigned count, const char *buf);
-	int	(*dio_read)(void *dev, const unsigned sector,
-				const unsigned count, char *buf);
-	int	(*dio_ioctl)(void *dev, const char cmd, char *buf);
+	// struct DISKIODRVR_S * (*dio_init)(void *io_addr);
+	DIO_INIT_FN	dio_init;
+
+	DIO_WRITE_FN	dio_write;
+	DIO_READ_FN	dio_read;
+	DIO_IOCTL_FN	dio_ioctl;
 } DISKIODRVR;
 
-DISKIODRVR	SDIODRVR  = { sdio_init, sdio_write, sdio_read, sdio_ioctl  };
-DISKIODRVR	SDSPIDRVR = { sdspi_init,sdspi_write,sdspi_read,sdspi_ioctl };
+DISKIODRVR	SDIODRVR  = { (DIO_INIT_FN)&sdio_init, (DIO_WRITE_FN)&sdio_write, (DIO_READ_FN)&sdio_read, (DIO_IOCTL_FN)&sdio_ioctl  };
+DISKIODRVR	SDSPIDRVR = { (DIO_INIT_FN)&sdspi_init,(DIO_WRITE_FN)&sdspi_write,(DIO_READ_FN)&sdspi_read,(DIO_IOCTL_FN)&sdspi_ioctl };
 // DISKIODRVR	EMMCDRVR  = { emmc_init, emmc_write, emmc_read, emmc_ioctl };
 
 typedef	struct	FATDRIVE_S {
@@ -67,12 +72,12 @@ typedef	struct	FATDRIVE_S {
 #define	MAX_DRIVES	4
 FATDRIVE	DRIVES[MAX_DRIVES] = {
 #ifdef	_BOARD_HAS_SDSPI
-		{ _sdspi, &SDSPIDRVR, NULL },
+		{ (void *)_sdspi, &SDSPIDRVR, NULL },
 #else
 		{ NULL, NULL, NULL },
 #endif
 #ifdef	_BOARD_HAS_SDIO
-		{ _sdio, &SDIODRVR, NULL },
+		{ (void *)_sdio, &SDIODRVR, NULL },
 #else
 		{ NULL, NULL, NULL },
 #endif

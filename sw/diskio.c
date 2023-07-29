@@ -41,7 +41,9 @@
 #include "ff.h"		// From FATFS
 #include "diskio.h"	// From FATFS as well
 #include "board.h"	// Defines associated with the driver
-#include "sdcard.h"
+#include "sdspidrv.h"
+#include "sdiodrv.h"
+#include "diskiodrvr.h"
 
 // #define	STDIO_DEBUG
 #include "zipcpu.h"
@@ -71,12 +73,12 @@ DSTATUS	disk_status(
 			|| NULL == DRIVES[pdrv].fd_driver)
 		return STA_NODISK;
 	if (NULL == DRIVES[pdrv].fd_data)
-		DRIVES[pdrv].fd_data= (DRIVES[pdrv].fd_driver.dio_init)(
+		DRIVES[pdrv].fd_data= (DRIVES[pdrv].fd_driver->dio_init)(
 					DRIVES[pdrv].fd_data);
 	if (NULL == DRIVES[pdrv].fd_data
-		|| RES_OK != (*DRIVES[pdrv].fd_Driver.dio_ioctl)(
+		|| RES_OK != (*DRIVES[pdrv].fd_driver->dio_ioctl)(
 			DRIVES[pdrv].fd_data,
-					MMC_GET_SDSTAT, &stat))
+					MMC_GET_SDSTAT, (char *)&stat))
 		stat = STA_NODISK;
 
 	return	stat;
@@ -89,13 +91,14 @@ DSTATUS	disk_initialize(
 	// {{{
 	if (pdrv >= MAX_DRIVES || NULL == DRIVES[pdrv].fd_addr
 			|| NULL == DRIVES[pdrv].fd_driver)
-		return STAT_NODISK;
+		return STA_NODISK;
 	else if (NULL != DRIVES[pdrv].fd_data
-			|| NULL != (DRIVES[pdrv].fd_data
-				=(*DRIVES[pdrv].fd_driver.dio_init(DRVES[pdrv]).fd_addr)))
+		|| NULL != (DRIVES[pdrv].fd_data
+				= (*DRIVES[pdrv].fd_driver->dio_init)(
+					DRIVES[pdrv].fd_addr))) {
 		return RES_OK;
-	else
-		return STAT_NODISK;
+	} else
+		return STA_NODISK;
 }
 // }}}
 
@@ -107,9 +110,9 @@ DRESULT disk_ioctl(
 	// {{{
 	if (pdrv >= MAX_DRIVES || NULL == DRIVES[pdrv].fd_addr
 			|| NULL == DRIVES[pdrv].fd_driver)
-		return = RES_ERROR;
+		return RES_ERROR;
 	return (*DRIVES[pdrv].fd_driver->dio_ioctl)(DRIVES[pdrv].fd_data,
-						cmd, &buff);
+						cmd, buff);
 }
 // }}}
 
@@ -174,8 +177,8 @@ DRESULT	disk_read(
 	// {{{
 	if (pdrv >= MAX_DRIVES || NULL == DRIVES[pdrv].fd_addr
 			|| NULL == DRIVES[pdrv].fd_driver)
-		return = RES_ERROR;
-	return (*DRIVES[pdrv].fd_driver->dio_read)(DRIVES[pdrv].fd_addr,
+		return RES_ERROR;
+	return (*DRIVES[pdrv].fd_driver->dio_read)(DRIVES[pdrv].fd_data,
 					sector, count, buff);
 }
 // }}}
@@ -188,34 +191,7 @@ DRESULT	disk_write(
 	// {{{
 	if (pdrv >= MAX_DRIVES || NULL == DRIVES[pdrv].fd_addr
 			|| NULL == DRIVES[pdrv].fd_driver)
-		return = RES_ERROR;
-	return (*DRIVES[pdrv].fd_driver->dio_write)(DRIVES[pdrv].fd_addr,
-					sector, count, buff);
-#ifdef	OLD_CODE
-
-#ifdef	STDIO_DEBUG
-	DBGPRINTF("Disk:WRITE(%d,0x%x,%u)\n", pdrv, sector, count);
-#endif
-	if ((pdrv != 0)||(gbl_sector_size != 512))
 		return RES_ERROR;
-
-	for(unsigned k=0; k<count; k++) {
-		const char	*sector_ptr = buff + (k*gbl_sector_size);
-
-		if (0 != sdcard_write(sector+k, sector_ptr)) {
-#ifdef	STDIO_DEBUG
-			DBGPRINTF("Disk:WRITE: WRITE ERR, sector %d of %d, at sector #0x%08x\n", k+1, count, sector+k);
-#endif
-			if (0 != sdcard_write(sector+k, sector_ptr)) {
-#ifdef	STDIO_DEBUG
-				DBGPRINTF("Disk:WRITE: Double write fail--abort\n");
-#endif
-				return RES_ERROR;
-			}
-		}
-	}
-
-	return RES_OK;
-#endif
+	return (*DRIVES[pdrv].fd_driver->dio_write)(DRIVES[pdrv].fd_data,
+					sector, count, buff);
 }
-// }}}

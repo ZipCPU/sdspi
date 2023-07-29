@@ -930,7 +930,9 @@ SDSPIDRV *sdspi_init(SDSPI *dev) {
 #ifdef	SCOPE
 			SCOPE->s_ctrl = WBSCOPE_TRIGGER | SCOPEDELAY;
 #endif
-
+			txstr("SDCard Err :");
+			txhex(sdcard_err);
+			txstr("\n");
 			dv->d_sector_count = 0;
 			dv->d_block_size   = 0;
 			return dv;
@@ -1009,8 +1011,7 @@ SDSPIDRV *sdspi_init(SDSPI *dev) {
 		C_SIZE_MULT >>= 7;
 		C_SIZE_MULT &= 0x07;
 
-		READ_BL_LEN = (dv->d_CSD[ 6]& 0x0ff);
-		READ_BL_LEN = READ_BL_LEN & 0x0f;
+		READ_BL_LEN = (dv->d_CSD[ 5]& 0x0f);
 
 		BLOCK_LEN = (1ul<<(READ_BL_LEN));
 		// gbl_sector_size = BLOCK_LEN;
@@ -1024,8 +1025,8 @@ SDSPIDRV *sdspi_init(SDSPI *dev) {
 		SECTOR_SIZE &= 0x07f;
 
 
-		WRITE_BL_LEN  = (dv->d_CSD[12]& 0x0ff);
-		WRITE_BL_LEN |= (dv->d_CSD[13]& 0x0ff) | (SECTOR_SIZE << 8);
+		WRITE_BL_LEN  = (dv->d_CSD[12]& 0x03);
+		WRITE_BL_LEN |= (dv->d_CSD[13]& 0x0ff) | (WRITE_BL_LEN << 8);
 		WRITE_BL_LEN >>= 6;
 		WRITE_BL_LEN &= 0x0f;
 #ifdef	STDIO_DEBUG

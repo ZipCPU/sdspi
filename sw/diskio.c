@@ -43,6 +43,7 @@
 #include "board.h"	// Defines associated with the driver
 #include "sdspidrv.h"
 #include "sdiodrv.h"
+#include "emmcdrv.h"
 #include "diskiodrvr.h"
 
 // #define	STDIO_DEBUG
@@ -56,12 +57,6 @@
 #endif
 
 static inline	void	null(char *s,...) {}
-
-// int	gbl_csd_valid = 0;
-// char	gbl_csd_reg[128];
-// unsigned long	gbl_card_size = 0;
-// unsigned int	gbl_sector_size = 0;
-// unsigned int	gbl_erase_sector_size = 0;
 
 DSTATUS	disk_status(
 	BYTE pdrv

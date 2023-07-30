@@ -56,7 +56,7 @@ typedef	struct	DISKIODRVR_S {
 
 DISKIODRVR	SDIODRVR  = { (DIO_INIT_FN)&sdio_init, (DIO_WRITE_FN)&sdio_write, (DIO_READ_FN)&sdio_read, (DIO_IOCTL_FN)&sdio_ioctl  };
 DISKIODRVR	SDSPIDRVR = { (DIO_INIT_FN)&sdspi_init,(DIO_WRITE_FN)&sdspi_write,(DIO_READ_FN)&sdspi_read,(DIO_IOCTL_FN)&sdspi_ioctl };
-// DISKIODRVR	EMMCDRVR  = { emmc_init, emmc_write, emmc_read, emmc_ioctl };
+DISKIODRVR	EMMCDRVR  = { (DIO_INIT_FN)&emmc_init, (DIO_WRITE_FN)&emmc_write, (DIO_READ_FN)&emmc_read, (DIO_IOCTL_FN)&emmc_ioctl };
 
 typedef	struct	FATDRIVE_S {
 	void		*fd_addr;
@@ -71,18 +71,18 @@ typedef	struct	FATDRIVE_S {
 //
 #define	MAX_DRIVES	4
 FATDRIVE	DRIVES[MAX_DRIVES] = {
-#ifdef	_BOARD_HAS_SDSPI
-		{ (void *)_sdspi, &SDSPIDRVR, NULL },
-#else
-		{ NULL, NULL, NULL },
-#endif
 #ifdef	_BOARD_HAS_SDIO
 		{ (void *)_sdio, &SDIODRVR, NULL },
 #else
 		{ NULL, NULL, NULL },
 #endif
+#ifdef	_BOARD_HAS_SDSPI
+		{ (void *)_sdspi, &SDSPIDRVR, NULL },
+#else
+		{ NULL, NULL, NULL },
+#endif
 #ifdef	_BOARD_HAS_EMMC
-		{ _emmc, &EMMCDRVR, NULL },
+		{ (void *)_emmc, &EMMCDRVR, NULL },
 #else
 		{ NULL, NULL, NULL },
 #endif

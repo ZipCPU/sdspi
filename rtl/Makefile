@@ -45,7 +45,9 @@ VOB := cat
 VOBJ:= obj_dir
 VFLAGS := -MMD -Wall -trace -cc
 SUBMAKE:= $(MAKE) --no-print-directory -C
-all: rtl export $(VOBJ)/Vsdspi__ALL.so
+SDSPI_FILES := sdspi.v spicmd.v spitxdata.v spirxdata.v llsdspi.v
+SDIO_FILES := sdio_top.v sdfrontend.v sdio.v sdwb.v sdckgen.v sdcmd.v sdrxframe.v sdtxframe.v
+all: rtl export $(VOBJ)/Vsdspi__ALL.so usage
 
 .PHONY: rtl
 ## {{{
@@ -61,13 +63,18 @@ $(VOBJ)/Vsdspi__ALL.so: $(VOBJ)/Vsdspi.h
 # Create a single file to encapsulate the SDSPI core
 .PHONY: export
 export: exportspi.v exportsd.v
-exportspi.v: sdspi.v spicmd.v spitxdata.v spirxdata.v llsdspi.v
+exportspi.v: $(SDSPI_FILES)
 	$(VOB) $^ > $@
 
 #
 # Create a single file to encapsulate the SDSPI core
-exportsd.v: sdio_top.v sdfrontend.v sdio.v sdwb.v sdckgen.v sdcmd.v sdrxframe.v sdtxframe.v
+exportsd.v: $(SDIO_FILES)
 	$(VOB) $^ > $@
+
+.PHONY: usage
+usage: usage.txt
+usage.txt: usage.pl $(SDSPI_FILES) $(SDIO_FILES)
+	perl usage.pl
 
 .PHONY: clean
 ## {{{

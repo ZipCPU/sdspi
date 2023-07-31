@@ -44,6 +44,7 @@ module	sdcmd #(
 		// parameter	MW = 32,
 		parameter [0:0]	OPT_DS = 1'b0,
 		// parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,
+		parameter [0:0]	OPT_EMMC = 1'b1,
 		parameter	LGTIMEOUT = 26,	// 500ms expected
 		parameter	LGLEN = 9,
 		parameter	MW = 32
@@ -58,6 +59,7 @@ module	sdcmd #(
 		// Controller interface
 		// {{{
 		input	wire			i_cmd_request,
+		input	wire			i_cmd_selfreply,
 		input	wire	[1:0]		i_cmd_type,
 		input	wire	[6:0]		i_cmd,
 		input	wire	[31:0]		i_arg,
@@ -114,7 +116,10 @@ module	sdcmd #(
 	reg	[5:0]	srcount;
 	reg	[47:0]	tx_sreg;
 
-	reg		waiting_on_response, cfg_ds, cfg_dbl, r_frame_err;
+	reg		waiting_on_response, cfg_ds, cfg_dbl, r_frame_err,
+			response_active;
+	wire		self_request;
+	wire		lcl_accept;
 	reg	[1:0]	cmd_type;
 	reg	[7:0]	resp_count;
 	wire		frame_err, w_done, crc_err, w_no_response;
@@ -122,6 +127,7 @@ module	sdcmd #(
 	reg	[39:0]	rx_sreg;
 
 	reg			rx_timeout;
+	wire			no_timeout;
 	reg	[LGTIMEOUT-1:0]	rx_timeout_counter;
 
 	reg	[6:0]	crc_fill;
@@ -144,7 +150,7 @@ module	sdcmd #(
 	begin
 		active <= 0;
 		srcount <= 0;
-	end else if (i_cmd_request && !o_busy)
+	end else if (lcl_accept)
 	begin
 		srcount <= 48;
 		active  <= 1;
@@ -166,7 +172,7 @@ module	sdcmd #(
 	always @(posedge i_clk)
 	if (i_reset)
 		tx_sreg <= 48'hffff_ffff_ffff;
-	else if (i_cmd_request && !o_busy)
+	else if (lcl_accept)
 		tx_sreg <= { 1'b0, i_cmd, i_arg,
 				CMDCRC({ 1'b0, i_cmd, i_arg }), 1'b1 };
 	else if (i_ckstb)
@@ -195,7 +201,7 @@ module	sdcmd #(
 	always @(posedge i_clk)
 	if (i_reset)
 		waiting_on_response <= 1'b0;
-	else if (i_cmd_request && !o_busy)
+	else if (lcl_accept)
 		waiting_on_response <= (i_cmd_type != R_NONE);
 	else if (o_done)
 		waiting_on_response <= 1'b0;
@@ -216,7 +222,7 @@ module	sdcmd #(
 	always @(posedge i_clk)
 	if (i_reset)
 		{ cfg_ds, cfg_dbl, cmd_type } <= 4'b0;
-	else if (i_cmd_request && !o_busy)
+	else if (lcl_accept)
 		{ cfg_ds, cfg_dbl, cmd_type } <= { (i_cfg_ds && OPT_DS), i_cfg_dbl, i_cmd_type };
 	// }}}
 
@@ -234,7 +240,7 @@ module	sdcmd #(
 	// resp_count
 	// {{{
 	always @(posedge i_clk)
-	if (i_reset || !waiting_on_response || active)
+	if (i_reset || !waiting_on_response || active || lcl_accept)
 		resp_count <= 0;
 	else if (resp_count < 192)
 	begin
@@ -246,6 +252,21 @@ module	sdcmd #(
 			resp_count <= resp_count + (i_cmd_strb[1] ? 1:0)
 					+ (i_cmd_strb[0] ? 1:0);
 	end
+
+	always @(posedge i_clk)
+	if (i_reset || !waiting_on_response || active || lcl_accept)
+		response_active <= 0;
+	else if (OPT_DS && cfg_ds)
+	begin
+		if (S_ASYNC_VALID)
+			response_active <= 1;
+	end else if (i_cmd_strb[1])
+		response_active <= 1;
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset)
+		assert(response_active == (resp_count != 0));
+`endif
 	// }}}
 
 	// rx_sreg
@@ -347,7 +368,7 @@ module	sdcmd #(
 	// {{{
 	initial	mem_addr = 0;
 	always @(posedge i_clk)
-	if (i_reset || cmd_type != R_R2 || !waiting_on_response)
+	if (i_reset || cmd_type != R_R2 || !waiting_on_response || lcl_accept)
 		mem_addr <= 0;
 	else if (o_mem_valid)
 		mem_addr <= mem_addr + 1;
@@ -368,7 +389,7 @@ module	sdcmd #(
 	always @(posedge i_clk)
 	if (i_reset || !waiting_on_response)
 		r_frame_err <= 1'b0;
-	else if (i_cmd_request && !o_busy)
+	else if (lcl_accept)
 		r_frame_err <= 1'b0;
 	else if (resp_count == 2 && rx_sreg[1:0] != 2'b00)
 		r_frame_err <= 1'b1;
@@ -377,6 +398,101 @@ module	sdcmd #(
 			&&((cmd_type[1] && !rx_sreg[0] && resp_count == 48)
 			||((cmd_type==R_R2&& !rx_sreg[0] && resp_count == 136))));
 	// }}}
+
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// IRQ handling
+	// {{{
+
+	generate if (OPT_EMMC)
+	begin : GEN_IRQ_SUPPORT
+		reg	r_self_request, r_no_timeout;
+
+		// Trust eMMC to make things difficult.
+		//
+		// If it weren't for the EMMC GO_IRQ_STATE command, every
+		// command would receive a reply and no command/reply pairs
+		// could be interrupted.  Further, we'd know that if a response
+		// didn't come back within our timeout window that no response
+		// would be available.
+		//
+		// The eMMC GO_IRQ_STATE command changes this.
+		//
+		// Following a GO_IRQ_STATE command, we're not allowed to
+		// timeout here.  GO_IRQ_STATE is followed by a wait for the
+		// card to generate an interrupt.  So, our first change to this
+		// paradigm, is that we have to wait for this interrupt--not any
+		// timeout.  Second, if the eMMC chip doesn't generate an
+		// interrupt then the CPU is allowed to generate one.  This
+		// leads to our second change: the controller will be busy,
+		// waiting on the IRQ response, but yet it now needs to
+		// interrupt that wait to send a command that looks like a
+		// reply.  (i.e. the first two bits are not 2'b01, but rather
+		// 2'b00)
+		//
+		// We'll use i_cmd_selfreply for this purpose.
+		//
+		// When i_cmd_selfreply is true, we'll need to drop o_busy
+		// but only when we aren't already transmitting--i.e. when
+		// !active--even if we don't accept the command.  (We won't
+		// accept the command if a response has already begun ...)
+		//	We need to drop on a self request even if
+		//	resp_count != 0.  Therefore, we'll accept the command
+		//	if we are not active, and the slave hasn't started
+		//	replying (yet)
+		//
+
+		// self_request
+		// {{{
+		always @(posedge i_clk)
+		if (i_reset)
+			r_self_request <= 0;
+		else if (!o_busy || active)
+			r_self_request <= 0;
+		else if (i_cmd_selfreply)
+			r_self_request <= 1;
+		// }}}
+
+		// no_timeout
+		// {{{
+		always @(posedge i_clk)
+		if (i_reset)
+			r_no_timeout <= 0;
+		else if (lcl_accept)
+			// No timeouts for GO_IRQ_STATE commands in eMMC mode
+			r_no_timeout <= (i_cmd == 7'h68);
+		else if (response_active)
+			// Once a response starts, we need the timeout--lest
+			// DS only show up for some bits and not others.
+			r_no_timeout <= 1'b0;
+		// }}}
+
+		assign	lcl_accept = i_cmd_request && !o_busy
+			&& (o_done || !r_busy || (self_request
+					&& (!response_active || rx_timeout)));
+		assign	self_request = r_self_request;
+		assign	no_timeout = r_no_timeout;
+`ifdef	FORMAL
+		always @(posedge i_clk)
+		if (!i_reset && !i_cmd_selfreply)
+			assert(!r_self_request);
+`endif
+	end else begin : NO_IRQ_SUPPORT
+
+		assign	self_request = 0;
+		assign	no_timeout   = 0;
+
+		assign	lcl_accept = i_cmd_request && !o_busy;
+
+		// Keep Verilator happy
+		// {{{
+		// Verilator lint_off UNUSED
+		wire	unused_emmc;
+		assign	unused_emmc = &{ 1'b0, i_cmd_selfreply, response_active };
+		// Verilator lint_on  UNUSED
+		// }}}
+	end endgenerate
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -390,7 +506,8 @@ module	sdcmd #(
 	initial	rx_timeout = 0;
 	initial	rx_timeout_counter = -1;
 	always @(posedge i_clk)
-	if (i_reset || !waiting_on_response || active || r_done)
+	if (i_reset || !waiting_on_response || active || r_done || no_timeout
+			|| lcl_accept)
 	begin
 		rx_timeout <= 0;
 		rx_timeout_counter <= -1;
@@ -470,7 +587,7 @@ module	sdcmd #(
 
 	initial { o_err, o_ercode } = 3'h0;
 	always @(posedge i_clk)
-	if (i_reset || o_done || w_no_response)
+	if (i_reset || o_done || w_no_response || lcl_accept)
 		o_err <= 1'b0;
 	else if (rx_timeout && !r_done)
 		o_err <= 1'b1;
@@ -479,8 +596,7 @@ module	sdcmd #(
 
 	initial o_ercode = 2'h0;
 	always @(posedge i_clk)
-	if (i_reset || active || (i_cmd_request && !o_busy) || w_no_response
-			|| o_done)
+	if (i_reset || active || lcl_accept || w_no_response || o_done)
 		o_ercode <= 2'b00;
 	else if (!r_done)
 	begin
@@ -498,7 +614,7 @@ module	sdcmd #(
 
 	initial	r_done = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || w_no_response || o_done)
+	if (i_reset || w_no_response || o_done || lcl_accept)
 		r_done <= 1'b0;
 	else if (w_done || rx_timeout)
 		r_done <= 1'b1;
@@ -507,7 +623,7 @@ module	sdcmd #(
 
 	initial	o_done = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || o_done)
+	if (i_reset || o_done || lcl_accept)
 		o_done <= 1'b0;
 	else
 		o_done <= (rx_timeout || w_no_response
@@ -518,12 +634,12 @@ module	sdcmd #(
 	always @(posedge i_clk)
 	if (i_reset)
 		r_busy <= 1'b0;
-	else if (i_cmd_request && !o_busy)
+	else if (lcl_accept)
 		r_busy <= 1'b1;
 	else if (o_done)
 		r_busy <= 1'b0;
 
-	assign	o_busy = r_busy || !i_ckstb;
+	assign	o_busy = (r_busy && !self_request) || !i_ckstb;
 
 	//
 	// Make verilator happy
@@ -576,6 +692,7 @@ module	sdcmd #(
 	else if ($past(i_cmd_request && o_busy))
 	begin
 		assume(i_cmd_request);
+		assume($stable(i_cmd_selfreply));
 		assume($stable(i_cmd));
 		assume($stable(i_arg));
 		assume($stable(i_cmd_type));
@@ -590,6 +707,13 @@ module	sdcmd #(
 	else if (o_done)
 		f_busy <= 1'b0;
 
+
+	always @(*)
+	if (!i_reset && i_cmd_selfreply)
+	begin
+		assume(i_cmd_request);
+		assume(i_cmd_type == R_NONE);
+	end
 
 	always @(posedge i_clk)
 	if (!i_reset && f_busy)
@@ -609,7 +733,7 @@ module	sdcmd #(
 			assert(!r_busy);
 		if (!r_busy)
 			assert(!active);
-		if ($past(o_done))
+		if ($past(o_done && !lcl_accept))
 		begin
 			assert(!r_busy);
 			assert(!f_busy);
@@ -883,6 +1007,10 @@ module	sdcmd #(
 		cover(i_cmd_type == R_R2 && o_err && o_ercode == ECODE_BADCRC);
 		cover(i_cmd_type == R_R2 && o_err && o_ercode== ECODE_FRAMEERR);
 	end
+
+	always @(posedge i_clk)
+	if (!i_reset && r_busy && i_cmd_selfreply)
+		cover(!o_busy);
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////

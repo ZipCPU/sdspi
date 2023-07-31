@@ -19,13 +19,17 @@
 //		0x0c00	Continues a data write into a second sector
 //		0x0168	(CMD40) GO_IRQ_STATE eMMC command (open drain response)
 //	   How to break an interrupt?
-//			0x0328, but only if in push-pull (?)
+//		0x0028 (Also requires open-drain mode)
+//		0x0040	(GO_IDLE, expects no response)
 //	   How to reset an error without doing anything?
-//			0x8080
+//		0x8080
 //	   How to reset the FIFO pointer without doing anything?
-//			0x0080
+//		0x0080
 //	   How to keep the command controller from timing out while
-//			waiting for an interrupt?
+//			waiting for an interrupt?  Send a GO_IRQ_STATE command
+//			The command processor will need to know how to handle
+//			this internally.
+//		0x0168
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
@@ -66,6 +70,7 @@ module	sdwb #(
 		parameter [0:0]	OPT_SERDES = 1'b0,
 		parameter [0:0]	OPT_DDR = 1'b0,
 		parameter [0:0]	OPT_CARD_DETECT = 1'b1,
+		parameter [0:0]	OPT_EMMC = 1'b1,
 		localparam	LGFIFOW=LGFIFO-$clog2(MW/8),
 		parameter [0:0]	OPT_DMA = 1'b0,
 		parameter [0:0]	OPT_1P8V= 1'b0	// 1.8V voltage switch capable?
@@ -98,6 +103,7 @@ module	sdwb #(
 		// }}}
 		// CMD interface
 		// {{{
+		output	wire			o_cmd_selfreply,
 		output	reg			o_cmd_request,
 		output	reg	[1:0]		o_cmd_type,
 		output	wire	[6:0]		o_cmd_id,
@@ -137,7 +143,7 @@ module	sdwb #(
 		input	wire	[LGFIFOW-1:0]	i_rx_mem_addr,
 		input	wire	[MW-1:0]	i_rx_mem_data,
 		//
-		input	wire			i_rx_done, i_rx_err,
+		input	wire			i_rx_done, i_rx_err,i_rx_ercode,
 		// }}}
 		input	wire			i_card_detect,
 		input	wire			i_card_busy,
@@ -170,11 +176,15 @@ module	sdwb #(
 	localparam	[1:0]	WIDTH_1W = 2'b00,
 				WIDTH_4W = 2'b01,
 				WIDTH_8W = 2'b10;
+	// localparam	[15:0]	CMD_SELFREPLY = 16'h0028;
+
+	reg	cmd_busy, new_cmd_request, new_data_request, new_tx_request;
+	reg	w_selfreply_request;
 
 	wire		wb_cmd_stb, wb_phy_stb;
 	reg	[6:0]	r_cmd;
 	reg		r_tx_request, r_rx_request, r_tx_sent;
-	reg		r_fifo, r_cmd_err;
+	reg		r_fifo, r_cmd_err, r_rx_err, r_rx_ecode;
 	reg	[1:0]	r_cmd_ecode;
 	reg	[31:0]	r_arg;
 	reg	[3:0]	lgblk;
@@ -205,16 +215,19 @@ module	sdwb #(
 	reg	[LGFIFOW-1:0]	mem_wr_addr_a, mem_wr_addr_b;
 	reg	[MW/8-1:0]	mem_wr_strb_a, mem_wr_strb_b;
 	reg	[MW-1:0]	mem_wr_data_a, mem_wr_data_b;
+
+	wire			mem_busy;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Registers
 	// {{{
-	reg	cmd_busy, new_cmd_request, new_data_request, new_tx_request;
 
 	// CMD/control register
 	// {{{
-	assign	wb_cmd_stb = i_wb_stb && i_wb_addr == ADDR_CMD && i_wb_we;
+	assign	wb_cmd_stb = i_wb_stb && i_wb_addr == ADDR_CMD && i_wb_we
+			&&((!r_cmd_err && !r_rx_err)
+					|| (i_wb_sel[1] && i_wb_data[15]));
 
 	// o_soft_reset
 	// {{{
@@ -227,16 +240,32 @@ module	sdwb #(
 					&&(i_wb_data==32'h52_00_00_00);
 	// }}}
 
+	assign	mem_busy = (o_tx_en || r_tx_request || o_rx_en || r_rx_request)
+			||(cmd_busy && o_cmd_type == R2_REPLY);
+
 	// o_cmd_request
 	// {{{
 	always @(*)
 	begin
-		new_cmd_request = !cmd_busy && wb_cmd_stb && i_wb_sel[0]
-			&& (i_wb_data[7:6] == CMD_PREFIX
-				|| (i_wb_data[7:6] == NUL_PREFIX && i_wb_sel[1]
-					&& !i_wb_data[USE_DMA_BIT]
-					&& !i_wb_data[USE_FIFO_BIT]
-					&& i_wb_data[9:8] == RNO_REPLY));
+		w_selfreply_request = !o_cmd_request && wb_cmd_stb
+			&& (&i_wb_sel[1:0])
+			&&((!i_wb_data[USE_DMA_BIT] || !OPT_DMA)
+					&& !i_wb_data[USE_FIFO_BIT])
+			&& (i_wb_data[9:8] == RNO_REPLY)
+			&& ((i_wb_data[7:6] ==  NUL_PREFIX
+					&& i_wb_data[5:0] != 6'h0) //IRQ Reply
+			  ||(i_wb_data[7:6] ==  CMD_PREFIX
+					&& i_wb_data[5:0] == 6'h0)); // GO_IDLE
+
+		if (i_reset || o_soft_reset || !OPT_EMMC)
+			w_selfreply_request = 1'b0;
+	end
+
+	always @(*)
+	begin
+		new_cmd_request = wb_cmd_stb && (&i_wb_sel[1:0])
+			&& ((!cmd_busy && i_wb_data[7:6] == CMD_PREFIX)
+				|| (w_selfreply_request));
 
 		new_data_request = wb_cmd_stb && (&i_wb_sel[1:0])
 			&& ((!cmd_busy && i_wb_data[7:6] == CMD_PREFIX)
@@ -249,23 +278,13 @@ module	sdwb #(
 		// If the FIFO is already in use, then we can't accept any
 		// new command which would require the FIFO
 		// {{{
-		if (o_tx_en || r_tx_request || o_rx_en || r_rx_request)
-			new_data_request = 1'b0;
-		if (cmd_busy && o_cmd_type == R2_REPLY)
+		if (mem_busy)
 			new_data_request = 1'b0;
 
 		// If we want an R2 reply, then the data channels need to be
 		// clear.
-		if ((o_tx_en || r_tx_request || o_rx_en || r_rx_request)
-				&&((i_wb_sel[1] && i_wb_data[9:8] == R2_REPLY)
-				||(!i_wb_sel[1]&&o_cmd_type == R2_REPLY)))
-			new_cmd_request = 1'b0;
-
-		// If we are requesting a new command, one that requires data
-		// transfer, and the data channels are still busy, then we
-		// must refuse the command.
-		if ((o_tx_en || r_tx_request || o_rx_en || r_rx_request)
-			&&((i_wb_data[USE_DMA_BIT] && OPT_DMA)
+		if (mem_busy &&((i_wb_data[9:8] == R2_REPLY)
+					||(i_wb_data[USE_DMA_BIT] && OPT_DMA)
 					|| i_wb_data[USE_FIFO_BIT]))
 			new_cmd_request = 1'b0;
 		// }}}
@@ -283,6 +302,28 @@ module	sdwb #(
 		o_cmd_request <= 1'b1;
 	end else if (!i_cmd_busy)
 		o_cmd_request <= 1'b0;
+	// }}}
+
+	// o_cmd_selfreply -- send a command even if busy waiting on a reply
+	// {{{
+	generate if (OPT_EMMC)
+	begin : GEN_SELFREPLY
+		reg	r_cmd_selfreply;
+
+		initial	r_cmd_selfreply = 1'b0;
+		always @(posedge i_clk)
+		if (i_reset || o_soft_reset)
+			r_cmd_selfreply <= 1'b0;
+		else if (w_selfreply_request)
+			r_cmd_selfreply <= 1'b1;
+		else if (!i_cmd_busy)
+			r_cmd_selfreply <= 1'b0;
+
+		assign	o_cmd_selfreply = r_cmd_selfreply;
+	end else begin : NO_SELFREPLY
+
+		assign	o_cmd_selfreply = 1'b0;
+	end endgenerate
 	// }}}
 
 	// cmd_busy: Are we waiting on a command to complete?
@@ -322,7 +363,7 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		o_cmd_type <= 2'b00;
-	else if (new_cmd_request && i_wb_sel[1])
+	else if (new_cmd_request)
 		o_cmd_type <= i_wb_data[9:8];
 	// }}}
 
@@ -435,9 +476,9 @@ module	sdwb #(
 	if (i_reset || o_soft_reset)
 		r_cmd_err <= 1'b0;
 	// else if (new_cmd_request)
-	else if (i_cmd_err || (o_rx_en && i_rx_err))
+	else if (i_cmd_err) //  || (o_rx_en && i_rx_err))
 		r_cmd_err <= 1'b1;
-	else if (wb_cmd_stb && i_wb_sel[1] && i_wb_data[15])
+	else if (wb_cmd_stb)
 		r_cmd_err <= 1'b0;
 
 	initial	r_cmd_ecode = 2'b0;
@@ -446,29 +487,47 @@ module	sdwb #(
 		r_cmd_ecode <= 2'b0;
 	else if (new_cmd_request)
 		r_cmd_ecode <= 2'b0;
-	else if (!r_cmd_err)
-	begin
-		if (i_rx_err)
-			r_cmd_ecode <= 2'b10;
-		if (i_cmd_done)
-			r_cmd_ecode <= i_cmd_ercode;
-	end
+	else if (!r_cmd_err && i_cmd_done)
+		r_cmd_ecode <= i_cmd_ercode;
+	// }}}
+
+	// r_rx_err
+	// {{{
+	initial	r_rx_err = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset || o_soft_reset)
+		r_rx_err <= 1'b0;
+	// else if (new_cmd_request)
+	else if (o_rx_en && i_rx_err)
+		r_rx_err <= 1'b1;
+	else if (wb_cmd_stb)
+		r_rx_err <= 1'b0;
+
+	initial	r_rx_ecode = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset || o_soft_reset)
+		r_rx_ecode <= 1'b0;
+	else if (new_cmd_request)
+		r_rx_ecode <= 1'b0;
+	else if (!r_rx_err && i_rx_err)
+		r_rx_ecode <= i_rx_ercode;
 	// }}}
 
 	always @(*)
 	begin
 		w_cmd_word = 32'h0;
+		w_cmd_word[23] = r_rx_ecode;
+		w_cmd_word[22] = r_rx_err;
+		w_cmd_word[21] = r_cmd_err;
 		w_cmd_word[20] = i_card_busy;
 		w_cmd_word[19] = !card_present;
 		w_cmd_word[18] =  card_removed;
 		w_cmd_word[17:16] = r_cmd_ecode;
-		w_cmd_word[15] = r_cmd_err;
+		w_cmd_word[15] = r_cmd_err || r_rx_err;
 		w_cmd_word[14] = cmd_busy;
 		w_cmd_word[13] = 1'b0; // (== r_dma && OPT_DMA)
 		w_cmd_word[12] = r_fifo;
-		w_cmd_word[11] = (o_tx_en || r_tx_request
-				|| o_rx_en || r_rx_request
-			||(cmd_busy && o_cmd_type == 2'b10));
+		w_cmd_word[11] = mem_busy;
 		w_cmd_word[10] = (o_tx_en || r_tx_request);
 		w_cmd_word[9:8] = o_cmd_type;
 		w_cmd_word[6:0] = r_cmd;
@@ -827,8 +886,11 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		fif_wraddr <= 0;
-	else if (wb_cmd_stb && i_wb_sel[1]
-			&& (i_wb_data[11] || i_wb_data[9:8] == 2'b10))
+	else if (wb_cmd_stb && ((i_wb_sel[1]
+			&& (i_wb_data[USE_FIFO_BIT]
+				|| i_wb_data[9:8] == R2_REPLY
+				|| r_fifo != i_wb_data[FIFO_ID_BIT]))
+			|| (i_wb_sel[0] && i_wb_data[7])))
 		fif_wraddr <= 0;
 	else if (i_wb_stb && !o_wb_stall && i_wb_we && i_wb_sel[0]
 					&& (i_wb_addr == ADDR_FIFOA || i_wb_addr == ADDR_FIFOB))
@@ -841,9 +903,11 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		fif_rdaddr <= 0;
-	else if (wb_cmd_stb && i_wb_sel[1]
-			&& (i_wb_data[11] || i_wb_data[9:8] == 2'b10
+	else if (wb_cmd_stb && ((i_wb_sel[1]
+			&& (i_wb_data[USE_FIFO_BIT]
+				|| i_wb_data[9:8] == R2_REPLY
 				|| r_fifo != i_wb_data[FIFO_ID_BIT]))
+			|| (i_wb_sel[0] && i_wb_data[7])))
 		fif_rdaddr <= 0;
 	else if (i_wb_stb && !i_wb_we && i_wb_sel[0]
 					&& (i_wb_addr == ADDR_FIFOA || i_wb_addr == ADDR_FIFOB))
@@ -1154,7 +1218,7 @@ module	sdwb #(
 		assert(cmd_busy);
 
 	always @(posedge i_clk)
-	if (f_past_valid && $past(i_reset || i_cmd_done))
+	if (f_past_valid && $past(i_reset || (i_cmd_done && !w_selfreply_request)))
 		assert(!cmd_busy);
 
 	always @(posedge i_clk)
@@ -1185,9 +1249,20 @@ module	sdwb #(
 	else if ($past(o_cmd_request && i_cmd_busy))
 	begin
 		assert(o_cmd_request);
+		assert($stable(o_cmd_selfreply));
 		assert($stable(o_cmd_type));
 		assert($stable(o_cmd_id));
 		assert($stable(o_arg));
+	end
+
+	// Self reply can only be set if o_cmd_request is also set
+	always @(*)
+	if (!i_reset)
+	begin
+		if (o_cmd_selfreply)
+		begin
+			assert(o_cmd_request && o_cmd_type == RNO_REPLY);
+		end
 	end
 
 	// Only one interface should ever have access to the FIFO at a time
@@ -1199,7 +1274,129 @@ module	sdwb #(
 			assert(!o_rx_en && !r_rx_request);
 			assert(!cmd_busy || o_cmd_type != R2_REPLY);
 		end else if (o_rx_en || r_rx_request)
+		begin
 			assert(!cmd_busy || o_cmd_type != R2_REPLY);
+		end
+	end
+
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Contract commands (listed at the top)
+	// {{{
+	reg	f_mem_request;
+
+	always @(*)
+	begin
+		f_mem_request = wb_cmd_stb && (&i_wb_sel[1:0])
+			&& ((i_wb_data[9:8] == R2_REPLY)
+				|| (i_wb_data[USE_DMA_BIT] && OPT_DMA)
+				|| i_wb_data[USE_FIFO_BIT]);
+	end
+
+	always @(posedge i_clk)
+	if (f_past_valid && !$past(i_reset || o_soft_reset)
+		&& !$past(o_cmd_request)
+		&& !$past(cmd_busy)
+		&& $past(wb_cmd_stb))
+	begin
+		if ($past(i_wb_sel[1:0] != 2'b11))
+		begin
+			assert(!o_cmd_request);
+		end else if ($past(mem_busy && f_mem_request))
+		begin
+			// Can't start a command that would use memory, if the
+			// memory is already in use
+			assert(!o_cmd_request);
+		end else begin
+			if ($past(i_wb_data[7]))
+			begin
+				assert(!o_cmd_request);
+			end else if ($past(i_wb_data[7:6] == 2'b01))
+			begin
+				assert(o_cmd_request);
+			end else if ($past(i_wb_data[9:6] == 4'b00
+					&&  i_wb_data[5:0] != 6'h0
+					&& !(i_wb_data[USE_DMA_BIT] && OPT_DMA)
+					&& !i_wb_data[USE_FIFO_BIT]))
+			begin
+				assert(o_cmd_request && o_cmd_selfreply);
+			end else
+				assert(!o_cmd_request);
+		end
+
+		if (o_cmd_request)
+		begin
+			assert(o_cmd_type == $past(i_wb_data[9:8]));
+			assert(o_cmd_id   == $past(i_wb_data[6:0]));
+			assert(o_arg      == $past(r_arg));
+			assert(cmd_busy);
+		end
+	end
+
+	always @(posedge i_clk)
+	if (f_past_valid && !$past(i_reset || o_soft_reset) && !$past(mem_busy)
+		&& !$past(r_cmd_err)
+		&& !$past(cmd_busy)
+		&& $past(wb_cmd_stb) && $past(&i_wb_sel[1:0]))
+	begin
+		if ($past(i_wb_data == 16'h0240))
+		begin
+			assert(o_cmd_request);
+			assert(mem_busy);
+		end
+
+		if ($past(i_wb_data) == 16'h0940)
+		begin
+			assert(o_cmd_request);
+			assert(r_rx_request);
+		end
+
+		if ($past(i_wb_data) == 16'h0d40)
+		begin
+			assert(o_cmd_request);
+			assert(r_tx_request);
+		end
+
+		if ($past(i_wb_data) == 16'h0800)
+		begin
+			assert(!o_cmd_request);
+			assert(r_rx_request);
+		end
+
+		if ($past(i_wb_data) == 16'h0c00)
+		begin
+			assert(!o_cmd_request);
+			assert(r_tx_request);
+		end
+	end
+
+	always @(posedge i_clk)
+	if (f_past_valid && $past(wb_cmd_stb)
+		&&(($past(i_wb_sel[1:0])==2'b11 && $past(i_wb_data == 16'h080))
+		  || $past(i_wb_sel[1] && i_wb_data[FIFO_ID_BIT] != r_fifo)
+		  || $past(i_wb_sel[1] && i_wb_data[USE_FIFO_BIT])
+		  || $past(i_wb_sel[0] && i_wb_data[7])
+		  ||($past(!o_cmd_request)&&(o_cmd_request
+				&& o_cmd_type == R2_REPLY))))
+	begin
+		assert(fif_wraddr == 0);
+		assert(fif_rdaddr == 0);
+	end
+
+	always @(posedge i_clk)
+	if (f_past_valid && !$past(i_reset || o_soft_reset)
+		&& !$past(o_cmd_request)
+		&& $past(wb_cmd_stb) && $past(&i_wb_sel[1:0]))
+	begin
+		if ($past(i_wb_data[15:0] == 16'h0028
+			|| i_wb_data[15:0] == 16'h0040))
+		begin
+			assert(o_cmd_request);
+			assert(o_cmd_selfreply);
+			assert(o_cmd_type == RNO_REPLY);
+			assert(o_cmd_id == $past(i_wb_data[6:0]));
+		end
 	end
 
 	// }}}

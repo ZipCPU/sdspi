@@ -73,7 +73,8 @@ module	sdrxframe #(
 		output	wire	[MW-1:0]	o_mem_data,	// Outgoing data
 
 		output	reg			o_done,
-		output	reg			o_err
+		output	reg			o_err,
+		output	reg			o_ercode
 		// }}}
 	);
 
@@ -608,11 +609,12 @@ module	sdrxframe #(
 	initial	o_done = 0;
 	always @(posedge i_clk)
 	if (i_reset || !i_rx_en || o_done || !busy)
-		{ o_done, o_err } <= 0;
+		{ o_ercode, o_done, o_err } <= 0;
 	else if (w_done)
 	begin
 		o_done <= 1'b1;
-		o_err  <= |err;
+		o_err  <= (|err) || r_watchdog;
+		o_ercode <= !r_watchdog;
 	end
 
 	function automatic [NCRC-1:0]	STEPCRC(reg[NCRC-1:0] prior,
@@ -755,7 +757,17 @@ module	sdrxframe #(
 
 	always @(posedge i_clk)
 	if (!i_reset && o_err)
-		assert(i_crc_en && o_done);
+		assert(o_done && (i_crc_en || r_watchdog));
+
+	(* anyconst *) reg fnvr_watchdog;
+	always @(*)
+	if (fnvr_watchdog)
+		assume(!r_watchdog);
+
+	always @(*)
+	if (!i_reset && o_err && fnvr_watchdog)
+		assume(o_ercode);
+	
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//

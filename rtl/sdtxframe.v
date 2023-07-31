@@ -217,7 +217,7 @@ module	sdtxframe #(
 		pre_count <= 0;
 	else if (pstate == P_DATA || pstate == P_IDLE)
 	begin
-		// pre_count = 
+		// pre_count =
 		//	(SDR)	16bits / wire / 32
 		//	(DDR)	32bits / wire / 32
 		case(cfg_width)
@@ -278,7 +278,7 @@ module	sdtxframe #(
 		// {{{
 		for(ik=0; ik<2; ik=ik+1)
 		begin
-			new_crc_2w[ik*NCRC +: NCRC] = 
+			new_crc_2w[ik*NCRC +: NCRC] =
 				APPLYCRC16(di_crc_2w[ik*NCRC +: NCRC],
 			  		{ S_DATA[30+ik],S_DATA[28+ik],
 						S_DATA[26+ik],S_DATA[24+ik],
@@ -292,7 +292,7 @@ module	sdtxframe #(
 
 		for(ik=0; ik<4; ik=ik+1)
 		begin
-			new_crc_4w[ik*NCRC +: NCRC] = 
+			new_crc_4w[ik*NCRC +: NCRC] =
 				APPLYCRC8(di_crc_4w[ik*NCRC +: NCRC],
 			  		{ S_DATA[28+ik],S_DATA[24+ik],
 						S_DATA[20+ik],S_DATA[16+ik],
@@ -302,7 +302,7 @@ module	sdtxframe #(
 
 		for(ik=0; ik<8; ik=ik+1)
 		begin
-			new_crc_8w[ik*NCRC +: NCRC] = 
+			new_crc_8w[ik*NCRC +: NCRC] =
 				APPLYCRC4(di_crc_8w[ik*NCRC +: NCRC],
 			  		{ S_DATA[24+ik], S_DATA[16+ik],
 						S_DATA[8+ik], S_DATA[ik] });
@@ -310,7 +310,7 @@ module	sdtxframe #(
 
 		for(ik=0; ik<16; ik=ik+1)
 		begin
-			new_crc_8d[ik*NCRC +: NCRC] = 
+			new_crc_8d[ik*NCRC +: NCRC] =
 				APPLYCRC2(di_crc_8d[ik*NCRC +: NCRC],
 			  		{ S_DATA[16+ik], S_DATA[ik] });
 		end

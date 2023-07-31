@@ -240,7 +240,7 @@ module	sdio #(
 		//
 		.i_cfg_clk90(cfg_clk90), .i_cfg_ckspd(cfg_ckspeed),
 		.i_cfg_shutdown(cfg_clk_shutdown),
-	
+
 		.o_ckstb(clk_stb), .o_hlfck(clk_half), .o_ckwide(w_sdclk),
 		.o_ckspd(clk_ckspd)
 		// }}}

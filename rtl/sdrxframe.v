@@ -767,7 +767,6 @@ module	sdrxframe #(
 	always @(*)
 	if (!i_reset && o_err && fnvr_watchdog)
 		assume(o_ercode);
-	
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//

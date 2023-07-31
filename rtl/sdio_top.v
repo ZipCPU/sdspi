@@ -4,7 +4,11 @@
 // {{{
 // Project:	SDIO SD-Card controller
 //
-// Purpose:	
+// Purpose:	A top level file for both eMMC and SDIO controllers.  This
+//		file references both architecture specific modules in
+//	sdfrontend.v, and non-architecture specific logic via sdio.v.
+//	Otherwise, the top level (non-architecture specific) module would be
+//	sdio.v.
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC

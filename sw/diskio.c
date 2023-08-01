@@ -85,9 +85,9 @@ DSTATUS	disk_initialize(
 	) {
 	// {{{
 	if (pdrv >= MAX_DRIVES || NULL == DRIVES[pdrv].fd_addr
-			|| NULL == DRIVES[pdrv].fd_driver)
+			|| NULL == DRIVES[pdrv].fd_driver) {
 		return STA_NODISK;
-	else if (NULL != DRIVES[pdrv].fd_data
+	} else if (NULL != DRIVES[pdrv].fd_data
 		|| NULL != (DRIVES[pdrv].fd_data
 				= (*DRIVES[pdrv].fd_driver->dio_init)(
 					DRIVES[pdrv].fd_addr))) {

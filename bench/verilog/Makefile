@@ -37,12 +37,16 @@
 ##
 ## }}}
 RTL := ../../rtl
+CPU := $(HOME)/work/rnd/zipcpu/trunk
 
 tb_sdckgen: $(RTL)/sdckgen.v tb_sdckgen.v
 	iverilog -g2012 $^ -o $@
 
 tb_txframe: $(RTL)/sdckgen.v $(RTL)/sdtxframe.v tb_txframe.v
 	iverilog -g2012 $^ -o $@
+
+obj_dir/Vtb_cpu.h:
+	verilator -Wall -Wno-TIMESCALEMOD -y $(RTL) -y . -y $(CPU)/rtl -y $(CPU)/rtl/core -y $(CPU)/rtl/peripherals -y $(CPU)/rtl/zipdma -y $(CPU)/rtl/ex -y $(CPU)/sim/rtl -cc tb_cpu.v
 
 .PHONY: test_ckgen
 test_ckgen: tb_sdckgen

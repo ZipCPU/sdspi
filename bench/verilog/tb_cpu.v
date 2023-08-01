@@ -667,7 +667,7 @@ module	tb_cpu #(
 	);
 
 	sdio #(
-		.OPT_EMMC(1'b0)
+		.OPT_EMMC(1'b0),
 		.MW(BUS_WIDTH),
 		.OPT_SERDES(1'b1), .OPT_DDR(1'b1), .OPT_CARD_DETECT(1'b1),
 		.LGTIMEOUT(18)
@@ -737,7 +737,7 @@ module	tb_cpu #(
 	);
 
 	sdio #(
-		.OPT_EMMC(1'b1)
+		.OPT_EMMC(1'b1),
 		.MW(BUS_WIDTH),
 		.OPT_SERDES(1'b1), .OPT_DDR(1'b1), .OPT_CARD_DETECT(1'b0),
 		.LGTIMEOUT(18)

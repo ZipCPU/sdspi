@@ -1382,6 +1382,11 @@ module	sdwb #(
 	begin
 		assert(fif_wraddr == 0);
 		assert(fif_rdaddr == 0);
+		if ($past(i_wb_sel[0] && i_wb_data[7]))
+		begin
+			assert(!$rose(o_cmd_request));
+			assert(!$rose(mem_busy));
+		end
 	end
 
 	always @(posedge i_clk)

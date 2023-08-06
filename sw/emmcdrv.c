@@ -36,6 +36,7 @@
 //
 #include <stdlib.h>
 #include <stdint.h>
+#include <ctype.h>
 typedef	uint8_t  BYTE;
 typedef	uint16_t WORD;
 typedef	uint32_t DWORD, LBA_t, UINT;
@@ -61,7 +62,7 @@ static	const int	EMMCINFO = 1, EMMCDEBUG=1, EXTDMA = 0;
 typedef	struct	EMMCDRV_S {
 	EMMC		*d_dev;
 	uint32_t	d_CID[4], d_OCR;
-	char		d_SCR[8], d_CSD[16];
+	char		d_SCR[8], d_CSD[16], d_EXCSD[512];
 	uint16_t	d_RCA;
 	uint32_t	d_sector_count, d_block_size;
 } EMMCDRV;
@@ -80,6 +81,9 @@ static	const	uint32_t
 		SDIO_CARDBUSY = 0x00100000,
 		SDIO_BUSY     = 0x00104800,
 		SDIO_ERR      = 0x00008000,
+		SDIO_CMDERR   = 0x00200000,
+		SDIO_RXERR    = 0x00400000,
+		SDIO_RXCRCERR = 0x00800000,
 		SDIO_REMOVED  = 0x00040000,
 		SDIO_PRESENTN = 0x00080000,
 		// PHY enumerations
@@ -119,6 +123,7 @@ static	const	uint32_t
 		SPEED_DEFAULT= SDIOCK_DS,
 		SPEED_FAST   = SDIOCK_HS,
 		//
+		SECTOR_4B    = 0x02000000,
 		SECTOR_16B   = 0x04000000,
 		SECTOR_512B  = 0x09000000,
 		//
@@ -129,7 +134,10 @@ static	const	uint32_t
 				| SDIO_WRITE | SDIO_MEM) + 24,
 		SDIO_READBLK  = (SDIO_CMD | SDIO_R1 | SDIO_ERR
 					| SDIO_MEM) + 17,
-		SDIO_READCID  = (SDIO_CMD | SDIO_R2 | SDIO_ERR) + 2;
+		SDIO_READCID  = (SDIO_CMD | SDIO_R2 | SDIO_ERR) + 2,
+		SDIO_R1ERR    = 0xfff80080;
+static	const	uint32_t
+		SDIO_RESET_FIFO = 0x080;
 
 static	void	emmc_wait_while_busy(EMMCDRV *dev);
 static	void	emmc_go_idle(EMMCDRV *dev);
@@ -199,6 +207,29 @@ void	emmc_all_send_cid(EMMCDRV *dev) {	// CMD2
 }
 // }}}
 
+void	emmc_send_cid(EMMCDRV *dev) {	// CMD10
+	// {{{
+	unsigned	c, r;
+
+	if (EMMCDEBUG)	txstr("SEND-CID\n");
+
+	dev->d_dev->sd_data = (dev->d_RCA << 16);
+	dev->d_dev->sd_cmd  = (SDIO_ERR|SDIO_READR2) + 10;
+
+	emmc_wait_while_busy(dev);
+
+	c = dev->d_dev->sd_cmd;
+	r = dev->d_dev->sd_data;
+
+	dev->d_CID[0] = dev->d_dev->sd_fifa;
+	dev->d_CID[1] = dev->d_dev->sd_fifa;
+	dev->d_CID[2] = dev->d_dev->sd_fifa;
+	dev->d_CID[3] = dev->d_dev->sd_fifa;
+
+	if (EMMCINFO)
+		emmc_dump_cid(dev);
+}
+// }}}
 
 void	emmc_dump_cid(EMMCDRV *dev) {
 	// {{{
@@ -208,44 +239,56 @@ void	emmc_dump_cid(EMMCDRV *dev) {
 	txhex(dev->d_CID[2]); txstr(":");
 	txhex(dev->d_CID[3]); txstr("\n");
 
-#ifdef	STDIO_DEBUG
-	unsigned sn, md;
-
-	sn = buf[2];
-	sn = (sn << 8) | (buf[3] >> 24) & 0x0ff;
-	md = (buf[3] >>  8) & 0x0fff;
-
-	printf("CID:\n"
-"\tManufacturer ID:  0x%02x\n"
-"\tApplication ID:   %c%c\n"
-"\tProduct Name:     %5c\n"
-"\tProduct Revision: %x.%x\n"
-"\tSerial Number:    0x%0x\n",
-		(buf[0] >> 24)&0x0ff,
-		(buf[0] >> 16)&0x0ff,
-		(buf[0] >>  8)&0x0ff,
-		(buf[0]      )&0x0ff,
-		(buf[1] >> 24)&0x0ff,
-		(buf[1] >> 16)&0x0ff,
-		(buf[1] >>  8)&0x0ff,
-		(buf[1]      )&0x0ff,
-		(buf[2] >> 28)&0x00f,
-		(buf[2] >> 24)&0x00f, sn);
-	printf(
-"\tYear of Man.:     %d\n"
-"\tMonth of Man.:    %d\n",
-		((md>>4)+2000), md&0x0f);
-#endif
+	txstr("CID:\n" "\tManufacturer ID:  0x"); txhex(dev->d_CID[0]); txstr("\n");
+	txstr("\tBank Index #   :  0x"); txhex((dev->d_CID[1]>>2)&0x03f); txstr("\n");
+	txstr("\tDevice/BGA     :  0x"); txhex((dev->d_CID[1])&0x03); txstr("\n");
+	txstr("\tApplication ID :  0x"); txhex((dev->d_CID[2])&0x0ff); txstr("\n");
+	txstr("\tProduct Name   :  ");
+	for(int k=3; k<3+6; k++) {
+		unsigned	ch = dev->d_CID[k/4];
+// txstr(" "); txhex(ch); txstr(" ");
+		ch >>= (24-8*(k&3));
+		ch &= 0x0ff;
+// txstr(" "); txhex(ch); txstr(" ");
+		if (isgraph(ch))
+			txchr(ch);
+		else
+			txchr('.');
+	} txstr("\n");
+	txstr("\tProduct Revision: ");
+		txhex((dev->d_CID[9] >>  4)&0x0f); txstr(".");
+		txhex((dev->d_CID[9])&0x0f); txstr("\n");
+	/*
+	txstr(""\tSerial Number:    0x%02x%02x%02x%02x\n",
+		(buf[9] >>  4)&0x0f,
+		(buf[9])&0x0f,
+		(buf[10])&0x0ff,
+		(buf[11])&0x0ff,
+		(buf[12])&0x0ff,
+		(buf[13])&0x0ff);
+	*/
 }
 // }}}
 
 uint32_t emmc_send_rca(EMMCDRV *dev) {				// CMD3
 	// {{{
+	unsigned	c, r;
+
 	dev->d_dev->sd_data = 0;
 	dev->d_dev->sd_cmd = (SDIO_ERR|SDIO_READREG)+3;
 
 	emmc_wait_while_busy(dev);
-	return dev->d_RCA = (dev->d_dev->sd_data >> 16)&0x0ffff;
+
+	c = dev->d_dev->sd_cmd;
+	r = dev->d_dev->sd_data;
+
+	if (EMMCDEBUG && EMMCINFO) {
+		txstr("CMD3:    SEND_RCA\n");
+		txstr("  Cmd:     "); txhex(c); txstr("\n");
+		txstr("  Data:    "); txhex(r); txstr("\n");
+	}
+
+	return dev->d_RCA = (r >> 16)&0x0ffff;
 }
 // }}}
 
@@ -287,6 +330,7 @@ uint32_t emmc_send_op_cond(EMMCDRV *dev, uint32_t opcond) { // CMD1
 	dev->d_dev->sd_data = opcond;
 	dev->d_dev->sd_cmd = SDIO_READREG+1;
 	emmc_wait_while_busy(dev);
+
 	c = dev->d_dev->sd_cmd;
 	r = dev->d_dev->sd_data;
 
@@ -346,7 +390,7 @@ void	emmc_send_app_cmd(EMMCDRV *dev) {  // CMD 55
 void	emmc_dump_ocr(EMMCDRV *dev) {
 	// {{{
 	if (EMMCINFO) {
-		txstr("READ-OCR: OCR = "); txhex(dev->d_OCR); txstr("\r\n");
+		txstr("READ-OCR: OCR = "); txhex(dev->d_OCR); txstr("\n");
 		if (0 == (dev->d_OCR & 0x80000000))
 			txstr("  Card is still powering up\n");
 		if (dev->d_OCR & 0x40000000)
@@ -419,6 +463,7 @@ void	emmc_dump_ocr(EMMCDRV *dev) {
 }
 // }}}
 
+/*
 void emmc_read_scr(EMMCDRV *dev) {	  // ACMD 51
 	// {{{
 	uint32_t	phy = dev->d_dev->sd_phy;
@@ -483,6 +528,7 @@ void	emmc_dump_scr(EMMCDRV *dev) {
 	txstr("  CMD_SUPPORT  : "); txhex(dev->d_SCR[3] & 0x0f); txstr("\n");
 }
 // }}}
+*/
 
 void emmc_read_csd(EMMCDRV *dev) {	  // CMD 9
 	// {{{
@@ -517,7 +563,7 @@ void emmc_read_csd(EMMCDRV *dev) {	  // CMD 9
 		dev->d_CSD[k + 0] = uv;
 	}
 
-	unsigned	C_SIZE, READ_BL_LEN, CSD_STRUCTURE;
+	unsigned	CSD_STRUCTURE;
 
 	CSD_STRUCTURE = (dev->d_CSD[0]>>6)&3;
 
@@ -545,191 +591,376 @@ void emmc_read_csd(EMMCDRV *dev) {	  // CMD 9
 
 	if (EMMCINFO) {
 		txstr("\n");
-		txstr("  CSD_STRUCTURE : "); txhex(CSD_STRUCTURE); txstr("\n");
-	} if (0 == CSD_STRUCTURE) {
-		// {{{
-		unsigned	ERASE_BLK_EN, C_SIZE_MULT, BLOCK_LEN, MULT,
-				BLOCKNR, FILE_FORMAT_GRP, FILE_FORMAT,
-				WRITE_BL_LEN, SECTOR_SIZE;
+		txstr("  CSD_STRUCTURE     : "); txhex(CSD_STRUCTURE); txstr("\n");
+	}
 
-		READ_BL_LEN = dev->d_CSD[5] & 0x0f;
-		BLOCK_LEN = (READ_BL_LEN < 12) ? (1<<READ_BL_LEN) : READ_BL_LEN;
-		C_SIZE = ((dev->d_CSD[6]&0x3)<<10)
-				|((dev->d_CSD[7]&0x0ff)<<2)
-				|((dev->d_CSD[8]>>6)&0x03);
-		C_SIZE_MULT = ((dev->d_CSD[9]&3)<<2)|((dev->d_CSD[10]>>7)&1);
-		MULT = 1<<(C_SIZE_MULT+2);
-		BLOCKNR = MULT * (C_SIZE+1);
-		SECTOR_SIZE = ((dev->d_CSD[10]&0x03f)<<2)|((dev->d_CSD[11]>>7)&1);
-		WRITE_BL_LEN = ((dev->d_CSD[12]&3)<<2)|((dev->d_CSD[13]>>6)&3);
-		FILE_FORMAT_GRP = (dev->d_CSD[14]&0x80)?1:0;
-		FILE_FORMAT = dev->d_CSD[14]&3;
-		ERASE_BLK_EN = (dev->d_CSD[10] & 0x40)?1:0;
+	unsigned	SPEC_VERS, TAAC, NSAC, TRAN_SPEED, CCC, READ_BL_LEN,
+			READ_BL_PARTIAL, WRITE_BLK_MISALIGN, READ_BLK_MISALIGN,
+			DSR_IMP, C_SIZE, C_SIZE_MULT, ERASE_GRP_SIZE,
+			ERASE_GRP_MULT, WP_GRP_SIZE, WP_GRP_ENABLE,
+			DEFAULT_ECC, R2W_FACTOR, WRITE_BL_LEN, WRITE_BL_PARTIAL,
+			CONTENT_PROT_APP, FILE_FORMAT_GRP, COPY,
+			PERM_WRITE_PROTECT, TMP_WRITE_PROTECT, FILE_FORMAT,
+			ECC, CRC;
 
-		dev->d_sector_count = BLOCKNR / 512;
-		if (ERASE_BLK_EN)
-			dev->d_block_size = 512;
-		else
-			dev->d_block_size = SECTOR_SIZE;
+	SPEC_VERS = (dev->d_CSD[0]>>2)&15;
+	TAAC = dev->d_CSD[1] & 0x0ff;
+	NSAC = dev->d_CSD[2] & 0x0ff;
+	TRAN_SPEED = dev->d_CSD[3] & 0x0ff;
+	CCC = ((dev->d_CSD[4] & 0x0ff) << 4) | ((dev->d_CSD[5] >> 4) & 0x0f);
+	READ_BL_LEN = (dev->d_CSD[5] & 0x0f);
+	READ_BL_PARTIAL = (dev->d_CSD[6] & 0x80) ? 1:0;
+	WRITE_BLK_MISALIGN = (dev->d_CSD[6] & 0x40) ? 1:0;
+	READ_BLK_MISALIGN  = (dev->d_CSD[6] & 0x20) ? 1:0;
+	DSR_IMP  = (dev->d_CSD[6] & 0x10) ? 1:0;
+	C_SIZE      = ((dev->d_CSD[6] & 0x0f)<<10)
+				| ((dev->d_CSD[7] & 0x0ff)<<2)
+				| ((dev->d_CSD[8] >> 6)&3);
+	C_SIZE_MULT = ((dev->d_CSD[9] & 0x03)<<1) |((dev->d_CSD[10]>> 7)&1);
+	ERASE_GRP_SIZE = (dev->d_CSD[10]>>2) & 0x01f;
+	ERASE_GRP_MULT = ((dev->d_CSD[10]&3)<<3)|((dev->d_CSD[11]>>5)&7);
+	WP_GRP_SIZE   = (dev->d_CSD[11]& 0x01f);
+	WP_GRP_ENABLE = (dev->d_CSD[12]& 0x080) ? 1:0;
+	DEFAULT_ECC    = (dev->d_CSD[12] >> 5) & 3;
+	R2W_FACTOR     = (dev->d_CSD[12] >> 2) & 7;
+	WRITE_BL_LEN   =((dev->d_CSD[12] & 0x03) << 2) |((dev->d_CSD[13]>>6)&3);
+	WRITE_BL_PARTIAL= (dev->d_CSD[13] >> 5)&1;
+	CONTENT_PROT_APP= dev->d_CSD[13] & 1;
+	FILE_FORMAT_GRP = (dev->d_CSD[14] & 0x80) ? 1:0;
+	COPY = (dev->d_CSD[14] & 0x40) ? 1:0;
+	PERM_WRITE_PROTECT = (dev->d_CSD[14] & 0x20) ? 1:0;
+	TMP_WRITE_PROTECT  = (dev->d_CSD[14] & 0x10) ? 1:0;
+	FILE_FORMAT        = (dev->d_CSD[14] >> 2) & 3;
+	ECC                =  dev->d_CSD[14] & 3;
 
-		if (EMMCINFO) {
-			txstr("  TAAC          : "); txhex(dev->d_CSD[1]); txstr("\r\n");
-			txstr("  NSAC          : "); txhex(dev->d_CSD[2]); txstr("\r\n");
-			txstr("  TRAN_SPEED        : "); txhex(dev->d_CSD[3]); txstr("\r\n");
-			txstr("  CCC               : "); txhex((dev->d_CSD[4]<<4)|((dev->d_CSD[10]&0x0f0)>>4)); txstr("\r\n");
-			txstr("  READ_BL_LEN       : "); txhex(READ_BL_LEN); txstr("\r\n");
-			txstr("  READ_BL_PARTIAL   : "); txhex((dev->d_CSD[6] & 0x80) ? 1:0); txstr("\r\n");
-			txstr("  WRITE_BLK_MISALIGN: "); txhex((dev->d_CSD[6] & 0x40) ? 1:0); txstr("\r\n");
-			txstr("  READ_BLK_MISALIGN : "); txhex((dev->d_CSD[6] & 0x20) ? 1:0); txstr("\r\n");
-			txstr("  DSR_IMP           : "); txhex((dev->d_CSD[6] & 0x10) ? 1:0); txstr("\r\n");
-			txstr("  C_SIZE            : "); txhex(C_SIZE); txstr("\r\n");
-			txstr("  VDD_R_CURR_MIN    : "); txhex((dev->d_CSD[8]>>3)&0x07); txstr("\r\n");
-			txstr("  VDD_R_CURR_MAX    : "); txhex(dev->d_CSD[8]&0x07); txstr("\r\n");
-			txstr("  VDD_W_CURR_MIN    : "); txhex((dev->d_CSD[9]>>5)&0x07); txstr("\r\n");
-			txstr("  VDD_W_CURR_MAX    : "); txhex((dev->d_CSD[9]>>2)&0x07); txstr("\r\n");
-			txstr("  C_SIZE_MULT       : "); txhex(C_SIZE_MULT); txstr("\r\n");
-			txstr("  ERASE_BLK_EN      : "); txhex((dev->d_CSD[10] & 0x40)?1:0); txstr("\r\n");
-			txstr("  SECTOR_SIZE       : "); txhex(SECTOR_SIZE);
-				txstr(" (");
-				txdecimal((SECTOR_SIZE+1)*(1<<WRITE_BL_LEN));
-				txstr(" bytes)\r\n");
-			txstr("  WP_GRP_SIZE       : "); txhex(dev->d_CSD[11]&0x07f); txstr("\r\n");
-			txstr("  WP_GRP_ENABLE     : "); txhex((dev->d_CSD[12]&0x080)?1:0); txstr("\r\n");
-			txstr("  R2W_FACTOR        : "); txhex((dev->d_CSD[12]>>2)&7); txstr("\r\n");
-			txstr("  WRITE_BL_LEN      : "); txhex(WRITE_BL_LEN);
-			if (WRITE_BL_LEN < 9 || WRITE_BL_LEN > 11)
-				txstr(" (Reserved)\r\n");
-			else {
-				txstr(" (");
-				txdecimal(1<<WRITE_BL_LEN); txstr(" bytes)\r\n");
-			}
-			txstr("  WRITE_BL_PARTIAL  : "); txhex((dev->d_CSD[13]&0x20)?1:0); txstr("\r\n");
-			txstr("  FILE_FORMAT_GRP   : "); txhex(FILE_FORMAT_GRP); txstr("\r\n");
-			txstr("  COPY              : "); txhex((dev->d_CSD[14]&0x40)?1:0); txstr("\r\n");
-			txstr("  PERM_WRITE_PROTECT: "); txhex((dev->d_CSD[14]&0x20)?1:0); txstr("\r\n");
-			txstr("  TMP_WRITE_PROTECT : "); txhex((dev->d_CSD[14]&0x10)?1:0); txstr("\r\n");
-			txstr("  FILE_FORMAT       : "); txhex(FILE_FORMAT);
-			if (0 == FILE_FORMAT_GRP) {
-				if (0 == FILE_FORMAT)
-					txstr("  (Has parition tbl)\r\n");
-				else if (1 == FILE_FORMAT)
-					txstr("  (DOS FAT w/ boot sector, no partition)\r\n");
-				else if (2 == FILE_FORMAT)
-					txstr("  (Universal file format)\r\n");
-				else
-					txstr("  (Others/unknown)\r\n");
-			} else
-				txstr("  (Reserved)\r\n");
-			txstr("  Size  = "); txdecimal(BLOCKNR); txstr(" blocks of ");
-			txdecimal(BLOCK_LEN); txstr(" bytes each\r\n");
-		}
-		// }}}
-	} else if (1 == ((dev->d_CSD[15]>>6)&3)) {
-		// {{{
-		READ_BL_LEN = 9;
-		C_SIZE = ((dev->d_CSD[7] & 0x03f)<<16)
-				|((dev->d_CSD[8] & 0x0ff)<<8)
-				|(dev->d_CSD[9] & 0x0ff);
-		dev->d_sector_count = (C_SIZE+1) * 1024;
-		dev->d_block_size = 512;
-
-		if (EMMCINFO) {
-			txstr("  CCC               : "); txhex((dev->d_CSD[4]<<4)|((dev->d_CSD[10]&0x0f0)>>4)); txstr("\r\n");
-			txstr("  DSR_IMP           : "); txhex((dev->d_CSD[6] & 0x10) ? 1:0); txstr("\r\n");
-			txstr("  C_SIZE            : "); txhex(C_SIZE); txstr("\r\n");
-			txstr("  COPY              : "); txhex((dev->d_CSD[14]&0x40)?1:0); txstr("\r\n");
-			txstr("  PERM_WRITE_PROTECT: "); txhex((dev->d_CSD[14]&0x20)?1:0); txstr("\r\n");
-			txstr("  TMP_WRITE_PROTECT : "); txhex((dev->d_CSD[14]&0x10)?1:0); txstr("\r\n");
-			txstr("  Size  = "); txdecimal((C_SIZE+1) * 512); txstr(" kB\r\n");
-		}
-		// }}}
-	} else {
-		txstr("ERROR: Unknown CSD type\r\n");
-		dev->d_sector_count = 0;
-		dev->d_block_size   = 0;
+	if (EMMCINFO) {
+		txstr("  TAAC              : "); txhex(TAAC); txstr("\n");
+		txstr("  NSAC              : "); txhex(NSAC); txstr("\n");
+		txstr("  TRAN_SPEED        : "); txhex(TRAN_SPEED); txstr("\n");
+		txstr("  CCC               : "); txhex(CCC); txstr("\n");
+		txstr("  READ_BL_LEN       : "); txhex(READ_BL_LEN); txstr("\n");
+		txstr("  READ_BL_PARTIAL   : "); txhex(READ_BL_PARTIAL); txstr("\n");
+		txstr("  WRITE_BLK_MISALIGN: "); txhex(WRITE_BLK_MISALIGN); txstr("\n");
+		txstr("  READ_BLK_MISALIGN : "); txhex(READ_BLK_MISALIGN); txstr("\n");
+		txstr("  DSR_IMP           : "); txhex(DSR_IMP); txstr("\n");
+		txstr("  C_SIZE            : "); txhex(C_SIZE); txstr("\n");
+		// txstr("  VDD_R_CURR_MIN    : "); txhex((dev->d_CSD[8]>>3)&0x07); txstr("\n");
+		// txstr("  VDD_R_CURR_MAX    : "); txhex(dev->d_CSD[8]&0x07); txstr("\n");
+		// txstr("  VDD_W_CURR_MIN    : "); txhex((dev->d_CSD[9]>>5)&0x07); txstr("\n");
+		// txstr("  VDD_W_CURR_MAX    : "); txhex((dev->d_CSD[9]>>2)&0x07); txstr("\n");
+		txstr("  C_SIZE_MULT       : "); txhex(C_SIZE_MULT); txstr("\n");
+		txstr("  ERASE_GRP_SIZE    : "); txhex(ERASE_GRP_SIZE); txstr("\n");
+		txstr("  ERASE_GRP_MULT    : "); txhex(ERASE_GRP_MULT); txstr("\n");
+		txstr("  WP_GRP_SIZE       : "); txhex(WP_GRP_SIZE); txstr("\n");
+		txstr("  WP_GRP_ENABLE     : "); txhex(WP_GRP_ENABLE); txstr("\n");
+		txstr("  R2W_FACTOR        : "); txhex(R2W_FACTOR); txstr("\n");
+		txstr("  WRITE_BL_LEN      : "); txhex(WRITE_BL_LEN); txstr("\n");
+		txstr("  WRITE_BL_PARTIAL  : "); txhex(WRITE_BL_PARTIAL); txstr("\n");
+		txstr("  FILE_FORMAT_GRP   : "); txhex(FILE_FORMAT_GRP); txstr("\n");
+		txstr("  COPY              : "); txhex(COPY); txstr("\n");
+		txstr("  PERM_WRITE_PROTECT: "); txhex(PERM_WRITE_PROTECT); txstr("\n");
+		txstr("  TMP_WRITE_PROTECT : "); txhex(TMP_WRITE_PROTECT); txstr("\n");
+		txstr("  FILE_FORMAT       : "); txhex(FILE_FORMAT); txstr("\n");
+	/*
+		if (0 == FILE_FORMAT_GRP) {
+			if (0 == FILE_FORMAT)
+				txstr("  (Has parition tbl)");
+			else if (1 == FILE_FORMAT)
+				txstr("  (DOS FAT w/ boot sector, no partition)");
+			else if (2 == FILE_FORMAT)
+				txstr("  (Universal file format)");
+			else
+				txstr("  (Others/unknown)");
+		} else
+			txstr("  (Reserved)");
+	*/
+		// txstr("  Size  = "); txdecimal(BLOCKNR); txstr(" blocks of ");
+		// txdecimal(BLOCK_LEN); txstr(" bytes each");
 	}
 }
 // }}}
 
-// Get and Dump R2
-// {{{
-void emmc_dump_r1(const unsigned rv) {
-	if (EMMCDEBUG) {
-		txstr("SDIO R1 Decode:  "); txhex(rv);
-		if (rv & 0x80000000)
-			txstr("\r\n  OUT_OF_RANGE");
-		if (rv & 0x40000000)
-			txstr("\r\n  ADDRESS_ERROR");
-		if (rv & 0x20000000)
-			txstr("\r\n  BLOCK_LEN_ERROR");
-		if (rv & 0x10000000)
-			txstr("\r\n  ERASE_SEQ_ERROR");
-		if (rv & 0x08000000)
-			txstr("\r\n  ERASE_PARAM");
-		if (rv & 0x04000000)
-			txstr("\r\n  WP_VIOLATION");
-		if (rv & 0x02000000)
-			txstr("\r\n  CARD_IS_LOCKED");
-		if (rv & 0x01000000)
-			txstr("\r\n  LOCK_UNLOCK_FAILED");
-		if (rv & 0x00800000)
-			txstr("\r\n  COM_CRC_ERROR");
-		if (rv & 0x00400000)
-			txstr("\r\n  ILLEGAL_COMMAND");
-		if (rv & 0x00200000)
-			txstr("\r\n  CARD_ECC_FAILED");
-		if (rv & 0x00100000)
-			txstr("\r\n  CC_ERROR (Internal card controller err)");
-		if (rv & 0x00080000)
-			txstr("\r\n  ERROR (General or unknown error)");
-		if (rv & 0x00010000)
-			txstr("\r\n  CSD_OVERWRITE");
-		if (rv & 0x00008000)
-			txstr("\r\n  WP_ERASE_SKIP");
-		if (rv & 0x00004000)
-			txstr("\r\n  CARD_ECC_DISABLED");
-		if (rv & 0x00002000)
-			txstr("\r\n  ERASE_RESET");
-		switch((rv >> 9)&0x0f) {
-		case 0: txstr("\r\n  STATE: idle");  break;
-		case 1: txstr("\r\n  STATE: ready"); break;
-		case 2: txstr("\r\n  STATE: ident"); break;
-		case 3: txstr("\r\n  STATE: stdby"); break;
-		case 4: txstr("\r\n  STATE: tran");  break;
-		case 5: txstr("\r\n  STATE: data");  break;
-		case 6: txstr("\r\n  STATE: rcv");   break;
-		case 7: txstr("\r\n  STATE: prg");   break;
-		case 8: txstr("\r\n  STATE: dis");   break;
-		case 15: txstr("\r\n  STATE: (reserved for I/O mode)"); break;
-		default: txstr("\r\n  STATE: (reserved)"); break;
+static	void	emmc_decode_cmd(unsigned cmd) {
+	// {{{
+	printf("  Cmd:     %08x\n", cmd);
+	if ((cmd & 0xc0)==0x40)
+		printf("   %02x: CMD%d\n", cmd & 0x0ff, cmd & 0x3f);
+	else if ((cmd & 0xc0)==0x00)
+		printf("   %02x: REPLY %d\n", cmd & 0x0ff, cmd & 0x3f);
+	else
+		printf("   %02x: ILLEGAL\n", cmd & 0x0ff, cmd & 0x3f);
+	switch(cmd & SDIO_R1b) {
+	case SDIO_RNONE: printf("   No reply expected\n"); break;
+	case SDIO_R1:	printf("   R1  reply expected\n"); break;
+	case SDIO_R2:	printf("   R2  reply expected\n"); break;
+	case SDIO_R1b:	printf("   R1b reply expected\n"); break;
+	default: break;
+	}
+
+	if (cmd & SDIO_MEM) {
+		if (cmd & SDIO_WRITE)
+			printf("   MEM Write (TX) command\n");
+		else
+			printf("   MEM Read  (RX) command\n");
+	} if ((cmd & SDIO_MEM) || ((cmd & SDIO_R1b) == SDIO_R2)) {
+		if (cmd & SDIO_FIFO)
+			printf("   FIFO B\n");
+		else
+			printf("   FIFO A\n");
+	} if (cmd & SDIO_BUSY) {
+		printf("   Busy\n");
+	} if (cmd & SDIO_CMDBUSY) {
+		printf("   CMDBusy\n");
+	} if (cmd & SDIO_ERR) {
+		if (cmd & SDIO_CMDERR) {
+			printf("   CMD Err: ");
+			switch((cmd >> 16)&3) {
+			case 0: printf("Timeout\n"); break;
+			case 1: printf("Okay\n"); break;
+			case 2: printf("Bad CRC\n"); break;
+			case 3: printf("Frame Err\n"); break;
+			}
+		} if (cmd & SDIO_RXERR) {
+			printf("   RX Err:  ");
+			if (cmd & SDIO_RXCRCERR) {
+				printf(" CRC Err\n");
+			} else
+				printf(" Watchdog Err\n");
 		}
+	} else
+		printf("   No ERR\n");
+}
+// }}}
+
+void emmc_send_ext_csd(EMMCDRV *dev) {	  // CMD 8
+	// {{{
+	if (EMMCDEBUG)	txstr("SEND-EXT-CSD\n");
+
+	dev->d_dev->sd_phy = (dev->d_dev->sd_phy & (0x0ffffff)) | SECTOR_512B;
+	dev->d_dev->sd_data = 0;	// Stuff bits
+	dev->d_dev->sd_cmd = (SDIO_CMD | SDIO_R1 | SDIO_ERR | SDIO_MEM)+8;
+	emmc_decode_cmd(dev->d_dev->sd_cmd);
+
+	emmc_wait_while_busy(dev);
+
+	if (EMMCDEBUG && EMMCINFO) {
+		// {{{
+		unsigned	c, r;
+
+		c = dev->d_dev->sd_cmd;
+		r = dev->d_dev->sd_data;
+
+		txstr("CMD8:    SEND_EXT_CSD\n");
+		// txstr("  Cmd:     "); txhex(c); txstr("\n");
+		emmc_decode_cmd(c);
+		txstr("  Data:    "); txhex(r); txstr("\n");
+		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
+	}
+	// }}}
+
+	// STOP transmission
+	// {{{
+	if (0) {
+		// Not required
+		dev->d_dev->sd_data = dev->d_RCA << 16;
+		dev->d_dev->sd_cmd = SDIO_READREG+12;
+		emmc_wait_while_busy(dev);
+
+		if (EMMCDEBUG && EMMCINFO) {
+			// {{{
+			unsigned	c, r;
+
+			c = dev->d_dev->sd_cmd;
+			r = dev->d_dev->sd_data;
+
+			txstr("CMD12:   STOP_TRANSMISSION\n");
+			txstr("  Cmd:     "); txhex(c); txstr("\n");
+			txstr("  Data:    "); txhex(r); txstr("\n");
+		}
+		// }}}
+	}
+	// }}}
+
+	// Read data into dev->d_EXCSD[]
+	// {{{
+	for(int k=0; k<512; k+= sizeof(uint32_t)) {
+		unsigned	uv;
+
+		uv = dev->d_dev->sd_fifa;
+		// if (EMMCINFO) { txhex(uv); if (k < 12) txstr(":"); }
+		dev->d_EXCSD[k + 3] = uv & 0x0ff; uv >>= 8;
+		dev->d_EXCSD[k + 2] = uv & 0x0ff; uv >>= 8;
+		dev->d_EXCSD[k + 1] = uv & 0x0ff; uv >>= 8;
+		dev->d_EXCSD[k + 0] = uv;
+	}
+	// }}}
+
+	if (EMMCINFO && EMMCDEBUG) {
+		// {{{
+		txstr("\n  ");
+		for(int k=0; k<512; k++) {
+			unsigned	v;
+
+			v = (dev->d_EXCSD[k] >> 4)&0x0f;
+			if (v < 10)
+				txchr('0'+v);
+			else
+				txchr('A'+v-10);
+
+			v = dev->d_EXCSD[k] & 0x0f;
+			if (v < 10)
+				txchr('0'+v);
+			else
+				txchr('A'+v-10);
+
+			if (k+1 >= 512) {
+			} else if (15 == (k&15)) {
+				txstr("\n  ");
+			} else if (7 == (k&7))
+				txstr(" ");
+			else
+				txstr(":");
+		} txstr("\n");
+	}
+	// }}}
+
+	for(int k=0; k<512; k++) {
+		if (isgraph(dev->d_EXCSD[k]))
+			txchr(dev->d_EXCSD[k]);
+		else
+			txchr('.');
+	} txchr('\n');
+
+	unsigned	SEC_COUNT;
+
+	dev->d_sector_count = dev->d_EXCSD[212]
+			| (dev->d_EXCSD[213] << 8)
+			| (dev->d_EXCSD[214] << 16)
+			| (dev->d_EXCSD[215] << 24);
+
+	if (EMMCINFO) {
+		txstr("  S_CMD_SET     : "); txhex(dev->d_EXCSD[504]); txstr("\n");
+		txstr("  BKOPS_SUPPORT : "); txhex(dev->d_EXCSD[502]); txstr("\n");
+		txstr("  MAX_PKD_READS : "); txhex(dev->d_EXCSD[501]); txstr("\n");
+		txstr("  MAX_PKD_WRITES: "); txhex(dev->d_EXCSD[500]); txstr("\n");
+		txstr("  DATA_TAG_SPRT : "); txhex(dev->d_EXCSD[499]); txstr("\n");
+		txstr("  EXT_SUPPORT   : "); txhex(dev->d_EXCSD[494]); txstr("\n");
+		txstr("  SUPPORTED_MODS: "); txhex(dev->d_EXCSD[493]); txstr("\n");
+		txstr("  CMDQ_SUPPORT  : "); txhex(dev->d_EXCSD[308]); txstr("\n");
+		txstr("  SECTOR_COUNT  : "); txhex(dev->d_sector_count); txstr("\n");
+		txstr("  DEVICE_TYPE   : "); txhex(dev->d_EXCSD[196]); txstr("\n");
+		if (dev->d_EXCSD[196] & 0x80)
+			txstr("    HS400 DDR @ 200MHz, 1.2V\n");
+		if (dev->d_EXCSD[196] & 0x40)
+			txstr("    HS400 DDR @ 200MHz, 1.8V\n");
+		if (dev->d_EXCSD[196] & 0x20)
+			txstr("    HS200 SDR @ 200MHz, 1.2V\n");
+		if (dev->d_EXCSD[196] & 0x10)
+			txstr("    HS200 SDR @ 200MHz, 1.8V\n");
+		if (dev->d_EXCSD[196] & 0x08)
+			txstr("    HS    DDR @  52MHz, 1.2V\n");
+		if (dev->d_EXCSD[196] & 0x04)
+			txstr("    HS    DDR @  52MHz, 1.8 or 3V\n");
+		if (dev->d_EXCSD[196] & 0x02)
+			txstr("    HS        @  52MHz\n");
+		if (dev->d_EXCSD[196] & 0x01)
+			txstr("    HS        @  26MHz\n");
+		txstr("  CSD_STRUCTURE : "); txhex(dev->d_EXCSD[194]); txstr("\n");
+		txstr("  EXT_CSD_REV   : "); txhex(dev->d_EXCSD[192]); txstr("\n");
+		txstr("  CMD_SET       : "); txhex(dev->d_EXCSD[191]); txstr("\n");
+		txstr("  STROBE_SUPPORT: "); txhex(dev->d_EXCSD[184]); txstr("\n");
+		txstr("  BUS_WIDTH     : "); txhex(dev->d_EXCSD[183]); txstr("\n");
+		txstr("  DATA_SECTOR_SZ: "); txhex(dev->d_EXCSD[ 61]); txstr("\n");
+	}
+}
+// }}}
+
+// Get and Dump R1
+void emmc_dump_r1(const unsigned rv) {
+	// {{{
+	if (EMMCDEBUG) {
+		txstr("EMMC R1 Decode:  "); txhex(rv);
+		if (rv & 0x80000000)
+			txstr("\n  OUT_OF_RANGE");
+		if (rv & 0x40000000)
+			txstr("\n  ADDRESS_MISALIGN");
+		if (rv & 0x20000000)
+			txstr("\n  BLOCK_LEN_ERROR");
+		if (rv & 0x10000000)
+			txstr("\n  ERASE_SEQ_ERROR");
+		if (rv & 0x08000000)
+			txstr("\n  ERASE_PARAM");
+		if (rv & 0x04000000)
+			txstr("\n  WP_VIOLATION");
+		if (rv & 0x02000000)
+			txstr("\n  DEVICE_IS_LOCKED");
+		if (rv & 0x01000000)
+			txstr("\n  LOCK_UNLOCK_FAILED");
+		if (rv & 0x00800000)
+			txstr("\n  COM_CRC_ERROR");
+		if (rv & 0x00400000)
+			txstr("\n  ILLEGAL_COMMAND");
+		if (rv & 0x00200000)
+			txstr("\n  DEVICE_ECC_FAILED");
+		if (rv & 0x00100000)
+			txstr("\n  CC_ERROR (Internal card controller err)");
+		if (rv & 0x00080000)
+			txstr("\n  ERROR (General or unknown error)");
+		if (rv & 0x00010000)
+			txstr("\n  CSD_OVERWRITE");
+		if (rv & 0x00008000)
+			txstr("\n  WP_ERASE_SKIP");
+		if (rv & 0x00002000)
+			txstr("\n  ERASE_RESET");
+		switch((rv >> 9)&0x0f) {
+		case 0: txstr("\n  STATE: idle");  break;
+		case 1: txstr("\n  STATE: ready"); break;
+		case 2: txstr("\n  STATE: ident"); break;
+		case 3: txstr("\n  STATE: stdby"); break;
+		case 4: txstr("\n  STATE: tran");  break;
+		case 5: txstr("\n  STATE: data");  break;
+		case 6: txstr("\n  STATE: rcv");   break;
+		case 7: txstr("\n  STATE: prg");   break;
+		case 8: txstr("\n  STATE: dis");   break;
+		case 9: txstr("\n  STATE: btst");   break;
+		case 10: txstr("\n  STATE: slp");   break;
+		default: txstr("\n  STATE: (reserved)"); break;
+		}
+		if (rv & 0x00000100)
+			txstr("\n  READY_FOR_DATA");
 		if (rv & 0x00000080)
-			txstr("\r\n  READY_FOR_DATA");
+			txstr("\n  SWITCH_ERROR");
 		if (rv & 0x00000040)
-			txstr("\r\n  FX_EVENT");
+			txstr("\n  EXCEPTION_EVENT");
 		if (rv & 0x00000020)
-			txstr("\r\n  APP_CMD");
-		if (rv & 0x00000008)
-			txstr("\r\n  AKE_SEQ_ERROR");
-		txstr("\r\n");
+			txstr("\n  APP_CMD");
+		txstr("\n");
 		// emmc_dump_r1(uv >> 8);
 	}
 }
+// }}}
 
 unsigned emmc_get_r1(EMMCDRV *dev) {	// CMD13=send_status
+	// {{{
 	unsigned	vc, vd;
 
 	dev->d_dev->sd_data = dev->d_RCA << 16;
 	dev->d_dev->sd_cmd  = SDIO_READREG + 13;
-
+	if (EMMCINFO && EMMCDEBUG)
+		txstr("CMD13:   SEND_STATUS\n");
 	emmc_wait_while_busy(dev);
 
-	txhex(vc = dev->d_dev->sd_cmd);
-	txstr(" : ");
-	txhex(vd = dev->d_dev->sd_data);
-	txstr("\r\n");
+	vc = dev->d_dev->sd_cmd;
+	vd = dev->d_dev->sd_data;
+	if (EMMCINFO && EMMCDEBUG) {
+		txstr("  Cmd:     "); txhex(vc); txstr("\n");
+		// emmc_decode_cmd(c);
+		txstr("  Data:    "); txhex(vd); txstr("\n");
+		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
+	}
 
 	emmc_dump_r1(vd);
+	return vd;
 }
 // }}}
 
@@ -755,7 +986,7 @@ int	emmc_write_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 24
 		phy |= (9 << 24);
 	}
 
-#ifndef	INCLUDE_DMA_CONTROLLER_NOT
+#ifdef	INCLUDE_DMA_CONTROLLER_NOT
 	if (EXTDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
 		_zip->z_dma.d_len = 512;
 		_zip->z_dma.d_rd  = (char *)buf;
@@ -817,7 +1048,7 @@ int	emmc_read_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 17
 
 	emmc_wait_while_busy(dev);
 
-#ifndef	INCLUDE_DMA_CONTROLLER_NOT
+#ifdef	INCLUDE_DMA_CONTROLLER_NOT
 	if (SDUSEDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
 		_zip->z_dma.d_len = 512;
 		_zip->z_dma.d_rd  = (char *)&sdcard->sd_fifo[0];
@@ -836,9 +1067,317 @@ int	emmc_read_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 17
 		emmc_dump_sector(buf);
 
 	if (dev->d_dev->sd_cmd & (SDIO_ERR | SDIO_REMOVED)) {
-		txstr("SDIO ERR: Read\r\n");
+		txstr("EMMC ERR: Read\n");
 		return -1;
 	} return 0;
+}
+// }}}
+
+void	emmc_best_width(EMMCDRV *dev) {
+	// {{{
+	unsigned	const	SWITCH_WRITE_BYTE = (3 << 24),
+				WIDTH_INDEX = 183;
+	unsigned	v, c, r;
+
+	// Section 6.6.4
+		// SDIO_W1       = 0x00000000,
+		// SDIO_W4       = 0x00000400,
+		// SDIO_W8	      = 0x00000800,
+		// SDIO_WBEST    = 0x00000c00,
+	
+	if (EMMCDEBUG) txstr("Testing 1b width\n");
+	// {{{
+SETSCOPE;
+	dev->d_dev->sd_phy = (dev->d_dev->sd_phy & ~(0x0f000000 | SDIO_WBEST))
+				| SDIO_W1 | SECTOR_4B;
+	dev->d_dev->sd_data = SWITCH_WRITE_BYTE
+				| (WIDTH_INDEX << 16)
+				| (1 << 8);
+	dev->d_dev->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR) + 6;
+	emmc_wait_while_busy(dev);
+	if (EMMCINFO && EMMCDEBUG)
+		txstr("CMD6:    SWITCH\n");
+	emmc_wait_while_busy(dev);
+	c = dev->d_dev->sd_cmd;
+	r = dev->d_dev->sd_data;
+	if (EMMCINFO && EMMCDEBUG) {
+		txstr("  Cmd:     "); txhex(c); txstr("\n");
+		// emmc_decode_cmd(c);
+		txstr("  Data:    "); txhex(r); txstr("\n");
+		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
+	} if (dev->d_dev->sd_cmd & SDIO_ERR) {
+		txstr("EMMC PANIC!  Err response to switch-cmd\n");
+		zip_halt();
+	} if (dev->d_dev->sd_data & SDIO_R1ERR) {
+		txstr("EMMC PANIC!  R1 ERR response to SWITCH (");
+		txhex(dev->d_dev->sd_data); txstr(")\n");
+		zip_halt();
+	}
+
+	dev->d_dev->sd_fifa = 0x80000000;
+	dev->d_dev->sd_fifb = 0;
+	// CMD19 = BUSTEST_W
+	dev->d_dev->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR
+				| SDIO_WRITE | SDIO_MEM) + 19;
+	if (EMMCINFO && EMMCDEBUG)
+		txstr("CMD19:   BUSTEST_W\n");
+	emmc_wait_while_busy(dev);
+	c = dev->d_dev->sd_cmd;
+	r = dev->d_dev->sd_data;
+	if (EMMCINFO && EMMCDEBUG) {
+		txstr("  Cmd:     "); txhex(c); txstr("\n");
+		// emmc_decode_cmd(c);
+		txstr("  Data:    "); txhex(r); txstr("\n");
+		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
+	} if (dev->d_dev->sd_cmd & SDIO_ERR) {
+		// Rx/CRC errors are expected
+		txstr("EMMC PANIC!  Err response to bus test write\n");
+	} if (dev->d_dev->sd_data & SDIO_R1ERR) {
+		txstr("EMMC PANIC!  R1ERR response to CMD19 (");
+		txhex(dev->d_dev->sd_data); txstr(")\n");
+		zip_halt();
+	}
+
+	// CMD14 = BUSTEST_R, FIFO B
+	dev->d_dev->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR
+				| SDIO_MEM | SDIO_FIFO) + 14;
+	if (EMMCINFO && EMMCDEBUG)
+		txstr("CMD14:   BUSTEST_R\n");
+	emmc_wait_while_busy(dev);
+	TRIGGER;
+	c = dev->d_dev->sd_cmd;
+	r = dev->d_dev->sd_data;
+	v = dev->d_dev->sd_fifb;
+	if (EMMCINFO && EMMCDEBUG) {
+		txstr("  Cmd:     "); txhex(c); txstr("\n");
+		// emmc_decode_cmd(c);
+		txstr("  Data:    "); txhex(r); txstr("\n");
+		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
+		txstr(" FIFB:     "); txhex(v); txstr("\n");
+	} if (c & SDIO_CMDERR) {
+		txstr("EMMC PANIC!  CMDErr response to bus test read\n");
+		zip_halt();
+	} if (r & SDIO_R1ERR) {
+		txstr("EMMC PANIC!  R1ERR response to CMD14 (");
+		txhex(dev->d_dev->sd_data); txstr(")\n");
+		zip_halt();
+	}
+
+	// Now check the result
+	if ((v & 0xc0000000) != 0x40000000) {
+		txstr("EMMC PANIC!  Failed single-bit bus test (");
+		txhex(v); txstr(").  No fallback available.\n");
+		zip_halt();
+	}
+	// }}}
+	if (EMMCDEBUG) txstr("Testing 4b width\n");
+	// {{{
+	dev->d_dev->sd_phy = (dev->d_dev->sd_phy & ~(0x0f000000 | SDIO_WBEST))
+			| SDIO_W4 | SECTOR_4B;
+	dev->d_dev->sd_data = SWITCH_WRITE_BYTE
+				| (WIDTH_INDEX << 16)
+				| (2 << 8);
+	dev->d_dev->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR) + 6;
+	if (EMMCINFO && EMMCDEBUG)
+		txstr("CMD6:    SWITCH\n");
+	emmc_wait_while_busy(dev);
+	c = dev->d_dev->sd_cmd;
+	r = dev->d_dev->sd_data;
+	if (EMMCINFO && EMMCDEBUG) {
+		txstr("  Cmd:     "); txhex(c); txstr("\n");
+		// emmc_decode_cmd(c);
+		txstr("  Data:    "); txhex(r); txstr("\n");
+		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
+	} if (dev->d_dev->sd_cmd & SDIO_ERR) {
+		txstr("EMMC PANIC!  Err response to switch-cmd\n");
+		zip_halt();
+	} if (dev->d_dev->sd_data & SDIO_R1ERR) {
+		txstr("EMMC PANIC!  R1 ERR response to SWITCH (");
+		txhex(dev->d_dev->sd_data); txstr(")\n");
+		zip_halt();
+	}
+
+	dev->d_dev->sd_fifa = 0xa5000000;
+	dev->d_dev->sd_fifb = 0;
+	// CMD19 = BUSTEST_W
+	dev->d_dev->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR
+				| SDIO_WRITE | SDIO_MEM) + 19;
+	if (EMMCINFO && EMMCDEBUG)
+		txstr("CMD19:   BUSTEST_W\n");
+	emmc_wait_while_busy(dev);
+	c = dev->d_dev->sd_cmd;
+	r = dev->d_dev->sd_data;
+	if (EMMCINFO && EMMCDEBUG) {
+		txstr("  Cmd:     "); txhex(c); txstr("\n");
+		// emmc_decode_cmd(c);
+		txstr("  Data:    "); txhex(r); txstr("\n");
+		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
+	} if (dev->d_dev->sd_cmd & SDIO_ERR) {
+		// Rx/CRC errors are expected
+		txstr("EMMC PANIC!  Err response to bus test write\n");
+	} if (dev->d_dev->sd_data & SDIO_R1ERR) {
+		txstr("EMMC PANIC!  R1ERR response to CMD19 (");
+		txhex(dev->d_dev->sd_data); txstr(")\n");
+		zip_halt();
+	}
+
+	// CMD14 = BUSTEST_R, FIFO B
+	dev->d_dev->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR | SDIO_MEM
+				| SDIO_FIFO) + 14;
+	if (EMMCINFO && EMMCDEBUG)
+		txstr("CMD14:   BUSTEST_R\n");
+	emmc_wait_while_busy(dev);
+	c = dev->d_dev->sd_cmd;
+	r = dev->d_dev->sd_data;
+	v = dev->d_dev->sd_fifb;
+	if (EMMCINFO && EMMCDEBUG) {
+		txstr("  Cmd:     "); txhex(c); txstr("\n");
+		// emmc_decode_cmd(c);
+		txstr("  Data:    "); txhex(r); txstr("\n");
+		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
+		txstr(" FIFB:     "); txhex(v); txstr("\n");
+	} if (dev->d_dev->sd_cmd & SDIO_CMDERR) {
+		txstr("EMMC PANIC!  CMDErr response to bus test read\n");
+		zip_halt();
+	} if (dev->d_dev->sd_data & SDIO_R1ERR) {
+		txstr("EMMC PANIC!  R1ERR response to CMD14 (");
+		txhex(dev->d_dev->sd_data); txstr(")\n");
+		zip_halt();
+	}
+
+	// Now check the result -- ignoring all but the first two bits
+	if ((v & 0xff000000) != 0x5a000000) {
+		txstr("  4b fail! ("); txhex(v);
+		txstr(") -- falling back to 1b\n");
+		dev->d_dev->sd_phy = (dev->d_dev->sd_phy
+						& ~(0x0f000000 | SDIO_WBEST))
+				| SDIO_W1 | SECTOR_512B;
+		dev->d_dev->sd_data = SWITCH_WRITE_BYTE
+					| (WIDTH_INDEX << 16)
+					| (1 << 8);
+		dev->d_dev->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR) + 6;
+		emmc_wait_while_busy(dev);
+		if (dev->d_dev->sd_cmd & SDIO_ERR) {
+			txstr("EMMC PANIC!  Err response to switch-cmd\n");
+			zip_halt();
+		} if (dev->d_dev->sd_data & SDIO_R1ERR) {
+			txstr("EMMC PANIC!  R1 ERR response to SWITCH (");
+			txhex(dev->d_dev->sd_data); txstr(")\n");
+			zip_halt();
+		}
+
+		return;
+	} else if (EMMCINFO) {
+		txstr("  Success!\n");
+	}
+	// }}}
+	if (EMMCDEBUG) txstr("Testing 8b width\n");
+	// {{{
+	dev->d_dev->sd_phy = (dev->d_dev->sd_phy & ~(0x0f000000 | SDIO_WBEST))
+				| SDIO_W8 | SECTOR_4B;
+	dev->d_dev->sd_data = SWITCH_WRITE_BYTE
+				| (WIDTH_INDEX << 16)
+				| (4 << 8);
+	dev->d_dev->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR) + 6;
+	if (EMMCINFO && EMMCDEBUG)
+		txstr("CMD6:    SWITCH\n");
+	emmc_wait_while_busy(dev);
+	c = dev->d_dev->sd_cmd;
+	r = dev->d_dev->sd_data;
+	if (EMMCINFO && EMMCDEBUG) {
+		txstr("  Cmd:     "); txhex(c); txstr("\n");
+		// emmc_decode_cmd(c);
+		txstr("  Data:    "); txhex(r); txstr("\n");
+		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
+	} if (dev->d_dev->sd_cmd & SDIO_ERR) {
+		txstr("EMMC PANIC!  Err response to switch-cmd\n");
+		zip_halt();
+	} if (r & SDIO_R1ERR) {
+		r = emmc_get_r1(dev);
+		if (r & SDIO_R1ERR) {
+			txstr("EMMC PANIC!  R1 ERR response to SWITCH (");
+			txhex(r); txstr(")\n");
+			zip_halt();
+		}
+	}
+
+	dev->d_dev->sd_fifa = 0xa55a0000;
+	dev->d_dev->sd_fifb = 0;
+	// CMD19 = BUSTEST_W
+	dev->d_dev->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR
+				| SDIO_WRITE | SDIO_MEM) + 19;
+	if (EMMCINFO && EMMCDEBUG)
+		txstr("CMD19:   BUSTEST_W\n");
+	emmc_wait_while_busy(dev);
+	c = dev->d_dev->sd_cmd;
+	r = dev->d_dev->sd_data;
+	if (EMMCINFO && EMMCDEBUG) {
+		txstr("  Cmd:     "); txhex(c); txstr("\n");
+		// emmc_decode_cmd(c);
+		txstr("  Data:    "); txhex(r); txstr("\n");
+		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
+	} if (dev->d_dev->sd_cmd & SDIO_ERR) {
+		// Rx/CRC errors are expected
+		txstr("EMMC PANIC!  Err response to bus test write\n");
+	}
+	/*
+	if (dev->d_dev->sd_data & SDIO_R1ERR) {
+		txstr("EMMC PANIC!  R1ERR response to CMD19 (");
+		txhex(dev->d_dev->sd_data); txstr(")\n");
+		zip_halt();
+	}
+	*/
+
+	// CMD14 = BUSTEST_R, FIFO B
+	dev->d_dev->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR | SDIO_MEM
+				| SDIO_FIFO) + 14;
+	if (EMMCINFO && EMMCDEBUG)
+		txstr("CMD14:   BUSTEST_R\n");
+	emmc_wait_while_busy(dev);
+	c = dev->d_dev->sd_cmd;
+	r = dev->d_dev->sd_data;
+	v = dev->d_dev->sd_fifb;
+	if (EMMCINFO && EMMCDEBUG) {
+		txstr("  Cmd:     "); txhex(c); txstr("\n");
+		// emmc_decode_cmd(c);
+		txstr("  Data:    "); txhex(r); txstr("\n");
+		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
+		txstr(" FIFB:     "); txhex(v); txstr("\n");
+	} if (dev->d_dev->sd_cmd & SDIO_CMDERR) {
+		txstr("EMMC PANIC!  CMDErr response to bus test read\n");
+		zip_halt();
+	} if (dev->d_dev->sd_data & SDIO_R1ERR) {
+		txstr("EMMC PANIC!  R1ERR response to CMD14 (");
+		txhex(dev->d_dev->sd_data); txstr(")\n");
+		zip_halt();
+	}
+
+	// Now check the result -- ignoring all but the first two bits
+	if ((v & 0xffff0000) != 0x5aa50000) {
+		txstr("  8b fail! ("); txhex(v);
+		txstr(") -- falling back to 4b\n");
+		dev->d_dev->sd_phy = (dev->d_dev->sd_phy
+						& ~(0x0f000000 | SDIO_WBEST))
+				| SDIO_W4 | SECTOR_512B;
+		dev->d_dev->sd_data = SWITCH_WRITE_BYTE
+					| (WIDTH_INDEX << 16)
+					| (2 << 8);
+		dev->d_dev->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR) + 6;
+		emmc_wait_while_busy(dev);
+		if (dev->d_dev->sd_cmd & SDIO_ERR) {
+			txstr("EMMC PANIC!  Err response to switch-cmd\n");
+			zip_halt();
+		} if (dev->d_dev->sd_data & SDIO_R1ERR) {
+			txstr("EMMC PANIC!  R1 ERR response to SWITCH (");
+			txhex(dev->d_dev->sd_data); txstr(")\n");
+			zip_halt();
+		}
+
+		return;
+	} else if (EMMCINFO) {
+		txstr("  Success!\n");
+	}
+	// }}}
 }
 // }}}
 
@@ -865,8 +1404,10 @@ EMMCDRV *emmc_init(EMMC *dev) {
 	}
 
 	emmc_all_send_cid(dv);		// CMD2
-
 	emmc_send_rca(dv);
+
+	emmc_send_cid(dv);		// CMD10, Read CID (again)
+	emmc_read_csd(dv);		// CMD9, Read card specific data
 
 	{
 		unsigned phy = dv->d_dev->sd_phy;
@@ -878,15 +1419,22 @@ EMMCDRV *emmc_init(EMMC *dev) {
 		dv->d_dev->sd_phy = phy;
 	}
 
-	emmc_read_csd(dv);		// CMD9, Read card specific data
-
 	// CMD4 (SET_DSR), CMD9 (SEND_CSD), CMD10 (SEND_CID), CMD39(FAST_IO) ?
 	// CMD40 (GO_IRQ_STATE)
+	// CMD5 SLEEP_AWAKE ... when to issue this?
 	// CMD6 SWITCH command set ... when to issue this?
 
 	emmc_select_card(dv);		// Move to transfer state
+	emmc_send_ext_csd(dv);		// CMD8, Read extended CSD info
 
-	// emmc_read_ext_csd(dv);	// Read extended CSD register, 512Bytes
+	emmc_best_width(dv);
+
+	// dv->d_sector_count = 0;
+	dv->d_block_size   = 512;
+
+	if (EMMCINFO && EMMCDEBUG)
+		printf("SUMMARY:  %d blocks\n  %d bytes\n", dv->d_sector_count,
+			dv->d_block_size);
 
 	return	dv;
 }

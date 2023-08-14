@@ -42,6 +42,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
+`timescale 1ns/1ps
 `default_nettype	none
 // }}}
 module	sdio #(
@@ -86,7 +87,7 @@ module	sdio #(
 		// inout	wire		io_ds,
 		// inout wire [NUMIO-1:0]	io_dat,
 		// But these ones ...
-		output	wire		o_cfg_ddr,
+		output	wire		o_cfg_ddr, o_cfg_ds,
 		output	wire	[4:0]	o_cfg_sample_shift,
 		output	reg	[7:0]	o_sdclk,
 		//
@@ -95,7 +96,6 @@ module	sdio #(
 		//
 		output	wire		o_data_en, o_pp_data, o_rx_en,
 		output	wire	[31:0]	o_tx_data,
-		output	wire		o_afifo_reset_n,
 		//
 		input	wire	[1:0]	i_cmd_strb, i_cmd_data,
 		input	wire		i_card_busy,
@@ -127,7 +127,7 @@ module	sdio #(
 	// {{{
 	wire			soft_reset;
 
-	wire			cfg_clk90, cfg_clk_shutdown, cfg_ds;
+	wire			cfg_clk90, cfg_clk_shutdown;
 	wire	[7:0]		cfg_ckspeed;
 	wire	[1:0]		cfg_width;
 
@@ -185,7 +185,7 @@ module	sdio #(
 		// {{{
 		.o_cfg_clk90(cfg_clk90), .o_cfg_ckspeed(cfg_ckspeed),
 		.o_cfg_shutdown(cfg_clk_shutdown),
-		.o_cfg_width(cfg_width), .o_cfg_ds(cfg_ds),
+		.o_cfg_width(cfg_width), .o_cfg_ds(o_cfg_ds),
 			.o_cfg_ddr(o_cfg_ddr),
 		.o_pp_cmd(o_pp_cmd), .o_pp_data(o_pp_data),
 		.o_cfg_sample_shift(o_cfg_sample_shift),
@@ -255,7 +255,7 @@ module	sdio #(
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset || soft_reset),
 		//
-		.i_cfg_ds(cfg_ds), .i_cfg_dbl(cfg_ds && cfg_ckspeed == 0),
+		.i_cfg_ds(o_cfg_ds), .i_cfg_dbl(cfg_ckspeed == 0),
 		.i_ckstb(clk_stb),
 		//
 		.i_cmd_request(cmd_request), .i_cmd_type(cmd_type),
@@ -309,7 +309,7 @@ module	sdio #(
 		.i_clk(i_clk), .i_reset(i_reset || soft_reset),
 		//
 		.i_cfg_ddr(o_cfg_ddr),
-		.i_cfg_ds(cfg_ds), .i_cfg_width(cfg_width),
+		.i_cfg_ds(o_cfg_ds), .i_cfg_width(cfg_width),
 		.i_rx_en(o_rx_en), .i_crc_en(crc_en), .i_length(rx_length),
 		//
 		.i_rx_strb(i_rx_strb), .i_rx_data(i_rx_data),
@@ -321,8 +321,6 @@ module	sdio #(
 		.o_done(rx_done), .o_err(rx_err), .o_ercode(rx_ercode)
 		// }}}
 	);
-
-	assign	o_afifo_reset_n = cfg_ds && o_rx_en;
 
 	always @(posedge i_clk)
 		o_sdclk <= w_sdclk;

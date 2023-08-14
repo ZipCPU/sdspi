@@ -390,14 +390,18 @@ module	mdl_sdio #(
 	always @(posedge sd_clk)
 	if (pending_write && !reply_valid && !reply_busy)
 	begin
-		pending_write <= 1'b0;
-		write_en <= 1'b1;
-		for(read_ik=0; read_ik<512/4; read_ik=read_ik+1)
-			mem_buf[read_ik] = mem[read_ik+read_posn];
-		tx_valid <= 1'b1;
-		tx_data <= mem_buf[0];
-		tx_addr <= 1;
-		tx_last <= 0;
+		// We can place a delay here, to simulate read access time
+		// if desired ...
+		// #50; @(posedge sd_clk) begin
+			pending_write <= 1'b0;
+			write_en <= 1'b1;
+			for(read_ik=0; read_ik<512/4; read_ik=read_ik+1)
+				mem_buf[read_ik] = mem[read_ik+read_posn];
+			tx_valid <= 1'b1;
+			tx_data <= mem_buf[0];
+			tx_addr <= 1;
+			tx_last <= 0;
+		// end
 	end else if (write_en && tx_valid && tx_ready)
 	begin
 		if (tx_last)

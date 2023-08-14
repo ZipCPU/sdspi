@@ -17,8 +17,6 @@
 //		No support for data strobe.
 //	OPT_SERDES=1
 //		NOT YET VERIFIED IN H/W
-//		KNOWN ISSUES EXIST IN (non-data-strobe) DDR MODE
-//		(Should support the data strobe)
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
@@ -48,6 +46,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
+`timescale		1ns / 1ps
 `default_nettype	none
 // }}}
 module	sdfrontend #(
@@ -62,6 +61,7 @@ module	sdfrontend #(
 		// Configuration
 		input	wire		i_reset,
 		input	wire		i_cfg_ddr,
+		input	wire		i_cfg_ds,
 		input	wire	[4:0]	i_sample_shift,
 		// Control signals
 		// Tx path
@@ -76,7 +76,6 @@ module	sdfrontend #(
 		input	wire		i_data_en, i_rx_en,
 		input	wire		i_pp_data,	// Push/pull data lines
 		input	wire	[31:0]	i_tx_data,
-		input	wire		i_afifo_reset_n,
 		// }}}
 		output	wire		o_data_busy,
 		// Synchronous Rx path
@@ -140,8 +139,8 @@ module	sdfrontend #(
 		reg		resp_started, io_started, last_ck;
 		reg		r_cmd_data, r_cmd_strb, r_rx_strb;
 		reg	[7:0]	r_rx_data;
-		reg	[1:0]	ck_sreg, pck_sreg;
-		reg		sample_ck, cmd_sample_ck;
+		reg	[1:0]	ck_sreg, pck_sreg, ck_psreg;
+		reg		sample_ck, cmd_sample_ck, sample_pck;
 
 		assign	o_ck = i_sdclk[7];
 
@@ -189,6 +188,25 @@ module	sdfrontend #(
 			// Verilator lint_on  WIDTH
 		// }}}
 
+		// sample_pck
+		// {{{
+		initial	ck_sreg = 0;
+		always @(posedge i_clk)
+		if (i_reset || i_data_en)
+			ck_psreg <= 0;
+		else
+			ck_psreg <= { ck_sreg[0], next_pedge };
+
+		initial	sample_ck = 0;
+		always @(*)
+		if (i_data_en)
+			sample_pck = 0;
+		else
+			// Verilator lint_off WIDTH
+			sample_pck = { ck_psreg[1:0],next_pedge } >> i_sample_shift[4:3];
+			// Verilator lint_on  WIDTH
+		// }}}
+
 		// cmd_sample_ck: When do we sample the command line?
 		// {{{
 		always @(posedge i_clk)
@@ -215,7 +233,7 @@ module	sdfrontend #(
 		always @(posedge i_clk)
 		if (i_reset || i_data_en || !i_rx_en)
 			io_started <= 1'b0;
-		else if (!i_dat[0] && sample_ck)
+		else if (!i_dat[0] && sample_pck)
 			io_started <= 1'b1;
 
 		// dat0_busy, wait_for_busy
@@ -299,7 +317,8 @@ module	sdfrontend #(
 		// Verilator coverage_off
 		// Verilator lint_off UNUSED
 		wire	unused_no_serdes;
-		assign	unused_no_serdes = &{ 1'b0, i_afifo_reset_n, i_ds,
+		assign	unused_no_serdes = &{ 1'b0,
+				i_cfg_ds, i_ds,
 				i_sdclk[6:0], i_tx_data[23:0],
 				i_cmd_data[0], i_hsclk,i_sample_shift
 				};
@@ -336,10 +355,11 @@ module	sdfrontend #(
 		reg	[15:0]	w_dat;
 		wire	[1:0]	next_pedge, next_dedge;
 
-		reg	[5:0]	ck_sreg, pck_sreg;
-		reg	[1:0]	sample_ck, cmd_sample_ck;
-		reg		resp_started, io_started, last_ck,
+		reg	[5:0]	ck_sreg, pck_sreg, ck_psreg;
+		reg	[1:0]	sample_ck, cmd_sample_ck, sample_pck;
+		reg		resp_started, last_ck, r_last_cmd_enabled,
 				r_cmd_strb, r_cmd_data, r_rx_strb;
+		reg	[1:0]	io_started;
 		reg	[7:0]	r_rx_data;
 		// Verilator lint_off UNUSED
 		wire		io_clk_tristate, ign_clk;
@@ -364,10 +384,13 @@ module	sdfrontend #(
 
 		// CMD
 		// {{{
+		always @(posedge i_clk)
+			r_last_cmd_enabled <= i_cmd_en && i_pp_cmd;
+
 		xsdddr #(.OPT_BIDIR(1'b1))
 		u_cmd_ddr(
 			.i_clk(i_clk),
-			.i_en(i_reset || (i_cmd_en && (i_pp_cmd || !i_cmd_data[1]))),
+			.i_en(i_reset || r_last_cmd_enabled || (i_cmd_en && (i_pp_cmd || !i_cmd_data[1]))),
 			.i_data({(2){ i_reset || i_cmd_data[1] }}),
 			.io_pin_tristate(io_cmd_tristate),
 			.o_pin(o_cmd),
@@ -433,16 +456,35 @@ module	sdfrontend #(
 			// Verilator lint_on  WIDTH
 		// }}}
 
+		// sample_pck -- positive edge data sampl clock
+		// {{{
+		initial	ck_sreg = 0;
+		always @(posedge i_clk)
+		if (i_data_en)
+			ck_psreg <= 0;
+		else
+			ck_psreg <= { ck_psreg[3:0], next_pedge };
+
+		initial	sample_ck = 0;
+		always @(*)
+		if (i_data_en || !i_rx_en)
+			sample_pck = 0;
+		else
+			// Verilator lint_off WIDTH
+			sample_pck = { ck_psreg[5:0], next_pedge } >> i_sample_shift[4:2];
+			// Verilator lint_on  WIDTH
+		// }}}
+
 		// cmd_sample_ck: When do we sample the command line?
 		// {{{
 		always @(posedge i_clk)
-		if (i_cmd_en)
+		if (i_reset || i_cmd_en || r_last_cmd_enabled)
 			pck_sreg <= 0;
 		else
 			pck_sreg <= { pck_sreg[3:0], next_pedge };
 
 		always @(*)
-		if (i_cmd_en)
+		if (i_cmd_en || r_last_cmd_enabled)
 			cmd_sample_ck = 0;
 		else
 			// Verilator lint_off WIDTH
@@ -451,17 +493,24 @@ module	sdfrontend #(
 		// }}}
 
 		always @(posedge i_clk)
-		if (i_cmd_en)
+		if (i_reset || i_cmd_en || r_last_cmd_enabled)
 			resp_started <= 1'b0;
 		else if ((cmd_sample_ck != 0) && (cmd_sample_ck & w_cmd)==0)
 			resp_started <= 1'b1;
 
 		always @(posedge i_clk)
 		if (i_data_en || !i_rx_en)
-			io_started <= 1'b0;
-		else if (sample_ck != 0
-				&& ((sample_ck & { w_dat[8], w_dat[0] }) == 0))
-			io_started <= 1'b1;
+			io_started <= 2'b0;
+		else if (sample_pck != 0
+				&& ((sample_pck & { w_dat[8], w_dat[0] }) == 0))
+		begin
+			io_started[0] <= 1'b1;
+			if (!i_cfg_ddr)
+				io_started[1] <= 1'b1;
+			else if (sample_pck[1] && sample_ck[0])
+				io_started[1] <= 1'b1;
+		end else if (io_started == 2'b01 && sample_ck != 0)
+			io_started <= 2'b11;
 
 		// dat0_busy, wait_for_busy
 		// {{{
@@ -490,7 +539,7 @@ module	sdfrontend #(
 
 			// The command response
 			// {{{
-			if (i_cmd_en || cmd_sample_ck == 0)
+			if (i_reset || i_cmd_en || cmd_sample_ck == 0)
 			begin
 				r_cmd_strb <= 1'b0;
 				// r_cmd_data <= r_cmd_data;
@@ -511,7 +560,7 @@ module	sdfrontend #(
 			// {{{
 			if (i_data_en || sample_ck == 0)
 				r_rx_strb <= 1'b0;
-			else if (io_started)
+			else if (io_started[1])
 				r_rx_strb <= 1'b1;
 			else
 				r_rx_strb <= 1'b0;
@@ -557,8 +606,9 @@ module	sdfrontend #(
 		// Verilator coverage_off
 		// Verilator lint_off UNUSED
 		wire	unused_ddr;
-		assign	unused_ddr = &{ 1'b0, i_hsclk, i_ds, i_tx_data[23:0],
-				i_sdclk[6:4], i_sdclk[2:0], i_afifo_reset_n,
+		assign	unused_ddr = &{ 1'b0, i_hsclk,
+				i_cfg_ds, i_ds, i_tx_data[23:0],
+				i_sdclk[6:4], i_sdclk[2:0],
 				i_sample_shift[1:0] };
 		// Verilator lint_on  UNUSED
 		// Verilator coverage_on
@@ -584,32 +634,39 @@ module	sdfrontend #(
 		// {{{
 		reg		af_started_p, af_started_n, acmd_started;
 		reg		af_count_p, af_count_n, acmd_count;
+		reg		r_last_cmd_enabled, r_last_enabled;
 		wire	[3:0]	ign_afifo_full, afifo_empty;
 		wire	[31:0]	af_data;
 		wire	[1:0]	acmd_empty, ign_acmd_full;
 		reg	[1:0]	w_cmd_data;
-		wire	[15:0]	w_rx_data;
 		reg	[15:0]	r_rx_data;
+		wire	[15:0]	w_rx_data;
 		reg		last_ck;
-		wire	[7:0]	next_ck_sreg;
-		reg	[23:0]	ck_sreg;
+		wire	[7:0]	next_ck_sreg, next_ck_psreg;
+		reg	[23:0]	ck_sreg, ck_psreg;
 		wire	[7:0]	next_pedge, next_nedge, wide_cmd_data;
-		reg	[7:0]	sample_ck;
+		reg	[7:0]	sample_ck, sample_pck;
 		wire	[1:0]	af_cmd;
 		reg	[1:0]	r_cmd_data;
-		reg	[1:0]	busy_strb, busy_data;
-		reg	[7:0]	busy_ck;
+		reg		busy_strb, busy_data;
 		wire			raw_cmd;
 		wire	[NUMIO-1:0]	raw_iodat;
 		reg	[1:0]	r_rx_strb;
 		reg	[1:0]	start_io;
-		reg		io_started;
+		reg	[1:0]	io_started;
+		reg		resp_started;
+		reg	[1:0]	r_cmd_strb;
+		reg	[23:0]	pck_sreg;
+		reg	[7:0]	cmd_sample_ck;
+
+
+		wire	afifo_reset_n;
 		// }}}
 
 		// Clock
 		// {{{
 		// Verilator lint_off UNUSED
-		wire		io_clk_tristate, ign_clk;
+		wire		io_clk_tristate;
 		// Verilator lint_on  UNUSED
 
 		xsdserdes8x #(.OPT_BIDIR(1'b0))
@@ -620,7 +677,7 @@ module	sdfrontend #(
 			.i_data(i_sdclk),
 			.io_tristate(io_clk_tristate),
 			.o_pin(o_ck),
-			.i_pin(ign_clk),
+			.i_pin(1'b0),
 			// Verilator lint_off PINCONNECTEMPTY
 			.o_raw(), .o_wide()
 			// Verilator lint_on  PINCONNECTEMPTY
@@ -632,33 +689,55 @@ module	sdfrontend #(
 
 		assign	next_ck_sreg = (i_data_en) ? 8'h0
 				: { next_pedge | next_nedge };
+		assign	next_ck_psreg = (i_data_en) ? 8'h0 : next_pedge;
 
+		assign	afifo_reset_n = i_cfg_ds && !i_data_en && i_rx_en;
+
+		initial	last_ck = 0;
 		always @(posedge i_clk)
-		if (!i_afifo_reset_n || i_data_en)
-			{ last_ck, ck_sreg } <= 0;
-		else begin
 			last_ck <= i_sdclk[0];
+
+		// sample_ck
+		// {{{
+		// We use this for busy detection, as well as reception
+		always @(posedge i_clk)
+		if (i_reset || i_data_en
+				|| (!wait_for_busy && (!i_rx_en || i_cfg_ds)))
+			ck_sreg <= 0;
+		else
 			ck_sreg <= { ck_sreg[15:0], next_ck_sreg };
-		end
 
 		initial	sample_ck = 0;
 		always @(posedge i_clk)
-		if (i_data_en || i_afifo_reset_n)
+		if (i_reset || i_data_en
+				|| (!wait_for_busy && (!i_rx_en || i_cfg_ds)))
 			sample_ck <= 0;
 		else
 			// Verilator lint_off WIDTH
 			sample_ck <= { ck_sreg[23:0], next_ck_sreg } >> i_sample_shift;
 			// Verilator lint_on  WIDTH
+		// }}}
 
-		initial	busy_ck = 1'b0;
+		// sample_pck
+		// {{{
 		always @(posedge i_clk)
-		if (i_data_en || i_cmd_en)
-			busy_ck <= 0;
+		if (i_reset || !i_rx_en || i_data_en || i_cfg_ds)
+			ck_psreg <= 0;
+		else
+			ck_psreg <= { ck_psreg[15:0], next_ck_psreg };
+
+		initial	sample_pck = 0;
+		always @(posedge i_clk)
+		if (i_reset || !i_rx_en || i_data_en || i_cfg_ds)
+			sample_pck <= 0;
 		else
 			// Verilator lint_off WIDTH
-			busy_ck <= { ck_sreg[23:0], next_ck_sreg } >> i_sample_shift;
+			sample_pck <= { ck_psreg[23:0], next_ck_psreg } >> i_sample_shift;
 			// Verilator lint_on  WIDTH
+		// }}}
 
+		always @(posedge i_clk)
+			r_last_enabled <= i_data_en && i_pp_data;
 
 		for(gk=0; gk<NUMIO; gk=gk+1)
 		begin : GEN_WIDE_DATIO
@@ -666,14 +745,15 @@ module	sdfrontend #(
 			wire		out_en;
 			reg	[7:0]	out_pin;
 			wire	[7:0]	in_pin;
-			integer		ikin, ikout;
+			integer		ik;
 			reg	[1:0]	lcl_data;
 
 			always @(*)
-			for(ikout=0; ikout<4; ikout=ikout+1)
-				out_pin[ikout*2 +: 2] = {(2){i_tx_data[ikout*8+gk]}};
+			for(ik=0; ik<4; ik=ik+1)
+				out_pin[ik*2 +: 2] = {(2){i_tx_data[ik*8+gk]}};
 
-			assign	out_en = i_data_en &&(i_pp_data || !out_pin[3]);
+			assign	out_en=(i_data_en &&(i_pp_data || !out_pin[3]))
+					|| r_last_enabled;
 
 			xsdserdes8x #(
 				.OPT_BIDIR(1'b1)
@@ -682,9 +762,9 @@ module	sdfrontend #(
 				.i_hsclk(i_hsclk),
 				.i_en(out_en),
 				.i_data(out_pin),
-				.io_tristate(io_dat_tristate),
-				.o_pin(o_dat),
-				.i_pin(i_dat),
+				.io_tristate(io_dat_tristate[gk]),
+				.o_pin(o_dat[gk]),
+				.i_pin(i_dat[gk]),
 				.o_raw(raw_iodat[gk]), .o_wide(in_pin)
 			);
 
@@ -692,36 +772,27 @@ module	sdfrontend #(
 			begin : GEN_START_SIGNAL
 				always @(*)
 				begin
-					start_io[1] = (|sample_ck[7:4])
-						&&(0 == (sample_ck[7:4]&in_pin[7:4]));
-					start_io[0] = (|sample_ck[3:0])
-						&&(0 == (sample_ck[3:0]&in_pin[3:0]));
+					start_io[1] = (|sample_pck[7:4])
+						&&(0 == (sample_pck[7:4]&in_pin[7:4]));
+					start_io[0] = (|sample_pck[3:0])
+						&&(0 == (sample_pck[3:0]&in_pin[3:0]));
 				end
 			end
 
-			always @(posedge i_clk)
+			always @(*)
 			begin
-				if (io_started)
-					lcl_data[1] <= |(sample_ck[7:4]&in_pin[7:4]);
-				else
-					lcl_data[1] <= |(sample_ck[3:0]&in_pin[3:0]);
+				lcl_data[1] <= |(sample_ck[7:4]&in_pin[7:4]);
 				lcl_data[0] <= |(sample_ck[3:0]&in_pin[3:0]);
-
-
-				if (i_reset || i_data_en || !i_rx_en || i_afifo_reset_n)
-				begin
-					lcl_data <= 2'b0;
-				end
 			end
 
 			assign	w_rx_data[8+gk] = lcl_data[1];
 			assign	w_rx_data[  gk] = lcl_data[0];
 			// }}}
-		end for(gk=NUMIO; gk<8; gk=gk+1)
+		end
+
+		for(gk=NUMIO; gk<8; gk=gk+1)
 		begin : NULL_DATIO
 			// {{{
-			integer		ik;
-
 			assign	w_rx_data[8+gk] = 1'b1;
 			assign	w_rx_data[  gk] = 1'b1;
 
@@ -740,45 +811,65 @@ module	sdfrontend #(
 		// o_rx_strb, o_rx_data
 		// {{{
 		always @(posedge i_clk)
-		if (i_reset || i_data_en || !i_rx_en || i_afifo_reset_n)
-			io_started <= 1'b0;
-		else if (2'b00 != start_io)
-			io_started <= 1'b1;
+		if (i_reset || afifo_reset_n)
+			io_started <= 2'b0;
+		else if (!io_started[1])
+		begin
+			if (start_io[1] && (|sample_ck[3:0]))
+				io_started <= 2'b11;
+			else if (io_started[0])
+				io_started[1] <= |sample_ck;
+			else // if (!io_started[0] && start_io[0])
+				io_started[0] <= |start_io;
+		end
 
 		always @(posedge i_clk)
-		if (i_afifo_reset_n)
+		if (i_reset || i_cfg_ds || !i_rx_en || i_data_en)
 			r_rx_strb <= 2'b0;
-		else if (i_data_en || sample_ck == 0)
-				r_rx_strb <= 2'b0;
-		else if (io_started)
+		else if (sample_ck == 0)
+			r_rx_strb <= 2'b0;
+		else if (io_started[1])
 		begin
 			r_rx_strb[1] <= (|sample_ck);
 			r_rx_strb[0] <= (|sample_ck[7:4]) && (|sample_ck[3:0]);
-		end else if (start_io[1])
+		end else if (io_started[0]&& (|sample_ck[7:4]))
 		begin
 			r_rx_strb[1] <= (|sample_ck[3:0]);
 			r_rx_strb[0] <= 1'b0;
 		end else
 			r_rx_strb <= 2'b0;
 
+		always @(posedge i_clk)
+		if (i_reset || !afifo_reset_n)
+			r_rx_data <= 16'h0;
+		else begin
+			if (io_started[1])
+				r_rx_data[15:8] <= w_rx_data[15:8];
+			else
+				r_rx_data[15:8] <= w_rx_data[ 7:0];
+
+			r_rx_data[7:0] <= w_rx_data[7:0];
+		end
+
 		assign	o_rx_strb = r_rx_strb;
 		assign	o_rx_data = r_rx_data;
 		// }}}
 
-		// cmd_busy, wait_for_busy, busy_strb
+		// busy_strb, busy_data
 		// {{{
 		always @(*)
 		begin
-			busy_strb[1] = (|busy_ck);
-			busy_strb[0] = (|busy_ck[7:4]) && (|busy_ck[3:0]);
-
-			if (busy_ck[7:4] == 0)
-				busy_data = { w_rx_data[0], 1'h0 };
+			busy_strb = (|sample_ck);
+			if (|sample_ck[3:0] && !w_rx_data[0])
+				busy_data = 1'b0;
+			else if (|sample_ck[7:4] && !w_rx_data[8])
+				busy_data = 1'b0;
 			else
-				busy_data = { w_rx_data[8], w_rx_data[0] };
+				busy_data = 1'b1;
 		end
+		// }}}
 
-		// dat0_busy, wait_for_busy
+		// o_data_busy, dat0_busy, wait_for_busy
 		// {{{
 		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
@@ -788,14 +879,12 @@ module	sdfrontend #(
 			wait_for_busy <= 1'b1;
 		end else if (wait_for_busy)
 		begin
-			if ((busy_strb[0] && !busy_data[0])
-				||(busy_strb[1] && !busy_data[1]))
+			if (busy_strb && !busy_data)
 			begin
-				dat0_busy <= busy_strb[0] && !busy_data[0];
+				dat0_busy <= !w_rx_data[0];
 				wait_for_busy <= 1'b0;
 			end
-		end else if ((busy_strb[0] && busy_data[0])
-				|| (busy_strb[1] && busy_data[1]))
+		end else if (busy_strb && busy_data)
 			dat0_busy <= 1'b0;
 
 		assign	o_data_busy = dat0_busy;
@@ -806,32 +895,30 @@ module	sdfrontend #(
 		// CMD
 		// {{{
 
-		// assign	next_pedge = { ~{last_ck, i_sdclk[7:1] } &  i_sdclk[7:0] };
-
-		reg	[23:0]	pck_sreg;
-		reg	[7:0]	cmd_sample_ck;
-
 		always @(posedge i_clk)
-		if (!i_afifo_reset_n || i_data_en)
+		if (i_reset || i_cfg_ds || i_cmd_en)
 			pck_sreg <= 0;
 		else
 			pck_sreg <= { pck_sreg[15:0], next_pedge };
 
 		always @(posedge i_clk)
-		if (!i_afifo_reset_n || i_data_en)
+		if (i_reset || i_cfg_ds || i_cmd_en || r_last_cmd_enabled)
 			cmd_sample_ck <= 0;
 		else
 			// Verilator lint_off WIDTH
 			cmd_sample_ck <= { pck_sreg[23:0], next_pedge } >> i_sample_shift;
 			// Verilator lint_on  WIDTH
 
+		always @(posedge i_clk)
+			r_last_cmd_enabled <= i_cmd_en && i_pp_cmd;
 
 		xsdserdes8x #(
 			.OPT_BIDIR(1'b1)
 		) cmd_serdes(
 			.i_clk(i_clk),
 			.i_hsclk(i_hsclk),
-			.i_en(i_cmd_en && (i_pp_cmd || !i_cmd_data[1])),
+			.i_en(r_last_cmd_enabled
+				||(i_cmd_en && (i_pp_cmd || !i_cmd_data[1]))),
 			.i_data({ {(4){i_cmd_data[1]}}, {(4){i_cmd_data[0]}} }),
 			.io_tristate(io_cmd_tristate),
 			.o_pin(o_cmd),
@@ -839,33 +926,60 @@ module	sdfrontend #(
 			.o_raw(raw_cmd), .o_wide(wide_cmd_data)
 		);
 
-		integer	ikcmd;
+		// resp_started
+		// {{{
+		always @(posedge i_clk)
+		if (i_reset || i_cmd_en)
+			resp_started <= 1'b0;
+		else if (((|cmd_sample_ck[7:4])&&((cmd_sample_ck[7:4] & wide_cmd_data[7:4])==0))
+			||((|cmd_sample_ck[3:0])&&((cmd_sample_ck[3:0] & wide_cmd_data[3:0])==0)))
+			resp_started <= 1'b1;
+		// }}}
 
+		// o_cmd_strb
+		// {{{
+		always @(posedge i_clk)
+		if (i_reset || i_cmd_en)
+			r_cmd_strb <= 2'b00;
+		else if (resp_started)
+		begin
+			r_cmd_strb[1] <= (|cmd_sample_ck);
+			r_cmd_strb[0] <= (|cmd_sample_ck[7:4])
+						&&(|cmd_sample_ck[3:0]);
+		end else begin
+			r_cmd_strb[1] <= (((|cmd_sample_ck[7:4])&&((cmd_sample_ck[7:4] & wide_cmd_data[7:4])==0))
+				||((|cmd_sample_ck[3:0])&&((cmd_sample_ck[3:0] & wide_cmd_data[3:0])==0)));
+			r_cmd_strb[0] <= (|cmd_sample_ck[7:4])
+				&& ((cmd_sample_ck[7:4] & wide_cmd_data[7:4])==0)
+				&& (|cmd_sample_ck[3:0]);
+		end
+
+		assign	o_cmd_strb = r_cmd_strb;
+		// }}}
+
+		// o_cmd_data
+		// {{{
 		always @(*)
 		begin
-			w_cmd_data[1:0] = 0;
-			if (|sample_ck[7:4])
+			if (resp_started)
 			begin
-				for(ikcmd=4; ikcmd<8; ikcmd=ikcmd+1)
-				if (cmd_sample_ck[ikcmd])
-					w_cmd_data[1] = wide_cmd_data[ikcmd];
+				if (|cmd_sample_ck[7:4])
+					w_cmd_data[1] = |(cmd_sample_ck[7:4] & wide_cmd_data[7:4]);
+				else
+					w_cmd_data[1] = |(cmd_sample_ck[3:0] & wide_cmd_data[3:0]);
+			end else begin // if (!resp_started)
+				w_cmd_data[1] = 1'b0;
 			end
 
-			if (|sample_ck[3:0])
-			begin
-				for(ikcmd=0; ikcmd<4; ikcmd=ikcmd+1)
-				if (cmd_sample_ck[ikcmd])
-					w_cmd_data[gk] = wide_cmd_data[ikcmd];
-			end
+			w_cmd_data[0] = |(cmd_sample_ck[3:0]
+						& wide_cmd_data[3:0]);
 		end
 
 		always @(posedge i_clk)
-		if (sample_ck[7:4] == 0)
-			r_cmd_data <= { w_cmd_data[0], 1'b0 };
-		else
 			r_cmd_data <= w_cmd_data;
 
 		assign	o_cmd_data = r_cmd_data;
+		// }}}
 
 		// }}}
 		////////////////////////////////////////////////////////////////
@@ -877,28 +991,32 @@ module	sdfrontend #(
 		// {{{
 		// The rule here is that only the positive edges of the
 		// data strobe will qualify the CMD pin;
-		always @(posedge i_ds or posedge i_cmd_en)
-		if (i_cmd_en)
+		wire	cmd_ds_en;
+
+		assign	cmd_ds_en = i_cfg_ds && !i_cmd_en;
+
+		always @(posedge i_ds or posedge cmd_ds_en)
+		if (!cmd_ds_en)
 			acmd_started <= 0;
 		else if (!raw_cmd)
 			acmd_started <= 1;
 
-		always @(posedge i_ds or posedge i_cmd_en)
-		if (i_cmd_en)
+		always @(posedge i_ds or posedge cmd_ds_en)
+		if (!cmd_ds_en)
 			acmd_count <= 0;
-		else if (acmd_started || raw_cmd)
+		else if (acmd_started || !raw_cmd)
 			acmd_count <= acmd_count + 1;
 
 		afifo #(
 			.LGFIFO(4), .WIDTH(1), .WRITE_ON_POSEDGE(1'b1)
 		) u_pcmd_fifo_0 (
 			// {{{
-			.i_wclk(i_ds), .i_wr_reset_n(i_cmd_en),
+			.i_wclk(i_ds), .i_wr_reset_n(!cmd_ds_en),
 			.i_wr((acmd_started || !raw_cmd)&& acmd_count == 1'b0),
 				.i_wr_data(raw_cmd),
-			.o_wr_full(ign_afifo_full[0]),
+			.o_wr_full(ign_acmd_full[0]),
 			//
-			.i_rclk(i_clk), .i_rd_reset_n(i_cmd_en),
+			.i_rclk(i_clk), .i_rd_reset_n(!cmd_ds_en),
 			.i_rd(acmd_empty == 2'b0), .o_rd_data(af_cmd[1]),
 			.o_rd_empty(acmd_empty[0])
 			// }}}
@@ -908,7 +1026,7 @@ module	sdfrontend #(
 			.LGFIFO(4), .WIDTH(1), .WRITE_ON_POSEDGE(1'b1)
 		) u_pcmd_fifo_1 (
 			// {{{
-			.i_wclk(i_ds), .i_wr_reset_n(i_cmd_en),
+			.i_wclk(i_ds), .i_wr_reset_n(cmd_ds_en),
 			.i_wr(acmd_count), .i_wr_data(raw_cmd),
 			.o_wr_full(ign_acmd_full[1]),
 			//
@@ -924,26 +1042,26 @@ module	sdfrontend #(
 
 		// af_started_*, af_count_*
 		// {{{
-		always @(posedge i_ds or negedge i_afifo_reset_n)
-		if (!i_afifo_reset_n)
+		always @(posedge i_ds or negedge afifo_reset_n)
+		if (!afifo_reset_n)
 			af_started_p <= 0;
 		else if (raw_iodat[0] == 0)
 			af_started_p <= 1;
 
-		always @(posedge i_ds or negedge i_afifo_reset_n)
-		if (!i_afifo_reset_n)
+		always @(posedge i_ds or negedge afifo_reset_n)
+		if (!afifo_reset_n)
 			af_count_p <= 0;
 		else if (af_started_p)
 			af_count_p <= af_count_p + 1;
 
-		always @(negedge i_ds or negedge i_afifo_reset_n)
-		if (!i_afifo_reset_n)
+		always @(negedge i_ds or negedge afifo_reset_n)
+		if (!afifo_reset_n)
 			af_started_n <= 0;
 		else if (af_started_p)
 			af_started_n <= 1;
 
-		always @(negedge i_ds or negedge i_afifo_reset_n)
-		if (!i_afifo_reset_n)
+		always @(negedge i_ds or negedge afifo_reset_n)
+		if (!afifo_reset_n)
 			af_count_n <= 0;
 		else if (af_started_n)
 			af_count_n <= af_count_n + 1;
@@ -951,87 +1069,99 @@ module	sdfrontend #(
 
 
 		afifo #(
-			.LGFIFO(4), .WIDTH(8), .WRITE_ON_POSEDGE(1'b1)
+			.LGFIFO(4), .WIDTH(NUMIO), .WRITE_ON_POSEDGE(1'b1)
 		) u_pedge_fifo_0 (
 			// {{{
-			.i_wclk(i_ds), .i_wr_reset_n(i_afifo_reset_n),
+			.i_wclk(i_ds), .i_wr_reset_n(afifo_reset_n),
 			.i_wr(af_started_p && af_count_p == 1'b0),
 				.i_wr_data(raw_iodat),
 			.o_wr_full(ign_afifo_full[0]),
 			//
-			.i_rclk(i_clk), .i_rd_reset_n(i_afifo_reset_n),
-			.i_rd(MAD_VALID), .o_rd_data(af_data[31:24]),
+			.i_rclk(i_clk), .i_rd_reset_n(afifo_reset_n),
+			.i_rd(MAD_VALID), .o_rd_data(af_data[24 +: NUMIO]),
 			.o_rd_empty(afifo_empty[0])
 			// }}}
 		);
 
 		afifo #(
-			.LGFIFO(4), .WIDTH(8), .WRITE_ON_POSEDGE(1'b0)
+			.LGFIFO(4), .WIDTH(NUMIO), .WRITE_ON_POSEDGE(1'b0)
 		) u_nedge_fifo_1 (
 			// {{{
-			.i_wclk(i_ds), .i_wr_reset_n(i_afifo_reset_n),
+			.i_wclk(i_ds), .i_wr_reset_n(afifo_reset_n),
 			.i_wr(af_started_n && af_count_n == 1'b0),
 				.i_wr_data(raw_iodat),
 			.o_wr_full(ign_afifo_full[1]),
 			//
-			.i_rclk(i_clk), .i_rd_reset_n(i_afifo_reset_n),
-			.i_rd(MAD_VALID), .o_rd_data(af_data[23:16]),
+			.i_rclk(i_clk), .i_rd_reset_n(afifo_reset_n),
+			.i_rd(MAD_VALID), .o_rd_data(af_data[16 +: NUMIO]),
 			.o_rd_empty(afifo_empty[1])
 			// }}}
 		);
 
 		afifo #(
-			.LGFIFO(4), .WIDTH(8), .WRITE_ON_POSEDGE(1'b1)
+			.LGFIFO(4), .WIDTH(NUMIO), .WRITE_ON_POSEDGE(1'b1)
 		) u_pedge_fifo_2 (
 			// {{{
-			.i_wclk(i_ds), .i_wr_reset_n(i_afifo_reset_n),
+			.i_wclk(i_ds), .i_wr_reset_n(afifo_reset_n),
 			.i_wr(af_count_p == 1'b1),
 				.i_wr_data(raw_iodat),
 			.o_wr_full(ign_afifo_full[2]),
 			//
-			.i_rclk(i_clk), .i_rd_reset_n(i_afifo_reset_n),
-			.i_rd(MAD_VALID), .o_rd_data(af_data[15:8]),
+			.i_rclk(i_clk), .i_rd_reset_n(afifo_reset_n),
+			.i_rd(MAD_VALID), .o_rd_data(af_data[8 +: NUMIO]),
 			.o_rd_empty(afifo_empty[2])
 			// }}}
 		);
 
 		afifo #(
-			.LGFIFO(4), .WIDTH(8), .WRITE_ON_POSEDGE(1'b0)
+			.LGFIFO(4), .WIDTH(NUMIO), .WRITE_ON_POSEDGE(1'b0)
 		) u_nedge_fifo_3 (
 			// {{{
-			.i_wclk(i_ds), .i_wr_reset_n(i_afifo_reset_n),
+			.i_wclk(i_ds), .i_wr_reset_n(afifo_reset_n),
 			.i_wr(af_count_n == 1'b1),
 				.i_wr_data(raw_iodat),
 			.o_wr_full(ign_afifo_full[3]),
 			//
-			.i_rclk(i_clk), .i_rd_reset_n(i_afifo_reset_n),
-			.i_rd(MAD_VALID), .o_rd_data(af_data[ 7: 0]),
+			.i_rclk(i_clk), .i_rd_reset_n(afifo_reset_n),
+			.i_rd(MAD_VALID), .o_rd_data(af_data[0 +: NUMIO]),
 			.o_rd_empty(afifo_empty[3])
 			// }}}
 		);
 
-		/*
-		reg		prior_af_return, af_flush;
-
-		always @(posedge i_clk)
-		if (!i_afifo_reset_n)
-			prior_af_return <= 0;
-		else if (MAD_VALID)
-			prior_af_return <= 1;
-
-		always @(posedge i_clk)
-		if (!i_afifo_reset_n || !prior_af_return)
-			af_flush <= 1'b0;
-		else if (afifo_empty == 4'h0)
-			af_flush <= 1'b0;
-		else
-			af_flush <= !afifo_empty[0];
-		*/
+		for(gk=NUMIO; gk<8; gk=gk+1)
+		begin : ASSIGN_UNUSED_DATA
+			// {{{
+			// Technically, the data strobe is only permitted
+			// if/when we are using all 8 IOs.  Still, there's no
+			// reason why we can't build the front end to use
+			// however many IOs we have.  Of course ... the rest
+			// of the design assumes 8 IOs whenever the ASYNC
+			// interface is active, so ... defining these here
+			// doesn't mean these will work with the rest of the
+			// design.
+			//
+			assign	af_data[     gk] = 1'b0;
+			assign	af_data[ 8 + gk] = 1'b0;
+			assign	af_data[16 + gk] = 1'b0;
+			assign	af_data[24 + gk] = 1'b0;
+			// }}}
+		end
 
 		assign	MAD_VALID = (afifo_empty == 4'h0); // af_flush && !afifo_empty[0]
 		assign	MAD_DATA  = af_data;
 		// assign	MAD_LAST  = af_flush && (afifo_empty != 4'h0);
 		// }}}
+
+		assign	o_debug = 32'h0;
+
+		// Keep Verilator happy
+		// {{{
+		// Verilator lint_off UNUSED
+		wire	unused_serdes;
+		assign	unused_serdes = &{ 1'b0,
+				ign_afifo_full, ign_acmd_full,
+				w_rx_data[15:9], w_rx_data[7:1] };
+		// Verilator lint_on  UNUSED
 		// }}}
 		// }}}
 	end endgenerate

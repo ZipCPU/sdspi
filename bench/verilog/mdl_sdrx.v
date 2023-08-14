@@ -127,12 +127,12 @@ module	mdl_sdrx(
 			rail_fail[gk] <= 1'b0;
 		end else if (rx_started && !rx_complete)
 		begin
-			crcfill <= STEPCRC(crcfill, sd_dat[gk]);
+			crcfill <= STEPCRC(crcfill, sd_dat[gk] !== 1'b0);
 		end else if (rx_started && !eval_rail[gk]) // && rx_complete
 		begin
 			assert(crcfill == 0);
 			eval_rail[gk] <= 1'b1;
-			rail_fail[gk] <= (crcfill != 0) || !sd_dat[gk];
+			rail_fail[gk] <= (crcfill != 0) ||(sd_dat[gk] === 1'b0);
 		end
 
 		always @(negedge sd_clk)
@@ -143,14 +143,14 @@ module	mdl_sdrx(
 			half_fail[gk] <= 1'b0;
 		end else if (rx_started && !rx_complete)
 		begin
-			halffill <= STEPCRC(crcfill, sd_dat[gk]);
+			halffill <= STEPCRC(crcfill, sd_dat[gk] !== 1'b0);
 			eval_half[gk] <= 1'b0;
 			half_fail[gk] <= 1'b0;
 		end else if (rx_started && !eval_half[gk]) // && rx_complete
 		begin
 			assert(halffill == 0);
 			eval_half[gk] <= 1'b1;
-			half_fail[gk] <= (halffill != 0) || !sd_dat[gk];
+			half_fail[gk] <= (halffill != 0) || sd_dat[gk] === 1'b0;
 		end
 
 	end endgenerate
@@ -161,18 +161,26 @@ module	mdl_sdrx(
 	else if (rx_started && !rx_complete)
 	begin
 		if (i_width)
-			rx_sreg <= { rx_sreg[27:0], sd_dat };
+			rx_sreg <= { rx_sreg[27:0],
+				sd_dat[3] !== 1'b0,
+				sd_dat[2] !== 1'b0,
+				sd_dat[1] !== 1'b0,
+				sd_dat[0] !== 1'b0 };
 		else
-			rx_sreg <= { rx_sreg[30:0], sd_dat[0] };
+			rx_sreg <= { rx_sreg[30:0], sd_dat[0] !== 1'b0 };
 	end
 
 	always @(negedge sd_clk)
 	if (i_ddr && rx_started && !rx_complete)
 	begin
 		if (i_width)
-			rx_sreg <= { rx_sreg[27:0], sd_dat };
+			rx_sreg <= { rx_sreg[27:0],
+				sd_dat[3] !== 1'b0,
+				sd_dat[2] !== 1'b0,
+				sd_dat[1] !== 1'b0,
+				sd_dat[0] !== 1'b0 };
 		else
-			rx_sreg <= { rx_sreg[30:0], sd_dat[0] };
+			rx_sreg <= { rx_sreg[30:0], sd_dat[0] !== 1'b0};
 	end
 
 	always @(*)

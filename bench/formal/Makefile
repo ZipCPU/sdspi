@@ -180,4 +180,9 @@ clean:
 	rm -rf $(SDSPIRX)_*/
 	rm -rf $(SDSPITX)_*/
 	rm -rf $(SDSPI)_*/
+	rm -rf $(SDCK)_*/
+	rm -rf $(SDCMD)_*/
+	rm -rf $(SDRX)_*/
+	rm -rf $(SDTX)_*/
+	rm -rf $(SDWB)_*/
 ## }}}

@@ -134,12 +134,12 @@ module	mdl_sdrx(
 			rail_fail[gk] <= 1'b0;
 		end else if (rx_started && !rx_complete)
 		begin
-			crcfill <= STEPCRC(crcfill, sd_dat[gk]);
+			crcfill <= STEPCRC(crcfill, sd_dat[gk] !== 1'b0);
 		end else if (rx_started && !eval_rail[gk]) // && rx_complete
 		begin
 			assert(crcfill == 0);
 			eval_rail[gk] <= 1'b1;
-			rail_fail[gk] <= (crcfill != 0) || !sd_dat[gk];
+			rail_fail[gk] <= (crcfill != 0) ||(sd_dat[gk] === 1'b0);
 		end
 
 		always @(negedge sd_clk)
@@ -150,14 +150,14 @@ module	mdl_sdrx(
 			half_fail[gk] <= 1'b0;
 		end else if (rx_started && !rx_complete)
 		begin
-			halffill <= STEPCRC(halffill, sd_dat[gk]);
+			halffill <= STEPCRC(crcfill, sd_dat[gk] !== 1'b0);
 			eval_half[gk] <= 1'b0;
 			half_fail[gk] <= 1'b0;
 		end else if (rx_started && !eval_half[gk]) // && rx_complete
 		begin
 			assert(halffill == 0);
 			eval_half[gk] <= 1'b1;
-			half_fail[gk] <= (halffill != 0) || !sd_dat[gk];
+			half_fail[gk] <= (halffill != 0) || sd_dat[gk] === 1'b0;
 		end
 
 	end endgenerate
@@ -167,23 +167,53 @@ module	mdl_sdrx(
 		rx_sreg <= 0;
 	else if (rx_started && !rx_complete)
 	begin
+<<<<<<< HEAD
 		if (i_width[0])
-			rx_sreg <= { rx_sreg[27:0], sd_dat[3:0] };
-		else if (i_width[1])
-			rx_sreg <= { rx_sreg[23:0], sd_dat };
-		else
-			rx_sreg <= { rx_sreg[30:0], sd_dat[0] };
+		begin
+			rx_sreg <= { rx_sreg[27:0],
+				sd_dat[3] !== 1'b0,
+				sd_dat[2] !== 1'b0,
+				sd_dat[1] !== 1'b0,
+				sd_dat[0] !== 1'b0 };
+		end else if (i_width[1])
+		begin
+			rx_sreg <= { rx_sreg[23:0],
+				sd_dat[7] !== 1'b0,
+				sd_dat[6] !== 1'b0,
+				sd_dat[5] !== 1'b0,
+				sd_dat[4] !== 1'b0,
+				sd_dat[3] !== 1'b0,
+				sd_dat[2] !== 1'b0,
+				sd_dat[1] !== 1'b0,
+				sd_dat[0] !== 1'b0 };
+		end else
+			rx_sreg <= { rx_sreg[30:0], sd_dat[0] !== 1'b0 };
 	end
 
 	always @(negedge sd_clk)
 	if (i_ddr && rx_started && !rx_complete)
 	begin
+<<<<<<< HEAD
 		if (i_width[0])
-			rx_sreg <= { rx_sreg[27:0], sd_dat[3:0] };
-		else if (i_width[1])
-			rx_sreg <= { rx_sreg[23:0], sd_dat };
-		else
-			rx_sreg <= { rx_sreg[30:0], sd_dat[0] };
+		begin
+			rx_sreg <= { rx_sreg[27:0],
+				sd_dat[3] !== 1'b0,
+				sd_dat[2] !== 1'b0,
+				sd_dat[1] !== 1'b0,
+				sd_dat[0] !== 1'b0 };
+		end else if (i_width[1])
+		begin
+			rx_sreg <= { rx_sreg[23:0],
+				sd_dat[7] !== 1'b0,
+				sd_dat[6] !== 1'b0,
+				sd_dat[5] !== 1'b0,
+				sd_dat[4] !== 1'b0,
+				sd_dat[3] !== 1'b0,
+				sd_dat[2] !== 1'b0,
+				sd_dat[1] !== 1'b0,
+				sd_dat[0] !== 1'b0 };
+		end else
+			rx_sreg <= { rx_sreg[30:0], sd_dat[0] !== 1'b0};
 	end
 
 	always @(*)

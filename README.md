@@ -1,17 +1,17 @@
 # SD-Card controller
 
-This repository contains two Verilog RTL for controlling SD cards from an FPGA.
-The [first and older controller](rtl/sdspi.v) handles SD cards via their
-(optional) SPI interface.  The [second and newer controller](rtl/sdio.v) works
-using the SDIO interface.  [It](rtl/sdio.v) should be able to handle both SDIO
-and eMMC cards as a result.
+This repository contains two Verilog hardware RTL controllers for handling
+SD cards from an FPGA.  The [first and older controller](rtl/sdspi.v) handles
+SD cards via their (optional) SPI interface.  The [second and newer
+controller](rtl/sdio.v) works using the SDIO interface.  This [second
+controller](rtl/sdio.v) has also been demonstrated to handle eMMC cards as well.
 
 ## SPI-based controller
 
 [The SDSPI controller](rtl/sdspi.v) exports an SD card controller interface
 from internal to an FPGA to the rest of the FPGA core, while taking care of the
 lower level details internal to the interface.  Unlike the [SDIO
-controller](rtl/sdio.v) inthis respository, this controller focuses on the SPI
+controller](rtl/sdio.v) in this respository, this controller focuses on the SPI
 interface of the SD Card.  While this is a slower interface, the SPI interface
 is necessary to access the card when using a [XuLA2
 board](http://www.xess.com/shop/product/xula2-lx25/) (for which it was
@@ -40,21 +40,22 @@ sense.  This design choice, however, also restricts the core from being able to
 use the multiple block write or multiple block read commands, restricting it to 
 single block read and write commands alone.
 
-*Status*: The SDSPI IP is silicon proven.  It is no longer under active
+*Status*: The SDSPI IP is **silicon proven**.  It is no longer under active
   development.  It has been used successfully in several FPGA projects.  The
   components of this IP have formal proofs, which they are known to pass.  A
   Verilator C++ model also exists which can fairly faithfully represent an SD
   card's SPI interface.  A software library also exists which can act as a
-  back end when using the FATFS library.
+  back end when using the [FATFS library](http://elm-chan.org/fsw/ff/00index_e.html).
 
 For more information, please consult the [specification document](doc/spec.pdf).
 
 ## SDIO
 
 This repository also contains a [second and newer SD card
-controller](rtl/sdio.v), designed to exploit the full SDIO protocol.  This
-controller should work with both SDIO and eMMC chips, with the differences
-between the two protocols handled by software.
+controller](rtl/sdio.v), designed to exploit both the full SDIO protocol and
+the 8b EMMC protocol--either with or without data strobes.  This controller
+should work with both SDIO and eMMC chips, with the differences between the two
+types of chips handled by software.
 
 The interface to this controller is roughly the same as that of the [SDSPI
 controller](rtl/sdspi.v), although there are enough significant differences
@@ -73,13 +74,14 @@ Both open-drain and push-pull IOs are supported, and the front end can switch
 between the two as necessary based upon options within a PHY configuration
 register.
 
-*Status*: The SDIO controller is not yet silicon proven.  It is currently
-  being tested in [its first FPGA project](https://github.com/ZipCPU/eth10g),
-  where it will be used to control both an SD card as well as an eMMC card.
-  Many of the components of this IP have formal proofs, which they are known
-  to pass.  Notably missing among the component proofs is a proof of the data
-  receiver.  A [Verilog model](bench/verilog/mdl_sdio.v) also exists which can
-  be used to test this controller in simulation.
+*Status*: The SDIO controller has now been silicon proven.  It is currently
+  working successfully in [its first FPGA
+  project](https://github.com/ZipCPU/eth10g), where it is being used to control
+  both an SD card as well as an eMMC chip.  Many of the components of this IP
+  have formal proofs, which they are known to pass.  Notably missing among the
+  component proofs is a proof of the front end.  Both
+  [Verilog](bench/verilog/mdl_sdio.v) and [C++](bench/cpp/sdiosim.cpp) models
+  which can be used to test this controller in simulation.
 
 ### Roadmap and TODO items
 
@@ -92,24 +94,23 @@ Several key steps remain before it will be a viable product:
 
 - **Test bench status**: While [test script(s) exist](bench/testscript), the
   [primary test driver](bench/verilog/sim_sdio.pl) does not properly return
-  the status of any test back to its environment at present.
+  the status of any test back to its environment at present.  Test coverage
+  can also be improved.
 
-- **C++ Model**: An early Verilator C++ model has been drafted.  It needs to
-  be finished, tested and posted.  No data strobe support is planned for this
-  model at present.
+- **C++ Model**: An early [Verilator C++ model](bench/cpp/sdiosim.cpp) has
+  been drafted.  It needs to be finished and tested.  No data strobe support
+  is planned for this model at present.
 
 - **Multi-block**: While simulation tests have demonstrated CMD17,
   `READ_SINGLE_BLOCK`, and CMD24, `WRITE_BLOCK`, the multiple block commands
   have not yet been tested.  These include CMD18, `READ_MULTIPLE_BLOCK`, and
   CMD25, `WRITE_MULTIPLE_BLOCK`.  Key features, such as the ability to read
   or write multiple blocks, or the ability to issue a command while a read or
-  write operation is ongoing, are already drafted within the IP--they just
-  need to be tested.
+  write operation is ongoing, are already drafted--they just need to be tested.
 
-- **SW**: Control software has been written, and now needs to be tested.
-  An eMMC controller still needs to be drafted.
-
-- **CRC Tokens**: eMMC CRC tokens are not (yet) supported.
+- **SW**: Control software has been written, and has been used to demonstrate
+  both SDIO and EMMC performance.  This software is designed to work with the
+  [FATFS library](http://elm-chan.org/fsw/ff/00index_e.html).
 
 - **OPT_DMA**: An optional DMA extension is planned, to allow data blocks to
   be transferred to memory at the full speed of the internal bus without
@@ -121,7 +122,16 @@ Several key steps remain before it will be a viable product:
 - **eMMC Boot mode**: No plan exists to support eMMC boot mode (at present).
   This decision will likely be revisited in the future.
 
+  Boot mode will require support for eMMC CRC tokens, which aren't (yet)
+  supported.  These are 8'bit return values, indicating whether or not a
+  page has been read or written and passes its CRC check.
+
+# Logic usage
+
+Current logic usage is being tracked for iCE40 and Xilinx 6-LUT devices
+in the [usage.txt](rtl/usage.txt) file in the [RTL/](rtl/) directory.
+
 # Commercial Applications
 
 Should you find the GPLv3 license insufficient for your needs, other licenses
-can be purchased from Gisselquist Technology, LLC.
+may be purchased from Gisselquist Technology, LLC.

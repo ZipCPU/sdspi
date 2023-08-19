@@ -65,17 +65,23 @@ localparam [31:0]	SPEED_100KHZ   = 32'h00fc,
 			SPEED_5MHZ     = 32'h0007,
 			SPEED_12MHZ    = 32'h0004,
 			SPEED_25MHZ    = 32'h0003,
-			SPEED_50MHZ    = 32'h0002;
+			SPEED_50MHZ    = 32'h0002,
+			SPEED_100MHZ   = 32'h0001,
+			SPEED_200MHZ   = 32'h0000;
 
-localparam [31:0]	SPEED_DS     = 32'h03003,
-			SPEED_HS     = 32'h03002,
-			SPEED_SDR50  = 32'h03401,
-			SPEED_DDR50  = 32'h07502,
-			SPEED_SDR104 = 32'h07500;
+localparam [31:0]	SPEED_DS     = 32'h03000|SPEED_25MHZ,	// Push/Pull,
+			SPEED_HSSDR  = 32'h03000|SPEED_50MHZ,	// | push/pull
+			SPEED_HSDDR  = 32'h07100|SPEED_50MHZ,	// |PP|DDR
+			SPEED_DDR50  = 32'h07100|SPEED_50MHZ,	// |PP|DDR
+			SPEED_SDR100 = 32'h03000|SPEED_100MHZ,	// |PP
+			SPEED_DDR100 = 32'h07100|SPEED_100MHZ,	// |PP|DDR
+			SPEED_SDR200 = 32'h03000|SPEED_200MHZ,	// |PP
+			SPEED_HS200  = 32'h03000|SPEED_200MHZ,	// |PP|DDR
+			SPEED_HS400  = 32'h07300|SPEED_200MHZ;	// |PP|DDR|DS
 
 localparam [31:0]	SPEED_SLOW    = SPEED_100KHZ,
 			SPEED_DEFAULT = SPEED_DS,
-			SPEED_FAST    = SPEED_HS;
+			SPEED_FAST    = SPEED_HSSDR;
 
 localparam [31:0]	SECTOR_16B  = 32'h0400_0000,
 			SECTOR_512B = 32'h0900_0000;
@@ -415,6 +421,8 @@ begin
 
 	sdcard_set_bus_width(2'b10);
 
+	// Test at SPEED_DS=25MHZ SDR
+	// {{{
 	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDIO_W4);
 
 	// CMD6		// Select drive strength ??
@@ -427,6 +435,47 @@ begin
 	sdcard_send_random_block(32'h07);
 
 	sdcard_read_block(32'h05);
+	// }}}
+	//
+
+	// Test at SPEED_HSSDR=50MHZ SDR
+	// {{{
+	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | SDIO_W4);
+
+	sdcard_send_random_block(32'h0b);
+	sdcard_send_random_block(32'h09);
+	sdcard_send_random_block(32'h0a);
+	sdcard_send_random_block(32'h08);
+
+	sdcard_read_block(32'h0a);
+	sdcard_read_block(32'h0b);
+	// }}}
+
+	// Test at SPEED_SDR100=100MHZ SDR
+	// {{{
+	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | SDIO_W4);
+
+	sdcard_send_random_block(32'h0c);
+	sdcard_send_random_block(32'h0d);
+	sdcard_send_random_block(32'h0e);
+	sdcard_send_random_block(32'h0f);
+
+	sdcard_read_block(32'h0d);
+	sdcard_read_block(32'h0c);
+	// }}}
+
+	// Test at fastest SDR speed=200MHz SDR
+	// {{{
+	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR200 | SDIO_W4);
+
+	sdcard_send_random_block(32'h10);
+	sdcard_send_random_block(32'h11);
+	sdcard_send_random_block(32'h12);
+	sdcard_send_random_block(32'h13);
+
+	sdcard_read_block(32'h10);
+	sdcard_read_block(32'h11);
+	// }}}
 
 	repeat(512)
 		@(posedge clk);

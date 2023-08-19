@@ -40,11 +40,12 @@
 `timescale 1ns/1ps
 // }}}
 module	mdl_sdcmd #(
-		localparam realtime FF_HOLD = 5.0
+		parameter realtime FF_HOLD = 1.2
 	) (
 		// {{{
 		input	wire		sd_clk,
 		inout	wire		sd_cmd,
+		output	wire		sd_ds,
 		//
 		output	reg		o_cmd_valid,
 		output	reg	[5:0]	o_cmd,
@@ -71,6 +72,7 @@ module	mdl_sdcmd #(
 	reg		r_active, r_outgoing, r_cmd;
 	reg	[135:0]	oreg;
 	reg	[7:0]	ocount;
+	reg		ds;
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -133,6 +135,7 @@ module	mdl_sdcmd #(
 	initial	ocount = 0;
 	initial	oreg   = 0;
 	initial	r_outgoing = 0;
+	initial	ds = 0;
 	always @(posedge sd_clk)
 	if (i_valid && !o_busy)
 	begin
@@ -163,6 +166,13 @@ module	mdl_sdcmd #(
 					&& (sd_cmd === 1'b0 && r_cmd);
 		end
 	end
+
+	always @(negedge sd_clk)
+	if (r_outgoing)
+		ds <= #FF_HOLD 1'b1;
+
+	always @(posedge sd_clk)
+		ds <= #FF_HOLD 1'b0;
 
 	always @(negedge sd_clk)
 	if (r_outgoing)

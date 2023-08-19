@@ -46,14 +46,17 @@ module	mdl_sdio #(
 		input	wire		sd_clk,
 		inout	wire		sd_cmd,
 		inout	wire	[3:0]	sd_dat
+		// , output	wire		sd_ds
 		// }}}
 	);
 
 	// Local declarations
 	// {{{
-	reg	cfg_width, cfg_ddr;
+	reg		cfg_ddr;
+	reg	[1:0]	cfg_width;
+	wire	[3:0]	ign_dat;
 
-	wire		cmd_valid;
+	wire		cmd_valid, cmd_ds;
 	wire	[5:0]	cmd;
 	wire	[31:0]	cmd_arg;
 
@@ -78,7 +81,7 @@ module	mdl_sdio #(
 	integer	read_ik;
 	reg		write_en, tx_valid, tx_last, pending_write;
 	reg	[31:0]	tx_data;
-	wire		tx_ready;
+	wire		tx_ready, tx_ds;
 	reg	[6:0]	tx_addr;
 
 	reg	[31:0]	mem_buf	[0:127];
@@ -98,6 +101,7 @@ module	mdl_sdio #(
 	tb_sdcmd (
 		// {{{
 		.sd_clk(sd_clk), .sd_cmd(sd_cmd),
+			.sd_ds(cmd_ds),
 		//
 		.o_cmd_valid(cmd_valid), .o_cmd(cmd), .o_arg(cmd_arg),
 		//
@@ -116,7 +120,7 @@ module	mdl_sdio #(
 	mdl_sdrx
 	tb_sdrx (
 		// {{{
-		.sd_clk(sd_clk), .sd_dat(sd_dat),
+		.sd_clk(sd_clk), .sd_dat({ ign_dat, sd_dat }),
 		//
 		.i_rx_en(read_en), .i_width(cfg_width), .i_ddr(cfg_ddr),
 		.i_len(16'd512),
@@ -135,7 +139,8 @@ module	mdl_sdio #(
 	mdl_sdtx
 	tb_sdtx (
 		// {{{
-		.sd_clk(sd_clk), .sd_dat(sd_dat),
+		.sd_clk(sd_clk), .sd_dat({ ign_dat, sd_dat }),
+			.sd_ds(tx_ds),
 		//
 		.i_en(write_en), .i_width(cfg_width), .i_ddr(cfg_ddr),
 		//
@@ -161,7 +166,7 @@ module	mdl_sdio #(
 	initial	R1  = 32'h0;
 	initial	drive_cmd = 1'b0;
 	initial	card_selected = 1'b1;
-	initial	cfg_width = 1'b0;	// 1b width
+	initial	cfg_width = 2'b0;	// 1b width
 	initial	cfg_ddr = 1'b0;		// SDR
 	initial	read_en = 1'b0;
 
@@ -200,7 +205,7 @@ module	mdl_sdio #(
 			// {{{
 			if (card_selected)
 			begin
-				cfg_width <= (cmd_arg[1:0] == 2'b10);
+				cfg_width[0] <= (cmd_arg[1:0] == 2'b10);
 
 				reply_valid <= #7 1'b1;
 				reply <= 6'd6;
@@ -250,7 +255,7 @@ module	mdl_sdio #(
 			RCA <= 16'h0;
 			drive_cmd <= 1'b0;
 			card_selected <= 1'b1;
-			cfg_width <= 1'b0;
+			cfg_width <= 2'b0;
 			end
 			// }}}
 		{ 1'b?, 6'd2 }: begin // CMD2: ALL_SEND_CID
@@ -416,4 +421,7 @@ module	mdl_sdio #(
 	end
 
 	// }}}
+
+	// assign	sd_ds = #DS_DELAY (ds_enabled
+	//			&& (tx_ds || (enhanced_ds_enabled && cmd_ds));
 endmodule

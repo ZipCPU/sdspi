@@ -1,20 +1,20 @@
 \documentclass{gqtekspec}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%
-%% Filename: 	spec.tex
+%% Filename: 	sdspi.tex
 %% {{{
 %% Project:	SD-Card controller, using a shared SPI interface
 %%
 %% Purpose:	This LaTeX file contains all of the documentation/description
 %%		currently provided with the SDSPI controller core.  For those
 %%	looking into here, this document is not nearly as interesting as the
-%%	spec.pdf file it creates, so I'd strongly recommend reading that before
+%%	sdspi.pdf file it creates, so I'd strongly recommend reading that before
 %%	diving into this document.  However, if you are interested in producing
 %%	documents looking like this one, or using LaTeX in a similar fashion,
 %%	you may find this document of use.
 %%
-%%	You should be able to find the PDF this file produces in the SVN
-%%	distribution together with this LaTeX file and a copy of the GPL-3.0
+%%	You should be able to find the PDF this file produces in the same git
+%%	repository together with this LaTeX file and a copy of the GPL-3.0
 %%	license this file is distributed under.  If not, just type 'make' in
 %%	the doc directory (one up from this one), and it (should) build both
 %%	pdf's without a problem.
@@ -93,8 +93,8 @@ with this program.  If not, see \texttt{http://www.gnu.org/licenses/} for a copy
 When I started this project, I was informed that other projects similar to this
 one existed.  The OpenRISC project has used an SD--Card controller, for example,
 as has the Google project vault.  Of these two, the first uses the full SD--Card
-interface which is unavailable on the XuLA2 board, and I could never find the
-code for the second.  
+interface which is unavailable on the XuLA2 board I was using, and I could
+never find the code for the second.  
 
 Still, had I found such interfaces, I would've still had another reason for
 building my own: controlling the license.  By rolling my own interface, I can
@@ -106,9 +106,9 @@ Gisselquist Technology, LLC.
 
 This particular core also maintains an advantage over the OpenRISC core:
 It is a low logic core.  It only supports the SPI interface.  It does not
-have any DMA features, although it will work nicely with a DMA.  In short, it's
-ideal for other low-logic work.  In that line, I think, this core has found
-its niche.
+have any DMA features, although it will work nicely with an external DMA.  In
+short, it's ideal for other low-logic work.  In that line, I think, this core
+has found its niche.
 \end{preface}
 
 \chapter{Introduction}
@@ -116,41 +116,34 @@ its niche.
 \setcounter{page}{1}
 
 % What is old
-This Verilog core exports an SD card controller interface from internal to an
-FPGA to the rest of the FPGA core, while taking care of the lower level details
-internal to the interface.
+This Verilog component creates a low-logic Wishbone interface to an SD card
+using the SPI interface.
 % What does the old lack?
 Unlike the other OpenCores SD Card controller\footnote{See
 \texttt{http://www.opencores.org/project,sdcard\_mass\_storage\_controller}.}
 which offers a full SD--interface, this controller focuses on the SPI interface
-of the SD Card.  While this is a slower interface, the SPI interface is
-necessary to access the card when using a XuLA2
-board\footnote{See \texttt{http://www.xess.com/shop/product/xula2-lx25/}}, or
-in general any time the full 9--bit, bi--directional interface to the SD card
-has not been implemented.
-Further, for those who are die--hard Verilog authors, this core is written in
-Verilog as opposed to the XESS provided demonstration SD Card controller
-found on GitHub\footnote{See
-\texttt{https://github.com/xesscorp/VHDL\_Lib/SDCard.vhd}}, which was written
-in VHDL.  For those who are not such die--hard Verilog authors, this controller
-provides a lower level interface to the card than these other controllers. 
-Whereas the XESS controller will automatically start up the card and interact
-with it, this controller requires external software to be used when interacting
-with the card.  This makes the SDSPI controller both more versatile, in the
-face of potential changes to the card interface, but also less turn--key.
+of the SD Card.  While this is a slower interface, the SPI interface is still
+a viable interface, and either hardware or low logic needs may require it.
+Unlike the SDIO interface which requires 6~IO bits, five of them being
+bidirectional, the SPI interface only requires 4~IOs with none of them requiring
+a bidirectional interface.  Unlike other controllers, this particular controller
+offers a lower level interface to the card.   This shifts the complexity onto
+a nearby CPU, while reducing the logic burden to the FPGA.  This makes the
+SDSPI controller both more versatile, in the face of potential changes to the
+card interface, but also less turn--key in the process.
 % What is new
 % What does the new have that the old lacks
 % What performance gain can be expected?
 
 While this core was written for the purpose of being used with the ZipCPU,
-as enhanced by the Wishbone DMA controller used by the ZipCPU, nothing in this
-core prevents it from being used with any other architecture that supports
-the 32--bit Wishbone interface of this core.
+as enhanced by the ZipCPU's Wishbone DMA, nothing in this core prevents it
+from being used with any other architecture that supports the 32--bit Wishbone
+interface of this core.
 
 This core has been written as a wishbone slave, not a master.  Using the core
 together with a separate master, such as a CPU or a DMA controller, only makes
 sense.  This design, however, also restricts the core from being able to use
-the multiple block write or multiple block read commands, restricting us to 
+the multiple block write or multiple block read commands, restricting it to 
 single block read and write commands alone.
 
 \chapter{Architecture}\label{ch:arch}
@@ -158,7 +151,7 @@ single block read and write commands alone.
 This SD Card interface is designed to provide a means of commanding an SD Card,
 via the SPI port, and returning its results.  
 
-It is completely controlled via the wishbone bus.  In
+It is completely controlled by its Wishbone bus slave interface.  In
 particular a command register is used to initiate interaction across the bus.
 A separate data register is used to provide an argument to the command, and
 two FIFO registers are used when transferring larger amounts of data to the
@@ -171,7 +164,7 @@ is taken from the lower 8--bits of the command register, and the argument to the
 command is taken from the DATA register.  The last 8--bits of the command sent
 to the card are formed from a command CRC byte which the core generates
 internally.  From the perspective of the Wishbone bus, writes to the register
-will complete immediately, even though the action they initiate will may take
+will complete immediately, even though the action they initiate may take
 much longer to complete.  Further, writes made to the CMD register will be
 silently ignored if the device is already busy.
 
@@ -179,16 +172,17 @@ Reads from the CMD register will always return immediately.  In particular, the
 {\tt busy} bit, as returned by the CMD register, can be used to determine if the
 interface is still busy with a prior operation.
 
-There is one exception to the rule that writes take many clocks to complete,
-and that is writes which configure the SDSPI port.  Internal to the SDSPI
-port is a configuration register, which determines the speed of the port
-clock as well as the length of the FIFO (up to 128~samples, or 512--bytes).
+There is one exception to the rule that writes take many clocks to complete, and
+that is writes which configure the SDSPI port.  Internal to the controller is a
+configuration register, also accessed via the CMD register.  This configuration
+register determines the speed of the port clock as well as the amount of FIFO
+data which will be transmitted or received (up to 128~samples, or 512--bytes).
 To read the current speed and FIFO configuration, write an {\tt 0x00bf} value to
-the command register.  This will cause the DATA register to be filled with
+the CMD register.  This will cause the DATA register to be filled with
 the internal configuration register.  Likewise writing a {\tt 0x0ff} to the
 CMD register will cause the current DATA value, or specifically those non-zero
-parts, to be transferred to the internal configuration register possibly setting
-the clock divider and/or the FIFO length.
+parts, to be transferred to the internal configuration register possibly
+adjusting the clock divider and/or the transfer length.
 
 As part of each write to the CMD register, the controller must also be told
 which type of response to expect from the SDSPI card.  Responses can be either
@@ -201,11 +195,10 @@ Simplified Specification, Version 4.10, dated 22 January, 2013, and then later
 updated with the information from Version 5.00, dated 10 August, 2016.}
 
 Individual commands may or may not use the data memories, herein called
-FIFOs.  Commands that need
-use of the FIFO will be specified by the {\tt use\_fifo} bit of the CMD
-register.  Commands writing to the card will also set the {\tt fifo\_wr} bit
-of the CMD register, whereas commands simply reading from the fifo will set the
-{\tt use\_fifo} bit alone.
+FIFOs.  Commands that need use of the FIFO will be specified by the
+{\tt use\_fifo} bit of the CMD register.  Commands writing to the card will
+also set the {\tt fifo\_wr} bit of the CMD register, whereas commands simply
+reading from the fifo will set the {\tt use\_fifo} bit alone.
 
 The DATA register is used during these transactions to first provide the 
 argument to the CMD interaction, and second to provide a place to put the
@@ -214,11 +207,11 @@ be set to {\tt 0xffffffff} if not set by the response.
 
 This core supports two separate data memories.  This allows a program to
 fill (or read) one memory segment while the second one is being read from or
-written to by an ongoing SD operation.
-The internal address will be cleared and reset to the beginning
-upon any write to the CMD register.  After clearing, the FIFO may be written
-(read) one value at a time.  Reading both memories in any interleaved fashion,
-however, is not allowed as they share a common internal address.
+written to by an ongoing SD operation.  The internal address will be cleared
+and reset to the beginning upon any write to the CMD register.  After clearing,
+the FIFO may be written (read) one value at a time.  Reading both memories in
+any interleaved fashion, however, is not allowed as they share a common
+internal address.
 
 Currently, the core will detect a variety of errors in the interface.  Once an
 error is detected, the rest of any remaining command will be aborted.  First,
@@ -227,14 +220,14 @@ NexysVideo board to power down the card.  Second, the core will detect any
 CRC errors in data coming from the card.  Finally, the core has an internal
 watchdog timer and will detect any failure by the card to respond to any
 request.  Any of these errors will set an error bit in the CMD register.
-Once set, the core will refuse to begin further operations.  only writing
-this error bit back to the CMD register will clear it.
+Once set, the core will refuse to begin further operations until the error
+is cleared.  Only writing this error bit back to the CMD register will clear it.
 
 Finally, if a card detect bit is present, the core can detect if a card has
 been removed and so notify the driver.  A missing card detect signal, however,
 will not reset the core.  Instead, the watchdog timer should catch any missing
 card interactions.  The card detect interface was added to simplify
-FatFS driver interaction.
+FatFS driver integration.
 
 Now, if this discussion isn't thoroughly confusing, let's move on to the 
 Operation chapter to see some examples of how this might be used.

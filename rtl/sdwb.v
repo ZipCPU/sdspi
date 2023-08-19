@@ -68,6 +68,7 @@ module	sdwb #(
 		parameter	MW = 32,
 		// parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,
 		parameter [0:0]	OPT_SERDES = 1'b0,
+		parameter [0:0]	OPT_DS = OPT_SERDES,
 		parameter [0:0]	OPT_DDR = 1'b0,
 		parameter [0:0]	OPT_CARD_DETECT = 1'b1,
 		parameter [0:0]	OPT_EMMC = 1'b1,
@@ -94,7 +95,7 @@ module	sdwb #(
 		output	wire	[7:0]		o_cfg_ckspeed,
 		output	reg			o_cfg_shutdown,
 		output	wire	[1:0]		o_cfg_width,
-		output	reg			o_cfg_ds, o_cfg_ddr,
+		output	reg			o_cfg_ds, o_cfg_dscmd,o_cfg_ddr,
 		output	reg			o_pp_cmd, o_pp_data,
 		output	reg	[4:0]		o_cfg_sample_shift,
 		input	wire	[7:0]		i_ckspd,
@@ -672,10 +673,32 @@ module	sdwb #(
 	// {{{
 	initial	o_cfg_ds = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || !OPT_SERDES || o_soft_reset)
+	if (i_reset || !OPT_DS || o_soft_reset)
 		o_cfg_ds <= 1'b0;
 	else if (wb_phy_stb && i_wb_sel[1])
 		o_cfg_ds <= (&i_wb_data[9:8]);
+
+	initial	o_cfg_dscmd = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset || !OPT_DS || o_soft_reset)
+		o_cfg_dscmd <= 1'b0;
+	else if (wb_phy_stb)
+	begin
+		case(i_wb_sel[2:1])
+		2'b00: begin end
+		2'b10: o_cfg_dscmd <= i_wb_data[21] && o_cfg_ds;
+		2'b01: o_cfg_dscmd <= o_cfg_dscmd   && (&i_wb_data[9:8]);
+		2'b11: o_cfg_dscmd <= i_wb_data[21] && (&i_wb_data[9:8]);
+		endcase
+	end
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset && (!o_cfg_ddr || !o_clk90))
+		assert(!o_cfg_ds);
+	always @(*)
+	if (!i_reset && !o_cfg_ds)
+		assert(!o_cfg_dscmd);
+`endif
 	// }}}
 
 	// o_cfg_ddr: Transmit data on both edges of the clock
@@ -748,7 +771,7 @@ module	sdwb #(
 		w_phy_ctrl[27:24] = lgblk;
 		w_phy_ctrl[23]    = OPT_1P8V;
 		w_phy_ctrl[22]    = o_1p8v;
-		w_phy_ctrl[21]    = OPT_SERDES;	// Is this required?
+		w_phy_ctrl[21]    = o_cfg_dscmd;
 		w_phy_ctrl[20:16] = o_cfg_sample_shift;
 		w_phy_ctrl[15]    = o_cfg_shutdown;
 		w_phy_ctrl[14]    = o_cfg_clk90;
@@ -871,6 +894,13 @@ module	sdwb #(
 		// C) A block has been received.  We are now ready to receive
 		//	another block (if desired)
 		if (o_rx_en && i_rx_done)
+			o_int <= 1'b1;
+		//
+		// D) A card has been removed or inserted, and yet not
+		// akcnowledged.
+		if (OPT_CARD_DETECT && !card_present && !card_removed)
+			o_int <= 1'b1;
+		if (OPT_CARD_DETECT && card_present && card_removed)
 			o_int <= 1'b1;
 	end
 

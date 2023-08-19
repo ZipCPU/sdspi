@@ -44,7 +44,7 @@
 ################################################################################
 ##
 ## }}}
-all:	gpl-3.0.pdf spec.pdf
+all:	gpl-3.0.pdf sdspi.pdf sdio.pdf
 DSRC := src
 
 .PHONY: gpl
@@ -59,26 +59,49 @@ gpl-3.0.pdf: $(DSRC)/gpl-3.0.tex
 ## }}}
 
 .PHONY: spec
+spec: sdspi sdio
+
+.PHONY: sdspi
 ## {{{
-spec: spec.pdf
-spec.pdf: $(DSRC)/spec.tex $(DSRC)/gqtekspec.cls $(DSRC)/GT.eps
-	cd $(DSRC)/; latex spec.tex
-	cd $(DSRC)/; latex spec.tex
-	cd $(DSRC)/; dvips -q -z -t letter -P pdf -o ../spec.ps spec.dvi
-	ps2pdf -dAutoRotatePages=/All spec.ps spec.pdf
-	-grep -i warning $(DSRC)/spec.log
-	@rm -f $(DSRC)/spec.dvi $(DSRC)/spec.log
-	@rm -f $(DSRC)/spec.aux $(DSRC)/spec.toc
-	@rm -f $(DSRC)/spec.lot $(DSRC)/spec.lof
-	@rm -f $(DSRC)/spec.out spec.ps
+sdspi: sdspi.pdf
+sdspi.pdf: $(DSRC)/sdspi.tex $(DSRC)/gqtekspec.cls $(DSRC)/GT.eps
+	cd $(DSRC)/; latex sdspi.tex
+	cd $(DSRC)/; latex sdspi.tex
+	cd $(DSRC)/; dvips -q -z -t letter -P pdf -o ../sdspi.ps sdspi.dvi
+	ps2pdf -dAutoRotatePages=/All sdspi.ps sdspi.pdf
+	-grep -i warning $(DSRC)/sdspi.log
+	@rm -f $(DSRC)/sdspi.dvi $(DSRC)/sdspi.log
+	@rm -f $(DSRC)/sdspi.aux $(DSRC)/sdspi.toc
+	@rm -f $(DSRC)/sdspi.lot $(DSRC)/sdspi.lof
+	@rm -f $(DSRC)/sdspi.out sdspi.ps
+## }}}
+
+.PHONY: sdio
+## {{{
+sdio: sdio.pdf
+sdio.pdf: $(DSRC)/sdio.tex $(DSRC)/gqtekspec.cls $(DSRC)/GT.eps
+	cd $(DSRC)/; latex sdio.tex
+	cd $(DSRC)/; latex sdio.tex
+	cd $(DSRC)/; dvips -q -z -t letter -P pdf -o ../sdio.ps sdio.dvi
+	ps2pdf -dAutoRotatePages=/All sdio.ps sdio.pdf
+	-grep -i warning $(DSRC)/sdio.log
+	@rm -f $(DSRC)/sdio.dvi $(DSRC)/sdio.log
+	@rm -f $(DSRC)/sdio.aux $(DSRC)/sdio.toc
+	@rm -f $(DSRC)/sdio.lot $(DSRC)/sdio.lof
+	@rm -f $(DSRC)/sdio.out sdio.ps
 ## }}}
 
 .PHONY: clean
 ## {{{
 clean:
-	rm -f $(DSRC)/spec.dvi $(DSRC)/spec.log
-	rm -f $(DSRC)/spec.aux $(DSRC)/spec.toc
-	rm -f $(DSRC)/spec.lot $(DSRC)/spec.lof
-	rm -f $(DSRC)/spec.out spec.ps spec.pdf
+	rm -f $(DSRC)/sdspi.dvi $(DSRC)/sdspi.log
+	rm -f $(DSRC)/sdspi.aux $(DSRC)/sdspi.toc
+	rm -f $(DSRC)/sdspi.lot $(DSRC)/sdspi.lof
+	rm -f $(DSRC)/sdspi.out sdspi.ps sdspi.pdf
+	#
+	rm -f $(DSRC)/sdio.dvi $(DSRC)/sdio.log
+	rm -f $(DSRC)/sdio.aux $(DSRC)/sdio.toc
+	rm -f $(DSRC)/sdio.lot $(DSRC)/sdio.lof
+	rm -f $(DSRC)/sdio.out sdio.ps sdio.pdf
 	rm -f gpl-3.0.pdf
 ## }}}

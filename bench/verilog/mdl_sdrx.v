@@ -41,10 +41,10 @@
 module	mdl_sdrx(
 		// {{{
 		input	wire		sd_clk,
-		inout	wire	[3:0]	sd_dat,
+		inout	wire	[7:0]	sd_dat,
 		//
 		input	wire		i_rx_en,	// Expect data
-		input	wire		i_width,	// 0=1b,  1=4b
+		input	wire	[1:0]	i_width,	// 0=1b,  1=4b, 2=8b
 		input	wire		i_ddr,		// 0=SDR, 1=DDR
 		input	wire	[15:0]	i_len,		// PktLen in 32b words
 		//
@@ -60,7 +60,7 @@ module	mdl_sdrx(
 	genvar	gk;
 	parameter		NCRC = 16;
 	parameter [NCRC-1:0]	CRC_POLYNOMIAL  = 16'h1021;
-	reg	[3:0]		rail_fail, eval_rail, half_fail, eval_half;
+	reg	[7:0]		rail_fail, eval_rail, half_fail, eval_half;
 	reg			rx_started, rx_complete;
 	reg	[15:0]		rail_count, max_rail_count, full_count;
 	reg	[31:0]		rx_sreg;
@@ -69,10 +69,15 @@ module	mdl_sdrx(
 
 	always @(*)
 	begin
-		if (i_width)
+		if (i_width[0])
 			max_rail_count = i_len * 2 + 16 - 1;
+		else if (i_width[1])
+			max_rail_count = i_len     + 16 - 1;
 		else
 			max_rail_count = i_len * 8 + 16 - 1;
+
+		if (ddr)
+			max_rail_count = max_rail_count + 16;
 	end
 
 	initial	rx_started = 0;
@@ -88,9 +93,11 @@ module	mdl_sdrx(
 	end else if (rx_started)
 	begin
 		rail_count <= rail_count + 1;
-		if (!i_ddr && rail_count == max_rail_count)
+		if (!i_ddr && rail_count >= max_rail_count)
 			rx_complete <= 1'b1;
-	end else if ((i_width && sd_dat == 0) || (!i_width && sd_dat[0] == 1'b0))
+	end else if ((i_width[0] && sd_dat[3:0] == 0)
+			|| (i_width[1] && sd_dat[7:0] == 1'b0)
+			|| (i_width == 2'b0 && sd_dat[0] == 1'b0))
 		rx_started <= 1'b1;
 
 	always @(negedge sd_clk)
@@ -104,7 +111,7 @@ module	mdl_sdrx(
 			rx_complete <= 1'b1;
 	end
 
-	generate for(gk=0; gk<4; gk=gk+1)
+	generate for(gk=0; gk<8; gk=gk+1)
 	begin : GEN_CRC_CHECK
 		reg		validpin;
 		reg	[15:0]	crcfill, halffill;
@@ -114,7 +121,7 @@ module	mdl_sdrx(
 
 		initial	validpin = 0;
 		always @(posedge sd_clk)
-		if (gk == 0 || i_width)
+		if (gk == 0 || (i_width[0] && gk<4) || i_width[1])
 			validpin <= 1;
 		else
 			validpin <= 0;
@@ -143,7 +150,7 @@ module	mdl_sdrx(
 			half_fail[gk] <= 1'b0;
 		end else if (rx_started && !rx_complete)
 		begin
-			halffill <= STEPCRC(crcfill, sd_dat[gk]);
+			halffill <= STEPCRC(halffill, sd_dat[gk]);
 			eval_half[gk] <= 1'b0;
 			half_fail[gk] <= 1'b0;
 		end else if (rx_started && !eval_half[gk]) // && rx_complete
@@ -160,8 +167,10 @@ module	mdl_sdrx(
 		rx_sreg <= 0;
 	else if (rx_started && !rx_complete)
 	begin
-		if (i_width)
-			rx_sreg <= { rx_sreg[27:0], sd_dat };
+		if (i_width[0])
+			rx_sreg <= { rx_sreg[27:0], sd_dat[3:0] };
+		else if (i_width[1])
+			rx_sreg <= { rx_sreg[23:0], sd_dat };
 		else
 			rx_sreg <= { rx_sreg[30:0], sd_dat[0] };
 	end
@@ -169,15 +178,19 @@ module	mdl_sdrx(
 	always @(negedge sd_clk)
 	if (i_ddr && rx_started && !rx_complete)
 	begin
-		if (i_width)
-			rx_sreg <= { rx_sreg[27:0], sd_dat };
+		if (i_width[0])
+			rx_sreg <= { rx_sreg[27:0], sd_dat[3:0] };
+		else if (i_width[1])
+			rx_sreg <= { rx_sreg[23:0], sd_dat };
 		else
 			rx_sreg <= { rx_sreg[30:0], sd_dat[0] };
 	end
 
 	always @(*)
-	if (i_width)
+	if (i_width[0])
 		full_count = rail_count * 4;
+	else if (i_width[1])
+		full_count = rail_count * 8;
 	else
 		full_count = rail_count;
 
@@ -207,9 +220,13 @@ module	mdl_sdrx(
 	always @(posedge sd_clk)
 	if (!i_rx_en)
 		{ o_good, o_err } <= 0;
-	else if ( ((i_width && (&eval_rail)) || (!i_width && eval_rail[0]))
-		&& (!i_ddr || (i_ddr && ((i_width && (&eval_half))
-				|| (!i_width && eval_half[0])))))
+	else if ( ((i_width[0] && (&eval_rail[3:0]))
+				|| (i_width[1] && (&eval_rail))
+				|| (i_width == 0 && eval_rail[0]))
+		&& (!i_ddr || (i_ddr &&
+				((i_width[0] && (&eval_half[3:0]))
+				|| (i_width[1] && (&eval_half))
+				|| (i_width == 0 && eval_half[0])))))
 	begin
 		o_good <= (rail_fail == 0 && half_fail == 0);
 		o_err  <= (rail_fail != 0 || half_fail != 0);

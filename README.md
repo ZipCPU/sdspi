@@ -62,14 +62,14 @@ controller](rtl/sdspi.v), although there are enough significant differences
 to warrant a new user guide.
 
 The controller is designed to support IO modes all the way up to the HS400
-mode used by eMMC.  HS400 is a DDR mode based off of a 200MHz IO clock, using
-a data strobe pin on return.  Also supported are an SDR mode using a 200MHz
-clock, DDR and SDR modes using a 100MHz clock, as well as both DDR and SDR
-support for integer divisions of the 100MHz clock, starting with a 50MHz clock
-and going all the way down to 100kHz.  This is all based upon a nominal 100MHz
-system clock, together with a 400MHz clock for SERDES support.  For designs
-without 8:1 and 1:8 SERDES IO components, 100MHz and slower clocks are still
-supported, depending upon whether or not DDR I/O components are available.
+mode used by eMMC.  HS400 is an eMMC DDR mode based off of a 200MHz IO clock,
+using a data strobe pin on return.  Also supported are an SDR mode using a
+200MHz clock, DDR and SDR modes using a 100MHz clock, as well as both DDR and
+SDR support for integer divisions of the 100MHz clock, starting with a 50MHz
+clock and going all the way down to 100kHz.  This is all based upon a nominal
+100MHz system clock, together with a 400MHz clock for SERDES support.  For
+designs without 8:1 and 1:8 SERDES IO components, 100MHz and slower clocks are
+still supported, depending upon whether or not DDR I/O components are available.
 Both open-drain and push-pull IOs are supported, and the front end can switch
 between the two as necessary based upon options within a PHY configuration
 register.
@@ -81,16 +81,14 @@ register.
   have formal proofs, which they are known to pass.  Notably missing among the
   component proofs is a proof of the front end.  Both
   [Verilog](bench/verilog/mdl_sdio.v) and [C++](bench/cpp/sdiosim.cpp) models
-  which can be used to test this controller in simulation.
+  have been built which can be used to test this controller in simulation,
+  although only the [Verilog](bench/verilog/mdl_sdio.v) SDIO model has been
+  tested to date.
 
 ### Roadmap and TODO items
 
 Although the RTL is now fully drafted, this project is far from finished.
 Several key steps remain before it will be a viable product:
-
-- **User Guide**: The user interface still needs to be documented.  Although
-  it is similar to the SDSPI interface, it is different enough to require a
-  new user guide.
 
 - **Test bench status**: While [test script(s) exist](bench/testscript), the
   [primary test driver](bench/verilog/sim_sdio.pl) does not properly return
@@ -112,9 +110,9 @@ Several key steps remain before it will be a viable product:
   both SDIO and EMMC performance.  This software is designed to work with the
   [FATFS library](http://elm-chan.org/fsw/ff/00index_e.html).
 
-- **OPT_DMA**: An optional DMA extension is planned, to allow data blocks to
-  be transferred to memory at the full speed of the internal bus without
-  CPU intervention.
+- **OPT_DMA**: An optional DMA extension is planned (not built), to allow data
+  blocks to be transferred to memory at the full speed of the internal bus
+  without CPU intervention.
 
   The DMA will be the focus of how the SDIO controller handles wider bus
   widths for higher throughput.

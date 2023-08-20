@@ -59,8 +59,10 @@ module	sdio #(
 		//  from a 100MHz clock.
 		parameter [0:0]	OPT_SERDES = 1'b0,
 		parameter [0:0]	OPT_DDR = 1'b0,
-		parameter [0:0]	OPT_CARD_DETECT = 1'b1,
+		parameter [0:0]	OPT_DS  = OPT_SERDES,
+		parameter [0:0]	OPT_1P8V= 1'b0,
 		parameter [0:0]	OPT_EMMC = 1'b1,
+		parameter [0:0]	OPT_CARD_DETECT = !OPT_EMMC,
 		parameter	LGTIMEOUT = 23
 		// }}}
 	) (
@@ -87,7 +89,7 @@ module	sdio #(
 		// inout	wire		io_ds,
 		// inout wire [NUMIO-1:0]	io_dat,
 		// But these ones ...
-		output	wire		o_cfg_ddr, o_cfg_ds,
+		output	wire		o_cfg_ddr, o_cfg_ds, o_cfg_dscmd,
 		output	wire	[4:0]	o_cfg_sample_shift,
 		output	reg	[7:0]	o_sdclk,
 		//
@@ -163,7 +165,9 @@ module	sdio #(
 		.LGFIFO(LGFIFO), .NUMIO(NUMIO),
 		.OPT_SERDES(OPT_SERDES),
 		.OPT_DDR(OPT_DDR),
+		.OPT_DS(OPT_DS),
 		.OPT_CARD_DETECT(OPT_CARD_DETECT),
+		.OPT_1P8V(OPT_1P8V),
 		// .OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN)
 		// .OPT_DMA(OPT_DMA)
 		.OPT_EMMC(OPT_EMMC),
@@ -186,7 +190,7 @@ module	sdio #(
 		.o_cfg_clk90(cfg_clk90), .o_cfg_ckspeed(cfg_ckspeed),
 		.o_cfg_shutdown(cfg_clk_shutdown),
 		.o_cfg_width(cfg_width), .o_cfg_ds(o_cfg_ds),
-			.o_cfg_ddr(o_cfg_ddr),
+			.o_cfg_dscmd(o_cfg_dscmd), .o_cfg_ddr(o_cfg_ddr),
 		.o_pp_cmd(o_pp_cmd), .o_pp_data(o_pp_data),
 		.o_cfg_sample_shift(o_cfg_sample_shift),
 		.i_ckspd(clk_ckspd),
@@ -247,7 +251,7 @@ module	sdio #(
 	);
 
 	sdcmd #(
-		.OPT_DS(OPT_SERDES),
+		.OPT_DS(OPT_DS),
 		.OPT_EMMC(OPT_EMMC),
 		.MW(MW),
 		.LGLEN(LGFIFO-$clog2(MW/8))
@@ -255,7 +259,7 @@ module	sdio #(
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset || soft_reset),
 		//
-		.i_cfg_ds(o_cfg_ds), .i_cfg_dbl(cfg_ckspeed == 0),
+		.i_cfg_ds(o_cfg_dscmd), .i_cfg_dbl(cfg_ckspeed == 0),
 		.i_ckstb(clk_stb),
 		//
 		.i_cmd_request(cmd_request), .i_cmd_type(cmd_type),

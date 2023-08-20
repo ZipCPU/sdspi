@@ -47,7 +47,9 @@
 `endif
 // }}}
 module	xsdserdes8x #(
+		// Verilator lint_off UNUSED
 		parameter [0:0]		OPT_BIDIR = 1'b1
+		// Verilator lint_on  UNUSED
 	) (
 		// {{{
 		input	wire		i_clk,

@@ -44,10 +44,12 @@
 module sdio_top #(
 		// {{{
 		parameter	LGFIFO = 12, NUMIO=4, MW=32,
+		parameter [0:0]	OPT_EMMC=1,
 		parameter [0:0]	OPT_SERDES=0,
 		parameter [0:0]	OPT_DDR=1,
-		parameter [0:0]	OPT_CARD_DETECT=1,
-		parameter [0:0]	OPT_EMMC=1,
+		parameter [0:0]	OPT_DS=OPT_SERDES && OPT_EMMC,
+		parameter [0:0]	OPT_CARD_DETECT=!OPT_EMMC,
+		parameter [0:0]	OPT_1P8V=1,
 		parameter	LGTIMEOUT = 23
 		// }}}
 	) (
@@ -89,7 +91,7 @@ module sdio_top #(
 
 	// Local declarations
 	// {{{
-	wire		cfg_ddr, cfg_ds;
+	wire		cfg_ddr, cfg_ds, cfg_dscmd;
 	wire	[4:0]	cfg_sample_shift;
 	wire	[7:0]	sdclk;
 		//
@@ -114,8 +116,10 @@ module sdio_top #(
 		// {{{
 		.LGFIFO(LGFIFO), .NUMIO(NUMIO), .MW(MW),
 		.OPT_DDR(OPT_DDR), .OPT_SERDES(OPT_SERDES),
+		.OPT_DS(OPT_DS),
 		.OPT_CARD_DETECT(OPT_CARD_DETECT),
 		.OPT_EMMC(OPT_EMMC),
+		.OPT_1P8V(OPT_1P8V),
 		.LGTIMEOUT(LGTIMEOUT)
 		// }}}
 	) u_sdio (
@@ -134,7 +138,7 @@ module sdio_top #(
 		.o_int(o_int),
 		// Interface to PHY
 		// {{{
-		.o_cfg_ddr(cfg_ddr), .o_cfg_ds(cfg_ds),
+		.o_cfg_ddr(cfg_ddr), .o_cfg_ds(cfg_ds), .o_cfg_dscmd(cfg_dscmd),
 		.o_cfg_sample_shift(cfg_sample_shift),
 		.o_sdclk(sdclk),
 		//
@@ -156,11 +160,12 @@ module sdio_top #(
 	);
 
 	sdfrontend #(
-		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR), .NUMIO(NUMIO)
+		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR), .NUMIO(NUMIO),
+		.OPT_DS(OPT_DS)
 	) u_sdfrontend (
 		// {{{
 		.i_clk(i_clk), .i_hsclk(i_hsclk), .i_reset(i_reset),
-		.i_cfg_ddr(cfg_ddr), .i_cfg_ds(cfg_ds),
+		.i_cfg_ddr(cfg_ddr), .i_cfg_ds(cfg_ds), .i_cfg_dscmd(cfg_dscmd),
 		.i_sample_shift(cfg_sample_shift),
 		// Tx path
 		// {{{

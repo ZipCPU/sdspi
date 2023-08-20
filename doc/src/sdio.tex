@@ -48,8 +48,16 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%
 %% }}}
+\definecolor{dkblue}{rgb}{0,0,0.6}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=dkblue}
+\usepackage{listings}
+\usepackage{lstlang1}
+\usepackage{lstlang3}
+%% \usepackage{zverilog}
+\usepackage{zshell}
 \usepackage{import}
 \usepackage{bytefield}
+\newcommand{\zhref}[2]{\href{#1}{\textcolor{dkblue}{#2}}}
 \project{SDIO/eMMC Controller}
 \title{Specification}
 \author{Dan Gisselquist, Ph.D.}
@@ -319,7 +327,7 @@ all three of the design components here: SDSPI, SDIO, and eMMC.
 
 The basic SDIO/eMMC RTL architecture is shown in Fig.~\ref{fig:sdioblocks}.
 \begin{figure}\begin{center}
-\includegraphics[height=2.5in]{sdioblocks.eps}
+\includegraphics[height=2.5in]{gfx/sdioblocks.eps}
 \caption{SDIO/eMMC Controller RTL Architecture}\label{fig:sdioblocks}
 \end{center}\end{figure}
 The design is broken up into two parts at the top level: a hardware independent,
@@ -357,7 +365,7 @@ the next command is sent.
 
 Fig.~\ref{fig:sdcmdflow}
 \begin{figure}\begin{center}
-\includegraphics[height=2.5in]{sdcmdflow.eps}
+\includegraphics[width=5.0in]{gfx/sdiocmdflow.eps}
 \caption{SDIO/eMMC CMD pin data flow}\label{fig:sdcmdflow}
 \end{center}\end{figure}
 shows both the basic command flow, and the two possible response flows.
@@ -386,7 +394,7 @@ of the FIFOs in {\tt sdwb.v} to {\tt sdtxframe.v}, get formatted for the
 front end to output, a start bit, CRC, and stop bit are added, and all get
 sent to the front end.  This basic flow is shown in Fig.~\ref{fig:sdiotxflow}.
 \begin{figure}\begin{center}
-\includegraphics[height=2.5in]{sdiotxflow.eps}
+\includegraphics[width=5.0in]{gfx/sdiotxflow.eps}
 \caption{SDIO/eMMC transmit data flow, to the device}\label{fig:sdiotxflow}
 \end{center}\end{figure}
 
@@ -438,7 +446,7 @@ independent and hardware dependent.
 The verification architecutre is built around a model of the
 downstream device.  One such model is shown in Fig.~\ref{fig:mdlsdio}.
 \begin{figure}\begin{center}
-\includegraphics[height=2.5in]{mdlsdio.eps}
+\includegraphics[height=2.5in]{gfx/mdlsdio.eps}
 \caption{SDIO Verification IP}\label{fig:mdlsdio}
 \end{center}\end{figure}
 This Verification IP contains full featured submodules for handling the
@@ -457,7 +465,7 @@ found in the SDIO or eMMC device.
 The entire Verilog test bench infrastructure is diagrammed in
 Fig.~\ref{fig:vlogtb}.
 \begin{figure}\begin{center}
-\includegraphics[height=2.5in]{vlogtb.eps}
+\includegraphics[width=5.0in]{gfx/vlogtb.eps}
 \caption{All Verilog top-level model}\label{fig:vlogtb}
 \end{center}\end{figure}
 In this setup, a test script drives a Wishbone Bus Functional Model (BFM).
@@ -468,8 +476,8 @@ and supporting common test script tasks.
 
 A second test bench infrastructure, shown in Fig.~\ref{fig:cputb},
 \begin{figure}\begin{center}
-\includegraphics[height=2.5in]{vlogtb.eps}
-\caption{All Verilog top-level model}\label{fig:vlogtb}
+\includegraphics[width=5.0in]{gfx/cputb.eps}
+\caption{All Verilog top-level model}\label{fig:cputb}
 \end{center}\end{figure}
 is also planned.  This infrastructure contains a soft--core ZipCPU,
 serial console, and memory.  In this test architecture, the test script
@@ -508,7 +516,7 @@ The three drivers are found in the {\tt sw/} directory.  These drivers are:
 Put together, this IO subsystem has the various layers shown in
 Fig.~\ref{fig:swlayers}.
 \begin{figure}\begin{center}
-\includegraphics[height=2.5in]{swlayers.eps}
+\includegraphics[height=2.5in]{gfx/swlayers.eps}
 \caption{Software Stack}\label{fig:swlayers}
 \end{center}\end{figure}
 User software interacts with the FATFS layer.  FATFS then interacts with the
@@ -548,7 +556,7 @@ The following, for example, will set up a 100~kHz clock rate using open--drain
 IOs and 512~byte sector sizes.  This is appropriate for beginning communication
 with the device.
 
-\begin{CPP}
+\begin{zCpp}
 	const	SDIOCK_100KHZ = 0x000000fc,
 		SPEED_SLOW    = SDIOCK_100KHZ,
 		SPEED_512B    = 0x09000000;
@@ -556,7 +564,7 @@ with the device.
 	_sdio->sd_phy = SPEED_SLOW | SECTOR_512B;
 	while(SPEED_SLOW != (_sdio->sd_phy & 0x0ff))
 		;
-\end{CPP}
+\end{zCpp}
 %% }}}
 \section{GO IDLE: Commands that don't get responses}
 %% {{{
@@ -580,7 +588,7 @@ and (if so) if you need to start your initialization sequence again from
 the {\tt SEND\_GO\_IDLE} command.
 
 Put together, this would look like:
-\begin{CPP}
+\begin{zCpp}
 	const	SDIO_REMOVED = 0x00040000,
 		SDIO_ERR     = 0x00008000,
 		SDIO_RNONE   = 0x00000000,
@@ -588,11 +596,11 @@ Put together, this would look like:
 
 	_sdio->sd_data = 0;
 	_sdio->sd_cmd  = SDIO_REMOVED | SDIO_CMD | SDIO_RNONE | SDIO_ERR;
-\end{CPP}
+\end{zCpp}
 
 The next step is to wait for the command to complete.  This can be done either
 by polling the controller,
-\begin{CPP}
+\begin{zCpp}
 	const	SDIO_REMOVED = 0x00104800;
 
 	unsigned	st;
@@ -600,9 +608,9 @@ by polling the controller,
 	st = _sdio->sd_cmd;
 	while(st & SDIO_BUSY)
 		st = _sdio->sd_cmd;
-\end{CPP}
+\end{zCpp}
 or by waiting for a controller interrupt.
-\begin{CPP}
+\begin{zCpp}
 	// SDIO_INT is the interrupt number assigned to the
 	// design.  It's set external to the controller.
 	unsigned	st;
@@ -612,7 +620,7 @@ or by waiting for a controller interrupt.
 		CLEAR_INT(SDIO_INT);
 		WAIT_INT(SDIO_INT);
 	}
-\end{CPP}
+\end{zCpp}
 
 %% }}}
 \section{SEND IF COND: R1 commands}
@@ -626,7 +634,7 @@ known as CMD8.  This command requires a special argument.  We'll allow that
 argument to arrive via the variable {\tt ifcond}.  This variable is first
 placed in the {\tt sd\_data} register, and then the command is issued.
 
-\begin{CPP}
+\begin{zCpp}
 	const	SDIO_R1      = 0x00000100,
 		SDIO_READREG = SDIO_R1 | SDIO_CMD;
 
@@ -634,10 +642,10 @@ placed in the {\tt sd\_data} register, and then the command is issued.
 	_sdio->sd_cmd = SDIO_READREG+8;
 
 	wait_while_busy();
-\end{CPP}
+\end{zCpp}
 
 Once the command returns, the first 8-bits of the 48-bit return may be
-read from the {\tt sd_cmd} register.  If the protocol has been followed and
+read from the {\tt sd\_cmd} register.  If the protocol has been followed and
 the device has returned a value, then bits [7:6] of this register will now
 be zero.  The next 32-bits may be read from the {\tt sd\_data} register, to
 know how the device has responded.  The last 8-bits, both CRC and stop bit,
@@ -656,7 +664,7 @@ Sending such a command follows the same script as before.  The difference is
 that we could now specify, in our command, which FIFO to write the results into.
 We'll use FIFO A, the first FIFO, which is the default for this example.
 
-\begin{CPP}
+\begin{zCpp}
 	const	SDIO_R2      = 0x00000200,
 		SDIO_READREG = SDIO_R2 | SDIO_CMD;
 
@@ -664,7 +672,7 @@ We'll use FIFO A, the first FIFO, which is the default for this example.
 	_sdio->sd_cmd = (SDIO_ERR|SDIO_READR2) + 2;
 
 	wait_while_busy();
-\end{CPP}
+\end{zCpp}
 
 If this particular command works, it is likely to set the CRC error bit.
 This is normal for a CMD2, although not so normal for other commands.
@@ -672,14 +680,14 @@ This is normal for a CMD2, although not so normal for other commands.
 Once the command completes, the CID register can be read from the FIFO
 32-bits at a time.
 
-\begin{CPP}
+\begin{zCpp}
 	unsigned	d_CID[4];
 
 	d_CID[0] = _sdio->sd_fifa;
 	d_CID[1] = _sdio->sd_fifa;
 	d_CID[2] = _sdio->sd_fifa;
 	d_CID[3] = _sdio->sd_fifa;
-\end{CPP}
+\end{zCpp}
 
 If the controller has been configured for big--endian operation, then
 the MSB byte of each FIFO result will be the first byte read from the
@@ -694,23 +702,23 @@ Once any cards have been properly enumerated, the PHY may be adjusted
 for higher speed.  The first speed change below simply changes the clock
 speed to 25MHz, and the IOs from open--drain to push--pull.
 
-\begin{CPP}
+\begin{zCpp}
 	const	SDIOCK_25MHZ = 0x00000003,
 		SPEED_512B   = 0x09000000;
 
 	_sdio->sd_phy = SECTOR_512B | SDIOCK_25MHZ | SDIO_PUSHPULL;
 	while(SDIOCK_25MHz != (_sdio->sd_phy & 0x0ff))
 		; // Wait for the clock change
-\end{CPP}
+\end{zCpp}
 
 A later PHY adjustment might even include switching to 4--bit data mode.
 
-\begin{CPP}
+\begin{zCpp}
 	const	SDIO_W4 = 0x00000400;
 
 	_sdio->sd_phy = SECTOR_512B | SDIOCK_25MHZ | SDIO_PUSHPULL
 				| SDIO_W4;
-\end{CPP}
+\end{zCpp}
 
 In this final example, we don't need to wait for the change to take place.
 The interface was already idle, so it took place immediately.
@@ -725,15 +733,15 @@ complete.
 The SDIO driver first, however, checks whether or not the card has been
 removed.  This is appropriate, lest the card has been swapped unbeknownst
 to the controller.
-\begin{CPP}
+\begin{zCpp}
 	if _sdio->sd_cmd & SDIO_REMOVED)
 		return CARD_REMOVED_ERR;
-\end{CPP}
+\end{zCpp}
 
 If the card has not been removed, then we can issue a command to read a
 block.  This involves setting the {\tt SDIO\_MEM} bit and (potentially) the
 FIFO bit to select which FIFO we are interested in.
-\begin{CPP}
+\begin{zCpp}
 	const	SDIO_MEM     = 0x00000800,
 		SDIO_READBLK = (SDIO_CMD|SDIO_R1|SDIO_MEM)+17;
 
@@ -741,17 +749,17 @@ FIFO bit to select which FIFO we are interested in.
 	_sdio->sd_cmd = SDIO_READBLK;
 
 	wait_while_busy();
-\end{CPP}
+\end{zCpp}
 
 Once the read completes, we can check for any errors.
 
 Assuming the read completed without error, we can then read the data back
 out of the controller.
 
-\begin{CPP}
+\begin{zCpp}
 	for(int k=0; k<512/sizeof(uint32_t); k++)
 		buf[k] = _sdio->sd_fifa;
-\end{CPP}
+\end{zCpp}
 
 Note that the FIFO's are always 32-bit aligned.  Whether or not the buffer
 is aligned, or whether or not the CPU supports unaigned accesses in the
@@ -765,10 +773,10 @@ for higher speed.
 Writing a sector to the device is very similar to reading, however, there
 are a few minor key differences.  The first key difference is that the memory
 needs to be loaded into the FIFO first, before it can be sent to the device.
-\begin{CPP}
+\begin{zCpp}
 	for(int k=0; k<512/sizeof(uint32_t); k++)
 		_sdio->sd_fifa = buf[k];
-\end{CPP}
+\end{zCpp}
 
 The second key difference is that the controller doesn't know when to write
 to the device or when to read from it.  In general, the controller doesn't
@@ -779,7 +787,7 @@ the FIFO, the controller also needs to be told.  For this reason, a separate
 bit needs to be set in addition to the previous ones--one to indicate that
 this is a write and not a read.
 
-\begin{CPP}
+\begin{zCpp}
 	const	SDIO_WRITE    = 0x00000400,
 		SDIO_WRITEBLK = (SDIO_CMD | SDIO_R1 | SDIO_ERR
 				| SDIO_WRITE | SDIO_MEM) + 24;
@@ -788,7 +796,7 @@ this is a write and not a read.
 	_sdio->sd_cmd  = SDIO_WRITEBLK;
 
 	wait_while_busy();
-\end{CPP}
+\end{zCpp}
 %% }}}
 \section{Writing multiple sectors}
 %% {{{
@@ -802,18 +810,18 @@ Let's walk through these changes one by one.
 
 The first change is that we don't initially wait for the write to complete.
 
-\begin{CPP}
+\begin{zCpp}
 	const	SDIO_FIFO  = 0x00001000;
 
 	_sdio->sd_data = sector;
 	_sdio->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR
 				| SDIO_WRITE | SDIO_MEM) + 25;
-\end{CPP}
+\end{zCpp}
 
 Instead, we load a second sector into the FIFO.  In general, we'll alternate
 which FIFO we use.
 
-\begin{CPP}
+\begin{zCpp}
 	unsigned *src = &buf[s*512];
 
 	if (s&1) {
@@ -823,19 +831,19 @@ which FIFO we use.
 		for(int w=0; w<512/sizeof(uint32_t); w++)
 			_sdio->sd_fifa = src[w];
 	}
-\end{CPP}
+\end{zCpp}
 
 Once the second sector has been transferred to FIFO memory, we can then wait
 for the current write transaction to complete and issue a new write request
 for the next sector.
 
-\begin{CPP}
+\begin{zCpp}
 	while(_sdio->sd_cmd & SDIO_BUSY)
 		;
 
 	_sdio->sd_cmd = (SDIO_WRITE | SDIO_MEM)
 			+ ((s & 1) ? SDIO_FIFO : 0)
-\end{CPP}
+\end{zCpp}
 
 At this point, we repeat until we've written all of the sectors we wish
 to write to.
@@ -854,7 +862,7 @@ issue a command to store the read data into the next sector.  This is also a
 good time to check for any read errors that may have taken place while
 reading the last sector.
 
-\begin{CPP}
+\begin{zCpp}
 	while(_sdio->sd_cmd & SDIO_BUSY)
 		;
 
@@ -868,7 +876,7 @@ reading the last sector.
 		_sdio->sd_data = 0;
 		_sdio->sd_cmd = (SDIO_CMD | SDIO_R1 | SDIO_ERR) + 12;
 	}
-\end{CPP}
+\end{zCpp}
 
 This second command must be issued before the device starts sending the
 second sector of data.
@@ -876,7 +884,7 @@ second sector of data.
 Once the second read request is away, we have until it finishes to copy the
 data out of the first FIFO.
 
-\begin{CPP}
+\begin{zCpp}
 	unsigned *dst = &buf[s*512];
 
 	if (s&1) {
@@ -886,7 +894,7 @@ data out of the first FIFO.
 		for(int w=0; w<512/sizeof(uint32_t); w++)
 			dst[w] = _sdio->sd_fifa;
 	}
-\end{CPP}
+\end{zCpp}
 
 Again, these operations are time sensitive: the must be done before the
 SD card sends the next sector.  There's no handshaking method to slow the
@@ -906,17 +914,17 @@ The first step in the GO IRQ STATE command is to switch to an open--drain
 IO mode.  This will likely also mean that we need to switch clock speeds
 as well.
 
-\begin{CPP}
+\begin{zCpp}
 	_sdio->sd_phy = (_sdio->sd_phy & ~(SDIO_PUSHPULL | 0x0ff))
 			| SDIOCK_25MHZ;
-\end{CPP}
+\end{zCpp}
 
 We can now issue the GO IRQ STATE command.
 
-\begin{CPP}
+\begin{zCpp}
 	_sdio->sd_data = 0;
 	_sdio->sd_cmd  = SDIO_READREG + 40;
-\end{CPP}
+\end{zCpp}
 
 At this point, we need to wait for either an SDIO controller interrupt,
 indicating that the SDIO command has completed and an R1 response has been
@@ -929,10 +937,10 @@ We can clean up by restoring the PHY to its original mode.
 If no response has been read and the command has timed out, then we need
 to create a self--reply to this command.
 
-\begin{CPP}
+\begin{zCpp}
 	_sdio->sd_data = 0;
 	_sdio->sd_cmd  = 40;
-\end{CPP}
+\end{zCpp}
 
 Once this command completes, we are done and can return the PHY to its original
 mode.  No valid data will be returned from this command.
@@ -971,7 +979,7 @@ register itself is composed of several packed bit fields, as shown in
 Fig.~\ref{fig:CMD}.
 \begin{figure}\begin{center}
 %% {{{
-\begin{bytefield}[endianness=big]{32}
+\begin{bytefield}[endianness=big,bitwidth=0.03\linewidth]{32}
 \bitheader{0-31}\\
 \bitbox{8}{(Reserved)}
 \bitbox{1}{C$_r$}	% Rx ECode
@@ -1000,8 +1008,8 @@ Fig.~\ref{fig:CMD}.
 The various fields of this register are explained in Tbl.~\ref{tbl:CMD}.
 \begin{table}\begin{center}
 %% {{{
-\begin{tabular}{|p{1.2in}|p{4.0in}|}\hline
-	\rowcolor[gray]{0.85} Name & Description\\\hline\hline
+\begin{tabular}{|p{1.2in}|p{0.5in}|p{4.0in}|}\hline
+	\rowcolor[gray]{0.85} Name & Width & Description\\\hline\hline
 C$_r$&1& Receive error code.  On any receive error, indicates the cause of
 	the error. \\
 E$_r$&1& Receive error.  Set if the E bit is set due to a data reception error.
@@ -1026,7 +1034,7 @@ E & 1 & Error.  The last command or data receipt completed with error.
 	requests. \\
 B & 1 & Busy.  Either a command or data transfer is currently in progress.\\
 D & 1 & (Reserved for DMA control)\\
-I & 1 & FIFO selection.  Keep clear to use FIFO A.  Set to use FIFO B.
+I & 1 & FIFO selection.  Keep clear to use FIFO A.  Set to use FIFO B.\\
 M & 1 & Memory operation.  Once the command is complete, a memory read or write
 	will take place.  If this bit is set and bit[6] is clear, then
 	a memory operation will take place without an associated prior command
@@ -1041,9 +1049,11 @@ CMD & 8 & The command.  Writes with bits [7] equal to 1'b0 will issue
 	a comand to the controller, although memory commands require bit
 	[6] be set as well.  Upon command completion, these bits will
 	be replaced by the first 8--bits of the reply.
+	\\\hline
+\end{tabular}
 %% }}}
 \caption{CMD Register field descriptions}\label{tbl:CMD}
-\end{center}\end{figure}
+\end{center}\end{table}
 
 In general, a command will be issued any time bits [7:6] of the command
 register are 2'b01.  There are some exceptions to this rule:
@@ -1071,10 +1081,12 @@ Tbl.~\ref{tbl:CMD-TYPE}.
 2'b01 & R1 (48b) response expected\\
 2'b10 & R2 (136b) response expected.  Returned data will be placed into
 	the selected FIFO.\\
-2'b11 & R1b (48b+BUSY) response expected\\
+2'b11 & R1b (48b+BUSY) response expected
+	\\\hline
+\end{tabular}
 %% }}}
 \caption{CMD response types}\label{tbl:CMD-TYPE}
-\end{center}\end{figure}
+\end{center}\end{table}
 
 If the memory bit is set, then the data FIFOs will be used in the operation.
 Which FIFO is used will be controlled by the FIFO ID bit.  ``Write''
@@ -1105,10 +1117,12 @@ shown in Tbl.~\ref{tbl:CMD-REPLY}.
 	CRC.  Not all commands will have valid CRCs.  Check the SDIO and eMMC
 	specifications to know when to expect one.\\
 2'b11 & Frame error.  Set if the CRC passes, but the stop bit of any command
-	reply is not also set.\\
+	reply is not also set.
+	\\\hline
+\end{tabular}
 %% }}}
 \caption{CMD response types}\label{tbl:CMD-REPLY}
-\end{center}\end{figure}
+\end{center}\end{table}
 In general, any non--zero response indicates that a start bit was received.
 
 If the {\tt OPT\_CARD\_DETECT} parameter is set, then the controller will be
@@ -1143,14 +1157,17 @@ Receive error codes are listed in Tbl.~\ref{tbl:CMD-RXECODE}.
 %% {{{
 \begin{tabular}{|p{1.2in}|p{4.0in}|}\hline
 	\rowcolor[gray]{0.85} Rx Err Code & Description\\\hline\hline
-1'b0 & CRC error.  Set if a sector is received with an invalid CRC.  May also
+1'b0 & Watchdog timeout.  Set if no bits are received within the watchdog
+	timeout period.  This will get set both if no start bits are received,
+	as well as if the clock (or data strobe) stops mid-reception. \\
+1'b1 & CRC error.  Set if a sector is received with an invalid CRC.  May also
 	be an indication that the received sector had started to arrive before
-	the command to receive that sector had been given.\\
-1'b1 & Watchdog timeout.  Set if no bits are received within the watchdog
-	timeout period.\\
+	the command to receive that sector had been given.
+	\\\hline
+\end{tabular}
 %% }}}
 \caption{Potential receive error codes}\label{tbl:CMD-RXECODE}
-\end{center}\end{figure}
+\end{center}\end{table}
 
 %% }}}
 \section{Argument register}
@@ -1211,7 +1228,7 @@ a CRC, or equivalently how many bytes to read out of the FIFO before adding a
 CRC.  The fields of this register are shown in Fig.~\ref{fig:PHY}.
 \begin{figure}\begin{center}
 %% {{{
-\begin{bytefield}[endianness=big]{32}
+\begin{bytefield}[endianness=big,bitwidth=0.03\linewidth]{32}
 \bitheader{0-31}\\
 \bitbox{4}{Rsrvd}
 \bitbox{4}{LgBlk}
@@ -1238,10 +1255,10 @@ CRC.  The fields of this register are shown in Fig.~\ref{fig:PHY}.
 and explained in Tbl.~\ref{tbl:PHY}.
 \begin{table}\begin{center}
 %% {{{
-\begin{tabular}{|p{1.2in}|p{4.0in}|}\hline
+\begin{tabular}{|p{1.2in}|p{0.5in}|p{4.0in}|}\hline
 	\rowcolor[gray]{0.85} Name & Description\\\hline\hline
 LgBlk & 4 & Log based two of the transfer block size.  Set to 9 for 512~Byte
-	transfers, 4 for 16`Byte transfers, etc.
+	transfers, 4 for 16`Byte transfers, etc.\\
 %
 V$_O$ & 1 & Read only value reflecting the parameter {\tt OPT\_1PV}.  If set,
 	indicates that the controller is capable of changing voltages upon
@@ -1259,7 +1276,7 @@ Shift & 5 & Sample shift.  This is used to determine IO sampling.  The digtal
 	external device. \\
 %
 nC & 1 & Clock shutdown.  Set in order to deactivate the clock between commands,
-	or leave clear for a continuously operating clock.
+	or leave clear for a continuously operating clock.\\
 C9 & 1 & Clock--90.  Set in order to offset the clock from the data by
 	ninety degrees, or leave clear for the two to be offset by
 	180~degrees.  Any attempt to use DDR data transfer will automatically
@@ -1281,10 +1298,12 @@ D$_S$&1& Data strobe.  Set to one to use the card's data strobe, clear
 D$_D$ & 1 & DDR.  Set to one to transmit on both edges of the clock.  Clear
 	to send one bit at a time on the positive edge of the clock only. \\
 CKDIV & 8 & Clock division control.  See Tbl.~\ref{tbl:CKDIV} for more
-	information.\\
+	information.
+	\\\hline
+\end{tabular}
 %% }}}
 \caption{PHY Front end configuration register fields}\label{tbl:PHY}
-\end{center}\end{figure}
+\end{center}\end{table}
 
 The CKDIV field needs the most explanation.  This field is used to control
 a digital clock divider.  Particular high speed frequency do not go through
@@ -1303,10 +1322,12 @@ as shown in Tbl.~\ref{tbl:CKDIV}.
 %% 8'h7f ->  200kHz
 %% 8'h41 ->  400kHz
 %% 8'h1b -> 1MHz
-N & Sets clock frequency to $50 / \left(N-1\right)$~MHz.
+$N$ & Sets clock frequency to $25 / \left(N-2\right)$~MHz.
+	\\\hline
+\end{tabular}
 %% }}}
 \caption{Clock division settings}\label{tbl:CKDIV}
-\end{center}\end{figure}
+\end{center}\end{table}
 Attempts to use the high frequency values, but without high frequency
 support, will be quietly ignored.  Indeed, this can be one way of telling
 whether or not controller support exists for either {\tt OPT\_SERDES} or
@@ -1336,36 +1357,6 @@ the maximum value actually is.
 %% }}}
 \section{Soft Resets}
 %% {{{
-CKDIV & 8 & Clock division control.  See Tbl.~\ref{tbl:CKDIV} for more
-	information.\\
-%% }}}
-\caption{CMD Register field descriptions}\label{tbl:CMD}
-\end{center}\end{figure}
-
-
-The CLKDIV field sets a divisor from the current clock to create a SPI clock.
-The minimum value of this field is `1', corresponding to dividing the input
-clock by `4'.  As discussed earlier, the input clock will be divided by
-twice this field plus one.  Hence, setting this field to one will cause the
-original clock to be divided by $2(1+{\tt CLKDIV})$ or $4$.  Thus an 80~MHz
-input clock will become a 20~MHz SPI clock.  Attempts to set this value to
-zero will be quietly ignored.
-
-The LgFIFO field sets the log, base two, of the any memory transfer size.  The
-actual transfer length will be
-will be $2^{\mbox{\tiny LGFIFO}}$ bytes.  The maximum size the
-device will support is returned by the {\tt MaxLgF} field, which is
-currently set to $9$ for a 512~byte memory area.  This matches the current
-specification, which limits sectors to only ever being 512~bytes.
-
-To set the CONFIG register, first set the DATA register to the new config
-value (or zero for the fields that will not change), and then write
-{\tt 0x0ff} to the CMD register.  Likewise, to read the CONFIG register
-write a {\tt 0x0bf} to the CMD register and read the CONFIG register from the
-DATA register.  (Only the upper two bits of these commands are ever checked.)
-%% }}}
-\section{Soft Resets}
-%% {{{
 The controller may be reset at any time by writing a 32'h52000000 to the
 CMD register.
 
@@ -1380,7 +1371,10 @@ a command response is pending or an IO operation is ongoing.
 An interrupt may be generated for any of the following reasons:
 
 \begin{enumerate}
-\item Any time a command completes.
+\item Any time a command completes, and any anticipated response is either
+	returned or timed out.  The exception to this rule is that no interrupt
+	will be generated if subsequent IO to or from FIFOs is still pending
+	and the command request completes without error.
 \item Any time a sector if finished being sent to the device.
 \item Any time a sector finishes being received by the device.
 \item If the {\tt OPT\_CARD\_DETECT} parameter is set, then an interrupt
@@ -1393,11 +1387,6 @@ An interrupt may be generated for any of the following reasons:
 
 All but the last of these reasons will generate a single interrupt pulse,
 one clock wide.
-
-Note that any request to transmit (or receive) data will typically result in
-two interrupts: the first when the command is complete, and the second when
-the data transfer is also complete.
-
 %% }}}
 \chapter{Wishbone Datasheet}\label{ch:wb}
 %% {{{
@@ -1442,14 +1431,16 @@ the limits the card can handle.
 All of the clocks within this system are based upon the speed of the
 system clock, {\tt i\_clk}.  This clock determines all other clock speeds
 within the design.
+
 \begin{clocklist}
-i\_clk   & Input & 100~MHz & System clock \\
-i\_hsclk & Input & 400~MHz & I/OSERDES clock.  Must come from the same
-	PLL or MMCM as the i\_clk src.  Only used if {\tt OPT\_SERDES}
+i\_clk   & Input & 104 & 96 & System clock \\
+i\_hsclk & Input & & & I/OSERDES clock.  Must be 4x the i\_clk rate, and
+	must come from the same
+	PLL or MMCM as i\_clk.  Only used if {\tt OPT\_SERDES}
 	is set so the design uses the 8x SERDES based front end.\\
-o\_ck & Output & 100~kHz--200~MHz & SDIO/eMMC interface clock.  This signal
+o\_ck & Output & 200 & 0.1 & SDIO/eMMC interface clock.  This signal
 	is output over the interface at a frequency given by the clock divider
-	controller.  May also be turned off between commands.  \\
+	controller.  May also be turned off between commands.  \\\hline
 \end{clocklist}
 
 The {\tt i\_clk} speed has been nominally fixed at 100~MHz.  Based upon this

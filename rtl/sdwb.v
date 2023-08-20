@@ -383,7 +383,7 @@ module	sdwb #(
 
 	initial	r_tx_request = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || o_soft_reset)
+	if (i_reset || o_soft_reset || i_cmd_err)
 		r_tx_request <= 1'b0;
 	else if (new_tx_request)
 		r_tx_request <= 1'b1;
@@ -392,14 +392,14 @@ module	sdwb #(
 
 	initial	r_tx_sent = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || o_soft_reset || !o_tx_en)
+	if (i_reset || o_soft_reset || !o_tx_en || i_cmd_err)
 		r_tx_sent <= 1'b0;
 	else if (o_tx_mem_valid && i_tx_mem_ready && o_tx_mem_last)
 		r_tx_sent <= 1'b1;
 
 	initial	o_tx_en = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || o_soft_reset)
+	if (i_reset || o_soft_reset || (i_cmd_err && !o_tx_en))
 		o_tx_en <= 1'b0;
 	else if (o_tx_en && r_tx_sent && !i_tx_busy)
 		o_tx_en <= 1'b0;
@@ -426,7 +426,7 @@ module	sdwb #(
 	// {{{
 	initial	r_rx_request = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || o_soft_reset)
+	if (i_reset || o_soft_reset || i_cmd_err)
 		r_rx_request <= 1'b0;
 	else if (new_data_request && !i_wb_data[FIFO_WRITE_BIT]
 			&& (i_wb_data[9:8] != R2_REPLY
@@ -437,7 +437,7 @@ module	sdwb #(
 
 	initial	o_rx_en = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || o_soft_reset)
+	if (i_reset || o_soft_reset || (i_cmd_err && !o_rx_en))
 		o_rx_en <= 1'b0;
 	else if (o_rx_en && i_rx_done)
 		o_rx_en <= 1'b0;
@@ -883,19 +883,21 @@ module	sdwb #(
 		o_int <= 1'b0;
 		// 3 Types of interrupts:
 		//
+		case({ (o_tx_en || r_tx_request), (o_rx_en || r_rx_request)})
 		// A) Command operation is complete, response is ready
-		if (i_cmd_done && cmd_busy)
-			o_int <= 1'b1;
+		2'b00: if (i_cmd_done && cmd_busy) o_int <= 1'b1;
 		//
 		// B) Transmit to card operation is complete, and is now ready
 		//	for another command (if desired)
-		if (o_tx_en && r_tx_sent && !i_tx_busy)
-			o_int <= 1'b1;
+		2'b10: if (o_tx_en && r_tx_sent && !i_tx_busy) o_int <= 1'b1;
 		//
 		// C) A block has been received.  We are now ready to receive
 		//	another block (if desired)
-		if (o_rx_en && i_rx_done)
-			o_int <= 1'b1;
+		2'b01: if (o_rx_en && i_rx_done) o_int <= 1'b1;
+		default: begin end
+		endcase
+		//
+		if (i_cmd_done && i_cmd_err) o_int <= 1'b1;
 		//
 		// D) A card has been removed or inserted, and yet not
 		// akcnowledged.

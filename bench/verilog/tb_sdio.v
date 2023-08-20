@@ -39,8 +39,9 @@
 module	tb_sdio;
 	// Local declarations
 	// {{{
-	localparam	[1:0]	OPT_SERDES = 1'b1;
-	localparam	[1:0]	OPT_DDR = 1'b1;
+	parameter	[1:0]	OPT_SERDES = 1'b1;
+	parameter	[1:0]	OPT_DDR = 1'b1;
+	parameter	[0:0]	OPT_VCD = 1'b0;
 	localparam		AW = 3, DW=32;
 	localparam		VCD_FILE = "trace.vcd";
 
@@ -93,7 +94,8 @@ module	tb_sdio;
 		// {{{
 		.LGFIFO(12), .NUMIO(4), .MW(32),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
-		.OPT_CARD_DETECT(0), .LGTIMEOUT(10)
+		.OPT_CARD_DETECT(0), .LGTIMEOUT(10),
+		.OPT_EMMC(1'b0)
 		// }}}
 	) u_sdio (
 		// {{{
@@ -144,7 +146,7 @@ module	tb_sdio;
 	// VCD generation
 	// {{{
 
-	initial if (VCD_FILE != 0)
+	initial if (OPT_VCD && VCD_FILE != 0)
 	begin
 		$dumpfile(VCD_FILE);
 		$dumpvars(0, tb_sdio);

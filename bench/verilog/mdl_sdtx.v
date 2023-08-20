@@ -62,7 +62,7 @@ module mdl_sdtx #(
 
 	genvar		gk;
 
-	reg	[15:0]	crc	[7:0];
+	reg	[15:0]	crc	[15:0];
 	reg	[47:0]	tx_sreg;
 	reg	[5:0]	r_count;
 	reg		r_crc, r_active, ds;
@@ -97,7 +97,7 @@ module mdl_sdtx #(
 				else
 					tx_sreg  <= #FF_HOLD { 4'b0, i_data, 12'hfff };
 				r_count  <= 9 + (i_ddr ? 1:0);
-			else if (i_width[1])
+			end else if (i_width[1])
 			begin // 8b width
 				if (i_ddr)
 					tx_sreg  <= #FF_HOLD { 8'b0, 8'bx, i_data };
@@ -113,7 +113,7 @@ module mdl_sdtx #(
 			end
 			// }}}
 		end else begin
-			tx_sreg  <= #FF_HOLD { i_data, 8'hff };
+			tx_sreg  <= #FF_HOLD { i_data, 16'hffff };
 			r_count  <= (i_width[0]) ? 8 : (i_width[1]) ? 4 : 32;
 		end
 		r_active <= 1'b1;
@@ -127,7 +127,7 @@ module mdl_sdtx #(
 		if (i_width[0])
 			tx_sreg <= #FF_HOLD { tx_sreg[43:0], 4'hf };
 		else if (i_width[1])
-			tx_sreg <= #FF_HOLD { tx_sreg[39:0], 8'hfff };
+			tx_sreg <= #FF_HOLD { tx_sreg[39:0], 8'hff };
 		else
 			tx_sreg <= #FF_HOLD { tx_sreg[46:0], 1'b1 };
 
@@ -143,8 +143,8 @@ module mdl_sdtx #(
 				crc[3][15], crc[2][15], crc[1][15], crc[0][15],
 					40'hff_ffff_ffff };
 			else
-				tx_sreg <= #FF_HOLD { crc[0][15], 3'h7,
-					36'hf_ffff_ffff };
+				tx_sreg <= #FF_HOLD { crc[0][15], 7'h7f,
+					40'hff_ffff_ffff };
 		end
 
 		if (r_count <= 1)
@@ -188,8 +188,8 @@ module mdl_sdtx #(
 				crc[11][15],crc[10][15],crc[ 9][15],crc[ 8][15],
 					40'hff_ffff_ffff };
 			else
-				tx_sreg <= #FF_HOLD { crc[8][15], 3'h7,
-					36'hf_ffff_ffff };
+				tx_sreg <= #FF_HOLD { crc[8][15], 7'h7f,
+					40'hff_ffff_ffff };
 		end
 
 		if (r_count <= 1)
@@ -205,11 +205,11 @@ module mdl_sdtx #(
 	// }}}
 
 	assign	sd_dat[0] = !r_active ? 1'bz
-				: (i_width[0]) ? tx_sreg[44];
+				: (i_width[0]) ? tx_sreg[44]
 				: (i_width[1]) ? tx_sreg[40] : tx_sreg[47];
 
 	assign	sd_dat[3:1] = (!r_active || i_width==0) ? 3'bz
-				: (i_width[0]) ? tx_sreg[47:43]
+				: i_width[0] ? tx_sreg[47:45]
 						: tx_sreg[43:41];
 	assign	sd_dat[7:4] = (!r_active ||!i_width[1]) ? 4'bz
 					: tx_sreg[47:44];

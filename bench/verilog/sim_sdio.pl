@@ -38,10 +38,15 @@
 ##
 ## }}}
 use Cwd;
-$path_cnt = $ARGV;
+$path_cnt = @ARGV;
 
 $filelist = "sdio_files.txt";
-$exefile = "sdiosim";
+$testlist = "sdio_testcases.txt";
+$exefile  = "sdiosim";
+$linestr  = "----------------------------------------";
+$report   = "sdio_report.txt";
+$toplevel = "tb_sdio";
+$testd    = "test/";
 
 ## Usage: perl sim_sdio.pl all
 ##   or
@@ -49,6 +54,28 @@ $exefile = "sdiosim";
 
 ## Process arguments
 ## {{{
+$run_all = 0;
+if ($ARGV[0] eq "") {
+	print "No test cases given\n";
+	exit(0);
+} elsif ($ARGV[0] eq "all") {
+	$run_all = 1;
+	open(SUM,">> $report");
+	print(SUM "\nRunning all tests:\n$linestr\n");
+	close SUM;
+} elsif(($ARGV[0] eq "icarus" or $ARGV[0] = "iverilog") and $ARGV[1] eq "all") {
+	$run_all = 1;
+	open(SUM,">> $report");
+	print(SUM "\nRunning all tests:\n$linestr\n");
+	close SUM;
+} elsif ($ARGV[0] eq "icarus" or $ARGV[0] = "iverilog") {
+	$run_all = 1;
+	@array = @ARGV;
+	# Remove the "Icarus" flag
+	splice(@array, 0, 1);
+} else {
+	@array = @ARGV;
+}
 ## }}}
 
 ## timestamp
@@ -73,15 +100,16 @@ sub simline($) {
 
 	my $vcddump=0;
 	my $vcdfile="";
-	my $toplevel="tb_sdio";
 
 	while ($line =~ /^(.*)#.*/) {
 		$line = $1;
-	} if ($line =~ /^\s*(\S+)\s(.*)$/) {
+	} if ($line =~ /^\s*(\S+)\s+(\S+)\s+(.*)$/) {
 		$tstname = $1;
-		$args = $2;
+		$tstscript = $2;
+		$args = $3;
 	} elsif ($line =~ /^\s*(\S+)$/) {
 		$tstname = $1;
+		$tstscript = $2;
 		$args = "";
 	}
 
@@ -94,7 +122,7 @@ sub simline($) {
 		$cmd = "iverilog -g2012";
 
 		$cmd = $cmd . " -DIVERILOG";
-		$cmd = $cmd . " -DSCRIPT=\\\"../testscript/$tstname.v\\\"";
+		$cmd = $cmd . " -DSCRIPT=\\\"../testscript/$tstscript.v\\\"";
 		
 		while($args =~ /\s*(\S+)=(\S+)(.*)$/) {
 			$p = $1;
@@ -111,7 +139,7 @@ sub simline($) {
 
 		$cmd = $cmd . " -c " . $filelist;
 		$cmd = $cmd . " -o " . $exefile;
-		$sim_log = $tstname . ".txt";
+		$sim_log = $testd . $tstname . ".txt";
 
 		$cmd = $cmd . " |& tee $sim_log";
 		system "echo \'$cmd\'";
@@ -151,29 +179,101 @@ sub simline($) {
 			system "grep -iq \'TEST PASS\' $sim_log";
 			$errS = $?;
 
+			open (SUM,">> $report");
 			if ($errE == 0 or $errA == 0 or $errF == 0) {
 				## ERRORs found, either assertion or other fail
+				print SUM "ERRORS    $msg\n";
 				print     "ERRORS    $msg\n";
+				push @failed,$tstname;
 			} elsif ($errT == 0) {
 				# Timing violations present
+				print SUM "TIMING-ER $msg\n";
 				print     "TIMING-ER $msg\n";
+				push @failed,$tstname;
 			} elsif ($errS != 0) {
 				# No success (TEST_PASS) message present
+				print SUM "FAIL      $msg\n";
 				print     "FAIL      $msg\n";
+				push @failed,$tstname;
 			} else {
+				print SUM "Pass      $msg\n";
 				print     "Pass      $msg\n";
-			}
+				push @passed,$tstname;
+			} close SUM;
 			## }}}
 			## }}}
 		} else {
 			## Report that this failed to build
+			open (SUM,">> $report");
 			$tstamp = timestamp();
 			$msg = sprintf("%s IVerilog  -- %s", $tstamp, $tstname);
-			print "BLD-FAIL  $msg\n";
+			print SUM "BLD-FAIL  $msg\n";
+			print     "BLD-FAIL  $msg\n";
+			push @failed,$tstname;
+			close SUM;
 		}
 		## }}}
 	}
 }
 ## }}}
 
-simline("sdiostart");
+## gettest: Look up a test's configuration
+## {{{
+sub gettest($) {
+	my ($key)=@_;
+	my	$tstname;
+
+	open(GTL, $testlist);
+	while($line = <GTL>) {
+		next if ($line =~ /^\s*#/);
+		if ($line =~ /^\s*(\s+)\s/) {
+			$tstname = $1;
+			last if ($tstname eq $key);
+		}
+	} close GTL;
+	if ($tstname eq $key) {
+		$line;
+	} else {
+		"# FAIL";
+	}
+}
+## }}}
+
+## Run all tests
+## {{{
+if (!-d $testd) {
+	mkdir $testd;
+}
+
+if ($run_all) {
+	open(TL, $testlist);
+	while($line = <TL>) {
+		next if ($line =~ /^\s*#/);
+		simline($line);
+	}
+
+	open(SUM,">> $report");
+	print (SUM "$linestr\nTest run complete\n\n");
+	close SUM;
+} else {
+	foreach $akey (@array) {
+		$line = gettest($akey);
+		next if ($line =~ /FAIL/);
+		simline($line);
+	}
+}
+## }}}
+
+if (@failed) {
+	print "\nFailed testcases:\n$linestr\n";
+	foreach $akey (@failed) {
+		print " $akey\n";
+	}
+}
+
+if (@passed) {
+	print "\nPassing testcases:\n$linestr\n";
+	foreach $akey (@passed) {
+		print " $akey\n";
+	}
+}

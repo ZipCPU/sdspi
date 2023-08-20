@@ -76,7 +76,7 @@ module	mdl_sdrx(
 		else
 			max_rail_count = i_len * 8 + 16 - 1;
 
-		if (ddr)
+		if (i_ddr)
 			max_rail_count = max_rail_count + 16;
 	end
 
@@ -167,7 +167,6 @@ module	mdl_sdrx(
 		rx_sreg <= 0;
 	else if (rx_started && !rx_complete)
 	begin
-<<<<<<< HEAD
 		if (i_width[0])
 		begin
 			rx_sreg <= { rx_sreg[27:0],
@@ -193,7 +192,6 @@ module	mdl_sdrx(
 	always @(negedge sd_clk)
 	if (i_ddr && rx_started && !rx_complete)
 	begin
-<<<<<<< HEAD
 		if (i_width[0])
 		begin
 			rx_sreg <= { rx_sreg[27:0],

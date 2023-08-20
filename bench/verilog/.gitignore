@@ -1,4 +1,5 @@
 sdiosim
-sdiostart.txt
 tb_sdckgen
 tb_txframe
+sdio_report.txt
+test/

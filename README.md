@@ -47,7 +47,7 @@ single block read and write commands alone.
   card's SPI interface.  A software library also exists which can act as a
   back end when using the [FATFS library](http://elm-chan.org/fsw/ff/00index_e.html).
 
-For more information, please consult the [specification document](doc/spec.pdf).
+For more information, please consult the [SDSPI user guide](doc/sdspi.pdf).
 
 ## SDIO
 
@@ -82,8 +82,10 @@ register.
   component proofs is a proof of the front end.  Both
   [Verilog](bench/verilog/mdl_sdio.v) and [C++](bench/cpp/sdiosim.cpp) models
   have been built which can be used to test this controller in simulation,
-  although only the [Verilog](bench/verilog/mdl_sdio.v) SDIO model has been
+  although only the [Verilog SDIO model](bench/verilog/mdl_sdio.v) has been
   tested to date.
+
+For more information, please consult the [SDIO user guide](doc/sdio.pdf).
 
 ### Roadmap and TODO items
 
@@ -106,9 +108,10 @@ Several key steps remain before it will be a viable product:
   or write multiple blocks, or the ability to issue a command while a read or
   write operation is ongoing, are already drafted--they just need to be tested.
 
-- **SW**: Control software has been written, and has been used to demonstrate
-  both SDIO and EMMC performance.  This software is designed to work with the
-  [FATFS library](http://elm-chan.org/fsw/ff/00index_e.html).
+- **SW**: [Control software](sw/sdiodrvr.c) has been written, and has been
+  used to demonstrate both SDIO and EMMC performance.  This software is
+  designed to work with the [FATFS
+  library](http://elm-chan.org/fsw/ff/00index_e.html).
 
 - **OPT_DMA**: An optional DMA extension is planned (not built), to allow data
   blocks to be transferred to memory at the full speed of the internal bus

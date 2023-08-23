@@ -130,8 +130,13 @@ $(SDCMD)_cvr/PASS: $(RTL)/$(SDCMD).v $(SDCMD).sby
 .PHONY: $(SDWB)
 ## {{{
 $(SDWB): $(SDWB)_prf/PASS # $(SDCMD)_cvr/PASS
+$(SDWB): $(SDWB)_prfds/PASS $(SDWB)_prfdr/PASS
 $(SDWB)_prf/PASS: $(RTL)/$(SDWB).v $(SDWB).sby fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prf
+$(SDWB)_prfds/PASS: $(RTL)/$(SDWB).v $(SDWB).sby fwb_slave.v fwb_register.v
+	sby -f $(SDWB).sby prfds
+$(SDWB)_prfdr/PASS: $(RTL)/$(SDWB).v $(SDWB).sby fwb_slave.v fwb_register.v
+	sby -f $(SDWB).sby prfdr
 # $(SDWB)_cvr/PASS: $(RTL)/$(SDWB).v $(SDWB).sby fwb_slave.v fwb_register.v
 #	sby -f $(SDWB).sby cvr
 ## }}}

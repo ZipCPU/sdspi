@@ -276,6 +276,8 @@ module	sdwb #(
 					|| i_wb_data[USE_FIFO_BIT]
 				||(!cmd_busy && i_wb_data[7:6] == CMD_PREFIX
 						&& i_wb_data[9:8] == R2_REPLY));
+		if (i_cmd_err)
+			new_data_request = 1'b0;
 
 		// If the FIFO is already in use, then we can't accept any
 		// new command which would require the FIFO
@@ -392,7 +394,7 @@ module	sdwb #(
 
 	initial	r_tx_sent = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || o_soft_reset || !o_tx_en || i_cmd_err)
+	if (i_reset || o_soft_reset || !o_tx_en)
 		r_tx_sent <= 1'b0;
 	else if (o_tx_mem_valid && i_tx_mem_ready && o_tx_mem_last)
 		r_tx_sent <= 1'b1;
@@ -412,7 +414,8 @@ module	sdwb #(
 		assert(!r_tx_request || !o_tx_en);
 
 	always @(posedge i_clk)
-	if (!i_reset && $past(!i_reset && !o_soft_reset && r_tx_request))
+	if (!i_reset && $past(!i_reset && !o_soft_reset
+					&& r_tx_request && !i_cmd_err))
 		assert(r_tx_request || o_tx_en);
 
 	always @(posedge i_clk)
@@ -448,7 +451,7 @@ module	sdwb #(
 	if (!i_reset && !o_soft_reset)
 		assert(!r_rx_request || !o_rx_en);
 	always @(posedge i_clk)
-	if (!i_reset && $past(!i_reset && !o_soft_reset && r_rx_request))
+	if (!i_reset && $past(!i_reset && !o_soft_reset && (r_rx_request && !i_cmd_err)))
 		assert(r_rx_request || o_rx_en);
 `endif
 	// }}}
@@ -674,14 +677,14 @@ module	sdwb #(
 	// {{{
 	initial	o_cfg_ds = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || !OPT_DS || o_soft_reset)
+	if (i_reset || !OPT_DS || !OPT_EMMC || o_soft_reset)
 		o_cfg_ds <= 1'b0;
 	else if (wb_phy_stb && i_wb_sel[1])
 		o_cfg_ds <= (&i_wb_data[9:8]);
 
 	initial	o_cfg_dscmd = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || !OPT_DS || o_soft_reset)
+	if (i_reset || !OPT_DS || !OPT_EMMC || o_soft_reset)
 		o_cfg_dscmd <= 1'b0;
 	else if (wb_phy_stb)
 	begin
@@ -694,7 +697,10 @@ module	sdwb #(
 	end
 `ifdef	FORMAL
 	always @(*)
-	if (!i_reset && (!o_cfg_ddr || !o_clk90))
+	if (!i_reset && !o_cfg_clk90)
+		assert(!o_cfg_ddr);
+	always @(*)
+	if (!i_reset && (!o_cfg_ddr || !OPT_DS || !OPT_EMMC))
 		assert(!o_cfg_ds);
 	always @(*)
 	if (!i_reset && !o_cfg_ds)
@@ -1610,11 +1616,14 @@ module	sdwb #(
 	fwb_register #(
 		.AW(3), .DW(MW), .ADDR(ADDR_PHY),
 		.MASK(32'h0018_b100
-			| (OPT_SERDES ? 32'h001f_0200 : 32'h00)
-			| (OPT_DDR    ? 32'h001c_0000 : 32'h00)),
-		.FIXED_BIT_MASK(32'hf0e0_0000
-			| (OPT_SERDES ? 32'h00: 32'h0003_0200)
-			| (OPT_DDR    ? 32'h00: 32'h0004_0000))
+			| (OPT_1P8V   ? 32'h0040_0000 : 32'h00)
+			| (OPT_SERDES ? 32'h001f_0000 : 32'h00)
+			| (OPT_DDR    ? 32'h0018_0000 : 32'h00)),
+		.FIXED_BIT_MASK(32'hf080_0000
+			| (OPT_1P8V   ? 32'h00: 32'h0040_0000)
+			| (OPT_SERDES ? 32'h00
+			:  OPT_DDR    ? 32'h0023_0200
+			:               32'h0024_0200))
 	) fwb_phy (
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset || o_soft_reset),

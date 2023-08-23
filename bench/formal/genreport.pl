@@ -132,10 +132,8 @@ sub getstatus($) {
 				$bmc = $1;
 				# print "<TR><TD>basecase $bmc match</TD></TR>\n";
 			}
-		} if ($line =~ /engine_\d:.*Writing trace to VCD.*trace(\d+).vcd/) {
-			if ($1 > $ncvr) {
-				$ncvr = $1+1;
-			}
+		} if ($line =~ /engine_\d:.*Reached cover statement/) {
+			$ncvr = $ncvr+1;
 		}
 	}
 	close(LOG);
@@ -164,9 +162,17 @@ sub getstatus($) {
 
 ## Start the HTML output
 ## {{{
+## Grab a timestamp
+$now = time;
+($sc,$mn,$nhr,$ndy,$nmo,$nyr,$nwday,$nyday,$nisdst) = localtime($now);
+$nyr = $nyr+1900; $nmo = $nmo+1;
+$tstamp = sprintf("%04d%02d%02d",$nyr,$nmo,$ndy);
+
 print <<"EOM";
 <HTML><HEAD><TITLE>Formal Verification Report</TITLE></HEAD>
 <BODY>
+<H1 align=center>SD Controller Formal Verification Report</H1>
+<H2 align=center>$tstamp</H2>
 <TABLE border>
 <TR><TH>Status</TH><TH>Component</TD><TH>Proof</TH><TH>Component description</TH></TR>
 EOM
@@ -227,7 +233,12 @@ foreach $prf (sort @proofs) {
 		if ($st =~ /PASS/) {
 			print "<TR><TD bgcolor=#caeec8>Pass$tail";
 		} elsif ($st =~ /Cover\s+(\d+)/) {
+			my $cvr = $1;
+			if ($cvr < 1) {
+			print "<TR><TD bgcolor=#ffffca>$1 Cover points$tail";
+			} else {
 			print "<TR><TD bgcolor=#caeec8>$1 Cover points$tail";
+			}
 		} elsif ($st =~ /FAIL/) {
 			print "<TR><TD bgcolor=#ffa4a4>FAIL$tail";
 		} elsif ($st =~ /Terminated/) {
@@ -236,8 +247,13 @@ foreach $prf (sort @proofs) {
 			print "<TR><TD bgcolor=#ffa4a4>ERROR$tail";
 		} elsif ($st =~ /Out of date/) {
 			print "<TR><TD bgcolor=#ffffca>Out of date$tail";
-		} elsif ($st =~ /BMC\s+(\d)+/) {
-			print "<TR><TD bgcolor=#ffffca>$1 steps of BMC$tail";
+		} elsif ($st =~ /BMC\s+(\d+)/) {
+			my $bmc = $1;
+			if ($bmc < 2) {
+			print "<TR><TD bgcolor=#ffa4a4>$bmc steps of BMC$tail";
+			} else {
+			print "<TR><TD bgcolor=#ffffca>$bmc steps of BMC$tail";
+			}
 		} elsif ($st =~ /No log/) {
 			print "<TR><TD bgcolor=#e5e5e5>No log file found$tail";
 		} else {

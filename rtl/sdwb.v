@@ -181,7 +181,7 @@ module	sdwb #(
 	// localparam	[15:0]	CMD_SELFREPLY = 16'h0028;
 
 	reg	cmd_busy, new_cmd_request, new_data_request, new_tx_request;
-	reg	w_selfreply_request;
+	reg	w_selfreply_request, r_clk_shutdown;
 
 	wire		wb_cmd_stb, wb_phy_stb;
 	reg	[6:0]	r_cmd;
@@ -644,15 +644,37 @@ module	sdwb #(
 	//	vs allowing the data to align with the negative edge of the
 	//	clock.  o_cfg_clk90 is required for all DDR modes, but may not
 	//	be required for SDR modes.
-	initial	{ o_cfg_shutdown, o_cfg_clk90 } = 2'b00;
+	initial	{ r_clk_shutdown, o_cfg_clk90 } = 2'b00;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
-		{ o_cfg_shutdown, o_cfg_clk90 } <= 2'b00;
+		{ r_clr_clktdown, o_cfg_clk90 } <= 2'b00;
 	else if (wb_phy_stb && i_wb_sel[1])
 	begin
-		{ o_cfg_shutdown, o_cfg_clk90 } <= i_wb_data[15:14];
+		{ r_clk_shutdown, o_cfg_clk90 } <= i_wb_data[15:14];
 		if (i_wb_data[8])
 			o_cfg_clk90 <= 1'b1;
+	end
+
+	always @(posedge i_clk)
+	if (i_reset || o_soft_reset)
+		o_cfg_shutdown <= 1'b0;
+	else if (wb_phy_stb && i_wb_sel[1] && !i_wb_data[15])
+	begin
+		o_cfg_shutdown <= 1'b0;
+	end else if (r_cfg_shutdown
+			|| (wb_phy_stb && i_wb_sel[1] && i_wb_data[15]))
+	begin
+		o_cfg_shutdown <= 1'b1;
+		if (r_tx_request || r_rx_request)
+			o_cfg_shutdown <= 1'b0;
+		if (o_tx_en && (!r_tx_sent || i_tx_busy))
+			o_cfg_shutdown <= 1'b0;
+
+		// No checks for RX shutdown--that needs to be done from the
+		// receiver itself.
+
+		if (o_cmd_request || (cmd_busy && !i_cmd_done))
+			o_cfg_shutdown <= 1'b0;
 	end
 	// }}}
 

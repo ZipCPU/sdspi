@@ -157,7 +157,7 @@ module	sdio #(
 	wire	[LGFIFO-$clog2(MW/8)-1:0]	rx_mem_addr;
 	wire	[MW/8-1:0]	rx_mem_strb;
 	wire	[MW-1:0]	rx_mem_data;
-	wire			rx_done, rx_err, rx_ercode;
+	wire			rx_done, rx_err, rx_ercode, rx_active, rx_en;
 	// }}}
 
 	sdwb #(
@@ -223,7 +223,7 @@ module	sdio #(
 		// }}}
 		// RX interface
 		// {{{
-		.o_rx_en(o_rx_en), .o_crc_en(crc_en), .o_length(rx_length),
+		.o_rx_en(rx_en), .o_crc_en(crc_en), .o_length(rx_length),
 		//
 		.i_rx_mem_valid(rx_mem_valid), .i_rx_mem_strb(rx_mem_strb),
 			.i_rx_mem_addr(rx_mem_addr),.i_rx_mem_data(rx_mem_data),
@@ -237,13 +237,15 @@ module	sdio #(
 		// }}}
 	);
 
+	assign	o_rx_en = rx_en && rx_active;
+
 	sdckgen
 	u_clkgen (
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset),
 		//
 		.i_cfg_clk90(cfg_clk90), .i_cfg_ckspd(cfg_ckspeed),
-		.i_cfg_shutdown(cfg_clk_shutdown),
+		.i_cfg_shutdown(cfg_clk_shutdown && !rx_active),
 
 		.o_ckstb(clk_stb), .o_hlfck(clk_half), .o_ckwide(w_sdclk),
 		.o_ckspd(clk_ckspd)
@@ -314,7 +316,7 @@ module	sdio #(
 		//
 		.i_cfg_ddr(o_cfg_ddr),
 		.i_cfg_ds(o_cfg_ds), .i_cfg_width(cfg_width),
-		.i_rx_en(o_rx_en), .i_crc_en(crc_en), .i_length(rx_length),
+		.i_rx_en(rx_en), .i_crc_en(crc_en), .i_length(rx_length),
 		//
 		.i_rx_strb(i_rx_strb), .i_rx_data(i_rx_data),
 		.S_ASYNC_VALID(S_AD_VALID), .S_ASYNC_DATA(S_AD_DATA),
@@ -322,7 +324,8 @@ module	sdio #(
 		.o_mem_valid(rx_mem_valid), .o_mem_strb(rx_mem_strb),
 			.o_mem_addr(rx_mem_addr), .o_mem_data(rx_mem_data),
 		//
-		.o_done(rx_done), .o_err(rx_err), .o_ercode(rx_ercode)
+		.o_done(rx_done), .o_err(rx_err), .o_ercode(rx_ercode),
+		.o_active(rx_active)
 		// }}}
 	);
 

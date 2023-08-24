@@ -73,6 +73,7 @@ module	sdrxframe #(
 		output	wire	[LGLENW-1:0]	o_mem_addr,	// Word address
 		output	wire	[MW-1:0]	o_mem_data,	// Outgoing data
 
+		output	reg			o_active,
 		output	reg			o_done,
 		output	reg			o_err,
 		output	reg			o_ercode
@@ -506,6 +507,15 @@ module	sdrxframe #(
 	else if (w_done)
 		busy <= 1'b0;
 
+	always @(posedge i_clk)
+	if (i_reset)
+		o_active <= 1'b0;
+	else if (!busy)
+		o_active <= i_rx_en && i_length > 0 && !o_done;
+	else if (!i_cfg_ds || !OPT_DS)
+		o_active <= (rail_count > i_rx_strb[0] + i_rx_strb[1]);
+	else
+		o_active <= (rail_count > (S_ASYNC_VALID ? 4:0));
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//

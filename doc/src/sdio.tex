@@ -896,11 +896,17 @@ data out of the first FIFO.
 	}
 \end{zCpp}
 
+
 Again, these operations are time sensitive: the must be done before the
-SD card sends the next sector.  There's no handshaking method to slow the
-SD card down.\footnote{One goal of the (to be written) DMA is to solve this
-race condition.  Until then, the CRC may be checked to know if a sector
-was received in error or not.}
+SD card sends the next sector.
+
+It is possible to reduce this time pressure by setting the clock shutdown
+bit in the PHY.  If this bit is set, the SDIO/eMMC clock will stop toggling
+when not in use.  This should allow the software driver enough time to finish
+copying out any data, and to issue a second read command before the data starts
+showing up.\footnote{There is an unwritten requirement here, however, that
+the card must provide at least a break of a couple of system clocks plus at
+least one SDIO clock in order for this clock stop to happen in time.}
 
 %% }}}
 \section{GO IRQ STATE}
@@ -1138,12 +1144,10 @@ will be set until cleared.
 If the {\tt OPT\_CARD\_DETECT} parameter is clear, then the ``No card present''
 bit as well as the ``Card removed'' bit will always read zero.
 
-If, following any command, the card holds the DAT[0] line low, this will be
-reflected in the ``Card busy'' bit.  Although there is a command type for
-expecting an ``R1b'' command, this command type is not (currently) connected
-to this register.  Once the card raises DAT[0], the ``Card busy'' line will
-be cleared automatically and will not reassert until the next command completes
-at the earliest.
+If, following any R1b command, the card holds the DAT[0] line low, this will be
+reflected in the ``Card busy'' bit.  Once the card raises DAT[0], the
+``Card busy'' line will be cleared automatically and will not reassert until
+the next R1b command.
 
 If, following any command, the card holds the DAT[0] line low, this will be
 reflected in the ``Card busy'' bit.
@@ -1235,7 +1239,7 @@ CRC.  The fields of this register are shown in Fig.~\ref{fig:PHY}.
 %
 \bitbox{1}{V$_O$}
 \bitbox{1}{V$_R$}
-\bitbox{1}{S}
+\bitbox{1}{D$_C$}
 \bitbox{5}{Shift}
 %
 \bitbox{1}{nC}
@@ -1266,8 +1270,10 @@ V$_O$ & 1 & Read only value reflecting the parameter {\tt OPT\_1PV}.  If set,
 V$_R$ & 1 & 1.8~Volt request.  Set to transition to 1.8~Volts, or leave clear
 	to operate at 3.3~Volts.  Only relevant if {\tt OPT\_1PV} is set, and
 	hardware is present to allow voltage changes.\\
-S & 1 & Read only value, indicating whether or not the {\tt OPT\_SERDES}
-	IOs are in use.  (May be removed in the future.)\\
+D$_C$ & 1 & Set for enhanced data strobe support.  If set, both the command
+	and data pins will use the data strobe as a clock pin.  Will only
+	be set if D$_S$ and D$_D$ are also set.
+	\\
 Shift & 5 & Sample shift.  This is used to determine IO sampling.  The digtal
 	clock output signal will be delayed by one clock plus this many
 	eighth clock units to determine the receive sample point when not
@@ -1292,9 +1298,10 @@ P$_D$ & 1 & Push--Pull Data.  Set to drive data wires via a push--pull
 W & 2 & Width.  Controls how many data bits are used in any data transaction.
 	Set to 0 to use DAT[0] only, 2'b01 to use DAT[3:0], and 2'b10 to use
 	DAT[7:0].  \\
-D$_S$&1& Data strobe.  Set to one to use the card's data strobe, clear
-	otherwise.  Parameters {\tt OPT\_EMMC} and {\tt OPT\_DS} must also
-	be set to use this capability.\\
+D$_S$&1& Data strobe.  Set to one to use the eMMC data strobe, clear
+	otherwise.  Requires DDR mode set, so D$_D$ must be high.  Parameters
+	{\tt OPT\_EMMC} and {\tt OPT\_DS} must also be set to use this
+	capability.\\
 D$_D$ & 1 & DDR.  Set to one to transmit on both edges of the clock.  Clear
 	to send one bit at a time on the positive edge of the clock only. \\
 CKDIV & 8 & Clock division control.  See Tbl.~\ref{tbl:CKDIV} for more

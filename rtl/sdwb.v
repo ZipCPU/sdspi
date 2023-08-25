@@ -76,6 +76,27 @@ module	sdwb #(
 		localparam	LGFIFOW=LGFIFO-$clog2(MW/8),
 		parameter [0:0]	OPT_DMA = 1'b0,
 		parameter [0:0]	OPT_1P8V= 1'b0	// 1.8V voltage switch capable?
+		// OPT_R1B, if set, adds logic to the controller to only expect
+		// a card busy signal following an R1B command.  This insures
+		// the card busy status is set until the card has an opportunity
+		// to set it.  Any potential card busy returns from the PHY,
+		// for other reasons (data?) will be will be ignored otherwise
+		// except following an R1B command.  If not set, then anytime
+		// DAT[0] goes low following a command (and neither actively
+		// transmitting or receiving), then the card busy will be set
+		// until it returns high again.  This will catch all reasons
+		// the card may be busy, and actually provide a direct wire
+		// for reading the card busy bit from the card itself via the
+		// PHY.
+		parameter [0:0]	OPT_R1B = 1'b1,
+		// If OPT_R1B is set, then we'll want to wait at least two
+		// device clocks waiting for busy.  Each clock can be as long
+		// as 1k system clock cycles.  Hence, we'll wait for up to 4095
+		// clock cycles before timing out while waiting for busy.
+		// Perhaps that's too long, but it's just a backup timeout.
+		// If the device actually indicates a busy (like it's supposed
+		// to), then we'll be busy until the device releases.
+		parameter	LGCARDBUSY = 12
 		// }}}
 	) (
 		// {{{
@@ -167,7 +188,8 @@ module	sdwb #(
 	localparam	[1:0]	CMD_PREFIX = 2'b01,
 				NUL_PREFIX = 2'b00;
 	localparam	[1:0]	RNO_REPLY = 2'b00,
-				R2_REPLY = 2'b10;
+				R2_REPLY = 2'b10,
+				R1B_REPLY = 2'b11;
 	localparam		CARD_REMOVED_BIT = 18,
 				// ERR_BIT       = 15,
 				USE_DMA_BIT      = 13,
@@ -219,6 +241,7 @@ module	sdwb #(
 	reg	[MW-1:0]	mem_wr_data_a, mem_wr_data_b;
 
 	wire			mem_busy;
+	wire			w_card_busy;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -371,6 +394,91 @@ module	sdwb #(
 		o_cmd_type <= i_wb_data[9:8];
 	// }}}
 
+	// r_expect_busy, r_card_busy
+	// {{{
+	generate if (OPT_R1B)
+	begin : GEN_R1B
+		// We want to wait at least two device clocks waiting for busy.
+		// Each clock can be as long as 1k system clock cycles.  Hence,
+		// we'll wait for up to 4095 clock cycles here.  Perhaps that's
+		// too long, but it's just a timeout.  If the device actually
+		// indicates a busy (like it's supposed to), then we'll be
+		// busy until the device releases.
+		reg	[LGCARDBUSY-1:0]	r_busy_counter;
+		reg		r_expect_busy, r_card_busy;
+
+		initial	r_expect_busy = 1'b0;
+		always @(posedge i_clk)
+		if (i_reset || o_soft_reset)
+			r_expect_busy <= 1'b0;
+		else if (new_cmd_request)
+			r_expect_busy <= (i_wb_data[9:8] == R1B_REPLY);
+		else if (!cmd_busy && (i_card_busy || r_busy_counter == 0))
+			r_expect_busy <= 1'b0;
+
+		initial	r_card_busy = 1'b0;
+		always @(posedge i_clk)
+		if (i_reset || o_soft_reset)
+			r_card_busy <= 1'b0;
+		else if (new_cmd_request)
+			r_card_busy <= (i_wb_data[9:8] == R1B_REPLY);
+		else if (!i_card_busy && !r_expect_busy && !cmd_busy)
+			r_card_busy <= 1'b0;
+
+		initial	r_busy_counter = 0;
+		always @(posedge i_clk)
+		if (i_reset || o_soft_reset)
+			r_busy_counter <= 0;
+		else if (o_tx_en || o_rx_en || i_card_busy)
+			r_busy_counter <= 0;
+		else if (cmd_busy && r_expect_busy)
+		begin
+			r_busy_counter <= -1;
+
+			if (r_ckspeed < 4)
+				r_busy_counter <= 16;
+			else if (r_ckspeed < 8)
+				r_busy_counter <= 72;
+			else if (r_ckspeed < 16)
+				r_busy_counter <= 192;
+			else if (r_ckspeed < 32)
+				r_busy_counter <= 3*128;
+		end else if (r_expect_busy && (r_busy_counter != 0))
+			r_busy_counter <= r_busy_counter - 1;
+
+		assign	w_card_busy = r_card_busy;
+`ifdef	FORMAL
+		always @(*)
+		if (!i_reset && cmd_type != R1B_REPLY)
+			assert(!r_expect_busy);
+
+		// We need to stay officially busy as long as we are waiting
+		// for a response from the card
+		always @(*)
+		if (!i_reset && r_expect_busy)
+			assert(r_card_busy);
+
+		// We only check timeouts while we expect a busy signal, and
+		// before it takes place
+		always @(*)
+		if (!i_reset && !r_expect_busy)
+			assert(r_busy_counter == 0);
+`endif
+	end else begin : DIRECT_CARD_BUSY
+		assign	w_card_busy = i_card_busy;
+
+		// Keep Verilator happy
+		// {{{
+		// Verilator coverage_off
+		// Verilator lint_off UNUSED
+		wire	unused_r1b;
+		assign	unused_r1b = &{ 1'b0, LGCARDBUSY };
+		// Verilator lint_on  UNUSED
+		// Verilator coverage_on
+		// }}}
+	end endgenerate
+	// }}}
+
 	// o_tx_en, r_tx_request, r_tx_sent
 	// {{{
 	always @(*)
@@ -389,7 +497,7 @@ module	sdwb #(
 		r_tx_request <= 1'b0;
 	else if (new_tx_request)
 		r_tx_request <= 1'b1;
-	else if (!cmd_busy && !o_cmd_request && !o_tx_en && !i_card_busy)
+	else if (!cmd_busy && !o_cmd_request && !o_tx_en && !w_card_busy)
 		r_tx_request <= 1'b0;
 
 	initial	r_tx_sent = 1'b0;
@@ -405,7 +513,7 @@ module	sdwb #(
 		o_tx_en <= 1'b0;
 	else if (o_tx_en && r_tx_sent && !i_tx_busy)
 		o_tx_en <= 1'b0;
-	else if (!cmd_busy && !o_cmd_request && !o_tx_en && !i_card_busy
+	else if (!cmd_busy && !o_cmd_request && !o_tx_en && !w_card_busy
 				&& r_tx_request)
 		o_tx_en <= r_tx_request;
 `ifdef	FORMAL
@@ -524,7 +632,7 @@ module	sdwb #(
 		w_cmd_word[23] = r_rx_ecode;
 		w_cmd_word[22] = r_rx_err;
 		w_cmd_word[21] = r_cmd_err;
-		w_cmd_word[20] = i_card_busy;
+		w_cmd_word[20] = w_card_busy;
 		w_cmd_word[19] = !card_present;
 		w_cmd_word[18] =  card_removed;
 		w_cmd_word[17:16] = r_cmd_ecode;

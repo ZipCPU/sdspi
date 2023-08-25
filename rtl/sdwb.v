@@ -75,7 +75,7 @@ module	sdwb #(
 		parameter [0:0]	OPT_EMMC = 1'b1,
 		localparam	LGFIFOW=LGFIFO-$clog2(MW/8),
 		parameter [0:0]	OPT_DMA = 1'b0,
-		parameter [0:0]	OPT_1P8V= 1'b0	// 1.8V voltage switch capable?
+		parameter [0:0]	OPT_1P8V= 1'b0,	// 1.8V voltage switch capable?
 		// OPT_R1B, if set, adds logic to the controller to only expect
 		// a card busy signal following an R1B command.  This insures
 		// the card busy status is set until the card has an opportunity
@@ -411,6 +411,8 @@ module	sdwb #(
 		always @(posedge i_clk)
 		if (i_reset || o_soft_reset)
 			r_expect_busy <= 1'b0;
+		else if (o_tx_en)
+			r_expect_busy <= 1'b1;
 		else if (new_cmd_request)
 			r_expect_busy <= (i_wb_data[9:8] == R1B_REPLY);
 		else if (!cmd_busy && (i_card_busy || r_busy_counter == 0))
@@ -420,6 +422,8 @@ module	sdwb #(
 		always @(posedge i_clk)
 		if (i_reset || o_soft_reset)
 			r_card_busy <= 1'b0;
+		else if (o_tx_en)
+			r_card_busy <= 1'b1;
 		else if (new_cmd_request)
 			r_card_busy <= (i_wb_data[9:8] == R1B_REPLY);
 		else if (!i_card_busy && !r_expect_busy && !cmd_busy)
@@ -429,9 +433,10 @@ module	sdwb #(
 		always @(posedge i_clk)
 		if (i_reset || o_soft_reset)
 			r_busy_counter <= 0;
-		else if (o_tx_en || o_rx_en || i_card_busy)
+		else if (o_rx_en || i_card_busy
+				|| (cmd_busy && !r_expect_busy && !o_tx_en))
 			r_busy_counter <= 0;
-		else if (cmd_busy && r_expect_busy)
+		else if ((cmd_busy && r_expect_busy) || o_tx_en)
 		begin
 			r_busy_counter <= -1;
 
@@ -443,15 +448,11 @@ module	sdwb #(
 				r_busy_counter <= 192;
 			else if (r_ckspeed < 32)
 				r_busy_counter <= 3*128;
-		end else if (r_expect_busy && (r_busy_counter != 0))
+		end else if (r_busy_counter != 0)
 			r_busy_counter <= r_busy_counter - 1;
 
 		assign	w_card_busy = r_card_busy;
 `ifdef	FORMAL
-		always @(*)
-		if (!i_reset && cmd_type != R1B_REPLY)
-			assert(!r_expect_busy);
-
 		// We need to stay officially busy as long as we are waiting
 		// for a response from the card
 		always @(*)
@@ -461,7 +462,7 @@ module	sdwb #(
 		// We only check timeouts while we expect a busy signal, and
 		// before it takes place
 		always @(*)
-		if (!i_reset && !r_expect_busy)
+		if (!i_reset && !r_expect_busy && !cmd_busy)
 			assert(r_busy_counter == 0);
 `endif
 	end else begin : DIRECT_CARD_BUSY
@@ -755,7 +756,7 @@ module	sdwb #(
 	initial	{ r_clk_shutdown, o_cfg_clk90 } = 2'b00;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
-		{ r_clr_clktdown, o_cfg_clk90 } <= 2'b00;
+		{ r_clk_shutdown, o_cfg_clk90 } <= 2'b00;
 	else if (wb_phy_stb && i_wb_sel[1])
 	begin
 		{ r_clk_shutdown, o_cfg_clk90 } <= i_wb_data[15:14];
@@ -769,10 +770,12 @@ module	sdwb #(
 	else if (wb_phy_stb && i_wb_sel[1] && !i_wb_data[15])
 	begin
 		o_cfg_shutdown <= 1'b0;
-	end else if (r_cfg_shutdown
+	end else if (r_clk_shutdown
 			|| (wb_phy_stb && i_wb_sel[1] && i_wb_data[15]))
 	begin
 		o_cfg_shutdown <= 1'b1;
+		if (w_card_busy)
+			o_cfg_shutdown <= 1'b0;
 		if (r_tx_request || r_rx_request)
 			o_cfg_shutdown <= 1'b0;
 		if (o_tx_en && (!r_tx_sent || i_tx_busy))
@@ -784,6 +787,17 @@ module	sdwb #(
 		if (o_cmd_request || (cmd_busy && !i_cmd_done))
 			o_cfg_shutdown <= 1'b0;
 	end
+`ifdef	FORMAL
+	always @(posedge i_clk)
+	if (!i_reset)
+	begin
+		if (!r_clk_shutdown)
+			assert(!o_cfg_shutdown);
+		if ((cmd_busy && !o_cmd_request) || o_tx_en
+						|| (w_card_busy && !cmd_busy))
+			assert(!o_cfg_shutdown);
+	end
+`endif
 	// }}}
 
 	// o_pp_cmd, o_pp_data: If set, configure cmd/data to push-pull modes
@@ -910,7 +924,7 @@ module	sdwb #(
 		w_phy_ctrl[22]    = o_1p8v;
 		w_phy_ctrl[21]    = o_cfg_dscmd;
 		w_phy_ctrl[20:16] = o_cfg_sample_shift;
-		w_phy_ctrl[15]    = o_cfg_shutdown;
+		w_phy_ctrl[15]    = r_clk_shutdown;
 		w_phy_ctrl[14]    = o_cfg_clk90;
 		w_phy_ctrl[13]    = o_pp_cmd;	// Push-pull CMD line
 		w_phy_ctrl[12]    = o_pp_data;	// Push-pull DAT line(s)

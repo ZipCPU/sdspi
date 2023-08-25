@@ -90,7 +90,7 @@ typedef	uint32_t DWORD, LBA_t, UINT;
 // extern	void	txdecimal(int);
 #endif
 
-static	const int	SDINFO = 0, SDDEBUG=0;
+static	const int	SDINFO = 1, SDDEBUG=1, SDEXTDMA=0;
 
 // SDMULTI: Controls whether the read multiple block or write multiple block
 // commands will be used.  Set to 1 to use these commands, 0 otherwise.
@@ -177,6 +177,7 @@ static	const	uint32_t
 		SDIO_CMD     = 0x00000040,
 		SDIO_R1ERR   = 0xff800000,
 		SDIO_READREG  = SDIO_CMD | SDIO_R1,
+		SDIO_READREGb = SDIO_CMD | SDIO_R1b,
 		SDIO_READR2  = (SDIO_CMD | SDIO_R2),
 		SDIO_WRITEBLK = (SDIO_CMD | SDIO_R1 | SDIO_ERR
 				| SDIO_WRITE | SDIO_MEM) + 24,
@@ -329,7 +330,7 @@ uint32_t sdio_send_rca(SDIODRV *dev) {				// CMD3
 void	sdio_select_card(SDIODRV *dev) {			// CMD7
 	// {{{
 	dev->d_dev->sd_data = dev->d_RCA << 16;
-	dev->d_dev->sd_cmd = SDIO_READREG+7;
+	dev->d_dev->sd_cmd = SDIO_READREGb+7;
 
 	sdio_wait_while_busy(dev);
 }
@@ -900,7 +901,7 @@ int	sdio_write_block(SDIODRV *dev, uint32_t sector, uint32_t *buf){// CMD 24
 	if (SDEXTDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
 		_zip->z_dma.d_len = 512;
 		_zip->z_dma.d_rd  = (char *)buf;
-		_zip->z_dma.d_wr  = &dev->d_dev->sd_fifa;
+		_zip->z_dma.d_wr  = (char *)&dev->d_dev->sd_fifa;
 		_zip->z_dma.d_ctrl= DMAREQUEST|DMACLEAR|DMA_SRCWIDE
 				|DMA_CONSTDST|DMA_DSTWORD;
 		while(_zip->z_dma.d_ctrl & DMA_BUSY)
@@ -965,10 +966,10 @@ int	sdio_read_block(SDIODRV *dev, uint32_t sector, uint32_t *buf){// CMD 17
 	sdio_wait_while_busy(dev);
 
 #ifdef	INCLUDE_DMA_CONTROLLER
-	if (SDUSEDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
+	if (SDEXTDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
 		_zip->z_dma.d_len = 512;
-		_zip->z_dma.d_rd  = (char *)&sdcard->sd_fifo[0];
-		_zip->z_dma.d_wr  = buf;
+		_zip->z_dma.d_rd  = (char *)&dev->d_dev->sd_fifa;
+		_zip->z_dma.d_wr  = (char *)buf;
 		_zip->z_dma.d_ctrl= DMAREQUEST|DMACLEAR|DMA_DSTWIDE
 					| DMA_CONSTSRC|DMA_SRCWORD;
 		while(_zip->z_dma.d_ctrl & DMA_BUSY)
@@ -1067,40 +1068,64 @@ SDIODRV *sdio_init(SDIO *dev) {
 		// Shut the clock down and switch to 50MHz.  Then come back
 		// and read the clock.  If it doesn't set to 50MHz, then we
 		// couldn't set the clock, and so we should abandon our attempt.
-		dv->d_dev->sd_phy |= SDIOCK_SHUTDN
+		dv->d_dev->sd_phy = SDIOCK_SHUTDN
 					| (phy & ~0x0ff) | SDIOCK_50MHZ;
 
-		for(int k=0; k<10; k++)
-			if ((dv->d_dev->sd_phy & 0x0ff) == SDIOCK_50MHZ)
+		for(int k=0; k<50; k++)
+			if (SDIOCK_50MHZ == (dv->d_dev->sd_phy & 0x0ff))
 				break;
 
-		if ((dv->d_dev->sd_phy & 0x0ff) != SDIOCK_50MHZ)
+		if ((dv->d_dev->sd_phy & 0x0ff) != SDIOCK_50MHZ) {
 			// 50MHz is not supported by our PHY
+
+			if (SDDEBUG) {
+				txstr("No PHY support for 50MHz: ");
+				txhex(dv->d_dev->sd_phy);
+				txstr("\n");
+			}
+
+			// Return the PHY to its original setting
 			dv->d_dev->sd_phy = phy;
-		else if ((dv->d_SCR[1] & 0x0f) > 0) {
+		} else if ((dv->d_SCR[1] & 0x0f) > 0) {
 			// CMD6 to move to HS mode
 			unsigned	ubuf[16];
+
+			// Return the PHY to its original setting
+			dv->d_dev->sd_phy = phy;
 
 			// First, query if the mode is available
 			sdio_switch(dv, 0x00fffff1, ubuf);
 
 			if (SDINFO) {
-			// {{{
-			txstr("Function modes supported: ");
-			txhex(ubuf[3]);
-			txstr("\n");
-		}
-		// }}}
+				// {{{
+				txstr("Function modes supported: ");
+				txhex(ubuf[3]);
+				txstr("\n");
+			}
+			// }}}
 
 			// If HS mode is available, switch to it
 			// {{{
-			if ((0 == dv->d_dev->sd_cmd & SDIO_ERR)
-						&& (ubuf[3] & 0x020000)) {
-				// We don't need to read the response, since we now
-				// know it's supported--just send the request.
+			if ((0 == (dv->d_dev->sd_cmd & SDIO_ERR))
+					&& (0 != (ubuf[3] & 0x020000))) {
+				// We don't need to read the response, since
+				// we now know it's supported--just send the
+				// request.
 				sdio_switch(dv, 0x80fffff1, NULL);
-				dv->d_dev->sd_phy = (dv->d_dev->sd_phy & (~0x0ff))
+				phy = (dv->d_dev->sd_phy & (~0x0ff))
 							| SDIOCK_50MHZ;
+				dv->d_dev->sd_phy = phy;
+				phy = dv->d_dev->sd_phy;
+				phy = (phy & 0xffe0ffff) | 0x080000;
+				dv->d_dev->sd_phy = phy;
+			} else if (SDINFO || SDDEBUG) {
+				txstr("HS mode is unavailable\n");
+				if (SDDEBUG) {
+					txstr("SD-CMD: "); txhex(dv->d_dev->sd_cmd);
+					txstr("\n");
+					txstr("BUF[3]: "); txhex(ubuf[3]);
+					txstr("\n");
+				}
 			}
 			// }}}
 		}
@@ -1113,8 +1138,6 @@ SDIODRV *sdio_init(SDIO *dev) {
 		// CMD19, tuning block to determine sample point
 	}
 	*/
-
-	dv->d_dev->sd_phy = SECTOR_512B | SDIOCK_DS;
 
 	RELEASE_MUTEX;
 
@@ -1156,7 +1179,9 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 			if (SDEXTDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))){
 				_zip->z_dma.d_len = 512;
 				_zip->z_dma.d_rd  = (char *)buf;
-				_zip->z_dma.d_wr  = (s&1) ? &dev->d_dev->sd_fifb : &dev->d_dev->sd_fifa;
+				_zip->z_dma.d_wr  = (s&1)
+					? (char *)&dev->d_dev->sd_fifb
+					: (char *)&dev->d_dev->sd_fifa;
 				_zip->z_dma.d_ctrl= DMAREQUEST|DMACLEAR|DMA_SRCWIDE
 						|DMA_CONSTDST|DMA_DSTWORD;
 				while(_zip->z_dma.d_ctrl & DMA_BUSY)
@@ -1314,7 +1339,9 @@ int	sdio_read(SDIODRV *dev, const unsigned sector,
 #ifdef	INCLUDE_DMA_CONTROLLER
 			if (SDEXTDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
 				_zip->z_dma.d_len = 512;
-				_zip->z_dma.d_rd  = (s&1) ? &dev->d_dev->sd_fifb : &dev->d_dev->sd_fifa;
+				_zip->z_dma.d_rd  = (s&1)
+					? (char *)&dev->d_dev->sd_fifb
+					: (char *)&dev->d_dev->sd_fifa;
 				_zip->z_dma.d_wr  = (char *)buf;
 				_zip->z_dma.d_ctrl= DMAREQUEST|DMACLEAR|DMA_DSTWIDE
 							| DMA_CONSTSRC|DMA_SRCWORD;

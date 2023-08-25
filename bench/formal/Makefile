@@ -131,23 +131,23 @@ $(SDCMD)_cvr/PASS: $(RTL)/$(SDCMD).v $(SDCMD).sby
 ## {{{
 $(SDWB): $(SDWB)_prf/PASS # $(SDCMD)_cvr/PASS
 $(SDWB): $(SDWB)_prfds/PASS $(SDWB)_prfdr/PASS
-$(SDWB)_prf/PASS: $(RTL)/$(SDWB).v $(SDWB).sby fwb_slave.v fwb_register.v
+$(SDWB)_prf/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prf
-$(SDWB)_prfds/PASS: $(RTL)/$(SDWB).v $(SDWB).sby fwb_slave.v fwb_register.v
+$(SDWB)_prfds/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prfds
-$(SDWB)_prfdr/PASS: $(RTL)/$(SDWB).v $(SDWB).sby fwb_slave.v fwb_register.v
+$(SDWB)_prfdr/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prfdr
-# $(SDWB)_cvr/PASS: $(RTL)/$(SDWB).v $(SDWB).sby fwb_slave.v fwb_register.v
+# $(SDWB)_cvr/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
 #	sby -f $(SDWB).sby cvr
 ## }}}
 
 .PHONY: $(SDCK)
 ## {{{
 $(SDCK): $(SDCK)_prf/PASS # $(SDCK)_cvr/PASS
-$(SDCK)_prf/PASS: $(RTL)/$(SDCK).v $(SDCK).sby
+$(SDCK)_prf/PASS: $(SDCK).sby $(RTL)/$(SDCK).v
 	sby -f $(SDCK).sby prf
-# $(SDCK)_cvr/PASS: $(RTL)/$(SDCK).v $(SDCK).sby
-#	sby -f $(SDCK).sby cvr
+$(SDCK)_cvr/PASS: $(SDCK).sby $(RTL)/$(SDCK).v
+	sby -f $(SDCK).sby cvr
 ## }}}
 
 .PHONY: $(SDTX)

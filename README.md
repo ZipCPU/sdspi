@@ -74,7 +74,7 @@ Both open-drain and push-pull IOs are supported, and the front end can switch
 between the two as necessary based upon options within a PHY configuration
 register.
 
-*Status*: The SDIO controller has now been silicon proven.  It is currently
+*Status*: The SDIO controller has now been **silicon proven**.  It is currently
   working successfully in [its first FPGA
   project](https://github.com/ZipCPU/eth10g), where it is being used to control
   both an SD card as well as an eMMC chip.  Many of the components of this IP
@@ -92,11 +92,6 @@ For more information, please consult the [SDIO user guide](doc/sdio.pdf).
 Although the RTL is now fully drafted, this project is far from finished.
 Several key steps remain before it will be a viable product:
 
-- **Test bench status**: While [test script(s) exist](bench/testscript), the
-  [primary test driver](bench/verilog/sim_sdio.pl) does not properly return
-  the status of any test back to its environment at present.  Test coverage
-  can also be improved.
-
 - **C++ Model**: An early [Verilator C++ model](bench/cpp/sdiosim.cpp) has
   been drafted.  It needs to be finished and tested.  No data strobe support
   is planned for this model at present.
@@ -108,9 +103,9 @@ Several key steps remain before it will be a viable product:
   or write multiple blocks, or the ability to issue a command while a read or
   write operation is ongoing, are already drafted--they just need to be tested.
 
-- **SW**: [Control software](sw/sdiodrvr.c) has been written, and has been
-  used to demonstrate both SDIO and EMMC performance.  This software is
-  designed to work with the [FATFS
+- **SW**: [Control software](sw/) has been written, and has been
+  used to demonstrate both [SDIO](sw/sdiodrv.c) and [EMMC](sw/emmcdrvr.c)
+  performance.  This software is designed to work with the [FATFS
   library](http://elm-chan.org/fsw/ff/00index_e.html).
 
 - **OPT_DMA**: An optional DMA extension is planned (not built), to allow data

@@ -58,4 +58,4 @@ test_txframe: tb_txframe
 
 .PHONY: test
 test: test_txframe test_ckgen
-	perl sim_sdio.pl sdiostart
+	perl sim_sdio.pl all

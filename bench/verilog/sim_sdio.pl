@@ -285,5 +285,5 @@ if (@passed) {
 }
 
 if (@failed) {
-	1;
-} 0;
+	die "Not all tests passed\n";
+}

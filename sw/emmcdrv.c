@@ -1387,6 +1387,12 @@ EMMCDRV *emmc_init(EMMC *dev) {
 	// {{{
 	unsigned	ifcond, op_cond;
 	EMMCDRV	*dv = (EMMCDRV *)malloc(sizeof(EMMCDRV));
+
+	if (NULL == dv) {
+		txstr("PANIC!  No memory for driver\n");
+		PANIC;
+	}
+
 	dv->d_dev = dev;
 	dv->d_OCR = 0;
 	dv->d_RCA = 0;

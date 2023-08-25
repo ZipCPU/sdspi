@@ -513,7 +513,7 @@ module	sdrxframe #(
 	else if (!busy)
 		o_active <= i_rx_en && i_length > 0 && !o_done;
 	else if (!i_cfg_ds || !OPT_DS)
-		o_active <= (rail_count > i_rx_strb[0] + i_rx_strb[1]);
+		o_active <= (rail_count > (i_rx_strb[0] ? 1:0) + (i_rx_strb[1] ? 1:0));
 	else
 		o_active <= (rail_count > (S_ASYNC_VALID ? 4:0));
 	// }}}

@@ -63,13 +63,13 @@ if ($ARGV[0] eq "") {
 	open(SUM,">> $report");
 	print(SUM "\nRunning all tests:\n$linestr\n");
 	close SUM;
-} elsif(($ARGV[0] eq "icarus" or $ARGV[0] = "iverilog") and $ARGV[1] eq "all") {
+} elsif((($ARGV[0] eq "icarus") or ($ARGV[0] eq "iverilog")) and $ARGV[1] eq "all") {
 	$run_all = 1;
 	open(SUM,">> $report");
 	print(SUM "\nRunning all tests:\n$linestr\n");
 	close SUM;
-} elsif ($ARGV[0] eq "icarus" or $ARGV[0] = "iverilog") {
-	$run_all = 1;
+} elsif (($ARGV[0] eq "icarus") or ($ARGV[0] eq "iverilog")) {
+	$run_all = 0;
 	@array = @ARGV;
 	# Remove the "Icarus" flag
 	splice(@array, 0, 1);
@@ -116,6 +116,12 @@ sub simline($) {
 	if ($tstname eq "") {
 	} else {
 		## {{{
+		## Remove any prior build products, so we can detect a failed
+		## build.
+		if (-e $exefile) {
+			unlink $exefile;
+		}
+
 		$tstamp = timestamp();
 
 		## Set up the IVerilog command
@@ -226,7 +232,7 @@ sub gettest($) {
 	open(GTL, $testlist);
 	while($line = <GTL>) {
 		next if ($line =~ /^\s*#/);
-		if ($line =~ /^\s*(\s+)\s/) {
+		if ($line =~ /^\s*(\S+)\s/) {
 			$tstname = $1;
 			last if ($tstname eq $key);
 		}
@@ -277,3 +283,7 @@ if (@passed) {
 		print " $akey\n";
 	}
 }
+
+if (@failed) {
+	1;
+} 0;

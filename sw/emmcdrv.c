@@ -56,7 +56,8 @@ typedef	uint32_t DWORD, LBA_t, UINT;
 // extern	void	txdecimal(int);
 #endif
 
-static	const int	EMMCINFO = 1, EMMCDEBUG=1, EXTDMA = 0;
+static	const int	EMMCINFO = 1, EMMCDEBUG=1, EXTDMA = 0,
+			EMMCMULTI = 1;
 // }}}
 
 typedef	struct	EMMCDRV_S {
@@ -162,6 +163,8 @@ extern	int	emmc_write(EMMCDRV *dev, const unsigned sector, const unsigned count,
 extern	int	emmc_read(EMMCDRV *dev, const unsigned sector, const unsigned count, char *buf);
 extern	int	emmc_ioctl(EMMCDRV *dev, char cmd, char *buf);
 
+#define	PANIC
+// #define PANIC zip_halt()
 
 void	emmc_wait_while_busy(EMMCDRV *dev) {
 	// {{{
@@ -688,7 +691,7 @@ static	void	emmc_decode_cmd(unsigned cmd) {
 	else if ((cmd & 0xc0)==0x00)
 		printf("   %02x: REPLY %d\n", cmd & 0x0ff, cmd & 0x3f);
 	else
-		printf("   %02x: ILLEGAL\n", cmd & 0x0ff, cmd & 0x3f);
+		printf("   %02x: ILLEGAL\n", cmd & 0x0ff);
 	switch(cmd & SDIO_R1b) {
 	case SDIO_RNONE: printf("   No reply expected\n"); break;
 	case SDIO_R1:	printf("   R1  reply expected\n"); break;
@@ -1087,7 +1090,6 @@ void	emmc_best_width(EMMCDRV *dev) {
 	
 	if (EMMCDEBUG) txstr("Testing 1b width\n");
 	// {{{
-SETSCOPE;
 	dev->d_dev->sd_phy = (dev->d_dev->sd_phy & ~(0x0f000000 | SDIO_WBEST))
 				| SDIO_W1 | SECTOR_4B;
 	dev->d_dev->sd_data = SWITCH_WRITE_BYTE
@@ -1107,11 +1109,11 @@ SETSCOPE;
 		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
 	} if (dev->d_dev->sd_cmd & SDIO_ERR) {
 		txstr("EMMC PANIC!  Err response to switch-cmd\n");
-		zip_halt();
+		PANIC;
 	} if (dev->d_dev->sd_data & SDIO_R1ERR) {
 		txstr("EMMC PANIC!  R1 ERR response to SWITCH (");
 		txhex(dev->d_dev->sd_data); txstr(")\n");
-		zip_halt();
+		PANIC;
 	}
 
 	dev->d_dev->sd_fifa = 0x80000000;
@@ -1135,7 +1137,7 @@ SETSCOPE;
 	} if (dev->d_dev->sd_data & SDIO_R1ERR) {
 		txstr("EMMC PANIC!  R1ERR response to CMD19 (");
 		txhex(dev->d_dev->sd_data); txstr(")\n");
-		zip_halt();
+		PANIC;
 	}
 
 	// CMD14 = BUSTEST_R, FIFO B
@@ -1144,7 +1146,7 @@ SETSCOPE;
 	if (EMMCINFO && EMMCDEBUG)
 		txstr("CMD14:   BUSTEST_R\n");
 	emmc_wait_while_busy(dev);
-	TRIGGER;
+
 	c = dev->d_dev->sd_cmd;
 	r = dev->d_dev->sd_data;
 	v = dev->d_dev->sd_fifb;
@@ -1156,18 +1158,18 @@ SETSCOPE;
 		txstr(" FIFB:     "); txhex(v); txstr("\n");
 	} if (c & SDIO_CMDERR) {
 		txstr("EMMC PANIC!  CMDErr response to bus test read\n");
-		zip_halt();
+		PANIC;
 	} if (r & SDIO_R1ERR) {
 		txstr("EMMC PANIC!  R1ERR response to CMD14 (");
 		txhex(dev->d_dev->sd_data); txstr(")\n");
-		zip_halt();
+		PANIC;
 	}
 
 	// Now check the result
 	if ((v & 0xc0000000) != 0x40000000) {
 		txstr("EMMC PANIC!  Failed single-bit bus test (");
 		txhex(v); txstr(").  No fallback available.\n");
-		zip_halt();
+		PANIC;
 	}
 	// }}}
 	if (EMMCDEBUG) txstr("Testing 4b width\n");
@@ -1190,11 +1192,11 @@ SETSCOPE;
 		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
 	} if (dev->d_dev->sd_cmd & SDIO_ERR) {
 		txstr("EMMC PANIC!  Err response to switch-cmd\n");
-		zip_halt();
+		PANIC;
 	} if (dev->d_dev->sd_data & SDIO_R1ERR) {
 		txstr("EMMC PANIC!  R1 ERR response to SWITCH (");
 		txhex(dev->d_dev->sd_data); txstr(")\n");
-		zip_halt();
+		PANIC;
 	}
 
 	dev->d_dev->sd_fifa = 0xa5000000;
@@ -1218,7 +1220,7 @@ SETSCOPE;
 	} if (dev->d_dev->sd_data & SDIO_R1ERR) {
 		txstr("EMMC PANIC!  R1ERR response to CMD19 (");
 		txhex(dev->d_dev->sd_data); txstr(")\n");
-		zip_halt();
+		PANIC;
 	}
 
 	// CMD14 = BUSTEST_R, FIFO B
@@ -1238,11 +1240,11 @@ SETSCOPE;
 		txstr(" FIFB:     "); txhex(v); txstr("\n");
 	} if (dev->d_dev->sd_cmd & SDIO_CMDERR) {
 		txstr("EMMC PANIC!  CMDErr response to bus test read\n");
-		zip_halt();
+		PANIC;
 	} if (dev->d_dev->sd_data & SDIO_R1ERR) {
 		txstr("EMMC PANIC!  R1ERR response to CMD14 (");
 		txhex(dev->d_dev->sd_data); txstr(")\n");
-		zip_halt();
+		PANIC;
 	}
 
 	// Now check the result -- ignoring all but the first two bits
@@ -1259,11 +1261,11 @@ SETSCOPE;
 		emmc_wait_while_busy(dev);
 		if (dev->d_dev->sd_cmd & SDIO_ERR) {
 			txstr("EMMC PANIC!  Err response to switch-cmd\n");
-			zip_halt();
+			PANIC;
 		} if (dev->d_dev->sd_data & SDIO_R1ERR) {
 			txstr("EMMC PANIC!  R1 ERR response to SWITCH (");
 			txhex(dev->d_dev->sd_data); txstr(")\n");
-			zip_halt();
+			PANIC;
 		}
 
 		return;
@@ -1291,13 +1293,13 @@ SETSCOPE;
 		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
 	} if (dev->d_dev->sd_cmd & SDIO_ERR) {
 		txstr("EMMC PANIC!  Err response to switch-cmd\n");
-		zip_halt();
+		PANIC;
 	} if (r & SDIO_R1ERR) {
 		r = emmc_get_r1(dev);
 		if (r & SDIO_R1ERR) {
 			txstr("EMMC PANIC!  R1 ERR response to SWITCH (");
 			txhex(r); txstr(")\n");
-			zip_halt();
+			PANIC;
 		}
 	}
 
@@ -1324,7 +1326,7 @@ SETSCOPE;
 	if (dev->d_dev->sd_data & SDIO_R1ERR) {
 		txstr("EMMC PANIC!  R1ERR response to CMD19 (");
 		txhex(dev->d_dev->sd_data); txstr(")\n");
-		zip_halt();
+		PANIC;
 	}
 	*/
 
@@ -1345,11 +1347,11 @@ SETSCOPE;
 		txstr(" FIFB:     "); txhex(v); txstr("\n");
 	} if (dev->d_dev->sd_cmd & SDIO_CMDERR) {
 		txstr("EMMC PANIC!  CMDErr response to bus test read\n");
-		zip_halt();
+		PANIC;
 	} if (dev->d_dev->sd_data & SDIO_R1ERR) {
 		txstr("EMMC PANIC!  R1ERR response to CMD14 (");
 		txhex(dev->d_dev->sd_data); txstr(")\n");
-		zip_halt();
+		PANIC;
 	}
 
 	// Now check the result -- ignoring all but the first two bits
@@ -1366,11 +1368,11 @@ SETSCOPE;
 		emmc_wait_while_busy(dev);
 		if (dev->d_dev->sd_cmd & SDIO_ERR) {
 			txstr("EMMC PANIC!  Err response to switch-cmd\n");
-			zip_halt();
+			PANIC;
 		} if (dev->d_dev->sd_data & SDIO_R1ERR) {
 			txstr("EMMC PANIC!  R1 ERR response to SWITCH (");
 			txhex(dev->d_dev->sd_data); txstr(")\n");
-			zip_halt();
+			PANIC;
 		}
 
 		return;
@@ -1445,12 +1447,103 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 	// {{{
 	unsigned	st;
 
-	for(unsigned k=0; k<count; k++) {
-		st = emmc_write_block(dev, sector+k, (uint32_t *)(&buf[k*512]));
-		if (0 != st) {
-			return RES_ERROR;
+	if (count == 1 || !EMMCMULTI) {
+		for(unsigned k=0; k<count; k++) {
+			st = emmc_write_block(dev, sector+k,
+						(uint32_t *)(&buf[k*512]));
+			if (0 != st) {
+				return RES_ERROR;
+			}
+		} return RES_OK;
+	} else {
+		unsigned	card_stat, phy, cmd;
+
+		phy = dev->d_dev->sd_phy;
+		phy &= 0xf0ffffff;
+		dev->d_dev->sd_phy = phy | SECTOR_512B;
+
+		for(unsigned s=0; s<count; s++) {
+			// Load the first/next block of data into the FIFO
+			// {{{
+#ifdef	INCLUDE_DMA_CONTROLLER
+			if (EXTDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
+				_zip->z_dma.d_len = 512;
+				_zip->z_dma.d_rd = (char *)buf;
+				_zip->z_dma.d_wr = (s&1) ? &dev->d_dev->sd_fifb : &dev->d_dev->sd_fifa;
+				_zip->z_dma.d_ctrl= DMAREQUEST|DMACLEAR|DMA_SRCWIDE
+						| DMA_CONSTDST|DMA_DSTWORD;
+				while(_zip->z_dma.d_ctrl & DMA_BUSY)
+					;
+			} else
+#endif
+			{
+				unsigned *src;
+				src = (unsigned *)&buf[s*512];
+
+				if (s&1) {
+					for(int w=0; w<512/sizeof(uint32_t);w++)
+						dev->d_dev->sd_fifb = src[w];
+				} else {
+					for(int w=0; w<512/sizeof(uint32_t);w++)
+						dev->d_dev->sd_fifa = src[w];
+				}
+			}
+			// }}}
+
+			// Wait for any previous command(s) to complete
+			while((cmd = dev->d_dev->sd_cmd) & SDIO_BUSY)
+				;
+
+			if (s == 0) { // Issue the WRITE_MULTIPLE_BLOCK cmd
+				// {{{
+				// Issue a write multiple command
+				dev->d_dev->sd_data = sector*512;
+				dev->d_dev->sd_cmd = (SDIO_CMD | SDIO_R1
+					|SDIO_ERR|SDIO_WRITE | SDIO_MEM) + 25;
+
+				while((cmd = dev->d_dev->sd_cmd) & SDIO_CMDBUSY)
+					;
+
+				// Check if we'll have any errors with this cmd
+				if (cmd & SDIO_ERR)
+					return RES_ERROR;
+
+				card_stat = dev->d_dev->sd_data;
+				if (card_stat & SDIO_R1ERR)
+					return RES_ERROR;
+
+				// Don't wait.  Go around again and load the
+				// next block of data before checking if the
+				// write has completed.
+				// }}}
+			} else { // Send the next block
+				// {{{
+				// Send another block of data
+				dev->d_dev->sd_cmd = (SDIO_WRITE | SDIO_MEM)
+						+ ((s&1) ? SDIO_FIFO : 0);
+				// }}}
+			}
 		}
-	} return RES_OK;
+
+		// Wait for the final write to complete
+		while((cmd = dev->d_dev->sd_cmd) & SDIO_BUSY)
+			;
+
+		// Send a STOP_TRANSMISSION request
+		dev->d_dev->sd_data = 0;
+		dev->d_dev->sd_cmd = (SDIO_CMD | SDIO_R1b | SDIO_ERR) + 12;
+		while((cmd = dev->d_dev->sd_cmd) & SDIO_BUSY)
+			;
+
+		if (cmd & SDIO_ERR)
+			return RES_ERROR;
+
+		card_stat = dev->d_dev->sd_data;
+		if (card_stat & SDIO_R1ERR)
+			return RES_ERROR;
+
+		return RES_OK;
+	}
 }
 // }}}
 
@@ -1459,9 +1552,95 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 	// {{{
 	unsigned	st = 0;
 
-	for(unsigned k=0; k<count; k++) {
-		st = emmc_read_block(dev, sector+k, (uint32_t *)(&buf[k*512]));
-		if (0 != st) {
+	if (1 == count || !EMMCMULTI) {
+		for(unsigned k=0; k<count; k++) {
+			st = emmc_read_block(dev, sector+k,
+						(uint32_t *)(&buf[k*512]));
+			if (0 != st) {
+				return RES_ERROR;
+			}
+		} return RES_OK;
+	} else {
+		unsigned	err, card_stat, phy;
+
+		phy = dev->d_dev->sd_phy;
+		if ((0 == (phy & SDIOCK_SHUTDN)) || (9 != ((phy >> 24)&0x0f))) {
+			// Read multiple *requires* the clock be shut down
+			// between pages, to make sure the device doesn't try
+			// to produce data before we are ready for it.
+			phy &= 0xf0ffffff;
+			phy |= (9 << 24) | SDIOCK_SHUTDN;
+		}
+
+		err = 0;
+		// Issue the read multiple command
+		// {{{
+		if (dev->d_OCR & 0x40000000)
+			// High capacity card
+			dev->d_dev->sd_data = sector;
+		else
+			dev->d_dev->sd_data = sector*512;
+		dev->d_dev->sd_cmd  = (SDIO_CMD|SDIO_R1b|SDIO_MEM|SDIO_ERR)+18;
+		// }}}
+
+		// Read each sector
+		// {{{
+		for(unsigned s=0; s<count; s++) {
+			// Wait until we have a block to read
+			while(dev->d_dev->sd_cmd & SDIO_BUSY)
+				;
+
+			// Send the next (or last) command
+			// {{{
+			if (0 != dev->d_dev->sd_cmd & SDIO_ERR) {
+				err = 1;
+			} if (s +1 < count && !err) {
+				// Immediately start the next read request
+				dev->d_dev->sd_cmd  = SDIO_MEM + 18
+						+ ((s&1) ? 0 : SDIO_FIFO);
+			} else {
+				// Send a STOP_TRANSMISSION request
+				dev->d_dev->sd_data = 0;
+				dev->d_dev->sd_cmd  = (SDIO_CMD | SDIO_R1b |SDIO_ERR) + 12;
+			}
+			// }}}
+
+			// Now copy out the data that we've read
+			// {{{
+#ifdef	INCLUDE_DMA_CONTROLLER
+			if (SDEXTDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
+				_zip->z_dma.d_len = 512;
+				_zip->z_dma.d_rd  = (s&1) ? &dev->d_dev->sd_fifb : &dev->d_dev->sd_fifa;
+				_zip->z_dma.d_wr  = (char *)buf;
+				_zip->z_dma.d_ctrl= DMAREQUEST|DMACLEAR|DMA_DSTWIDE
+							| DMA_CONSTSRC|DMA_SRCWORD;
+				while(_zip->z_dma.d_ctrl & DMA_BUSY)
+					;
+			} else
+#endif
+				{
+					unsigned *dst;
+					dst = (unsigned *)&buf[s*512];
+
+					if (s&1) {
+						for(int w=0; w<512/sizeof(uint32_t); w++)
+							dst[w] = dev->d_dev->sd_fifb;
+					} else {
+						for(int w=0; w<512/sizeof(uint32_t); w++)
+							dst[w] = dev->d_dev->sd_fifa;
+					}
+				}
+			// }}}
+		}
+		// }}}
+
+		// Check the results of the STOP_TRANSMISSION request
+		while(dev->d_dev->sd_cmd & SDIO_BUSY)
+			;
+
+		if (err) {
+			// If we had any read failures along the way, return
+			// an error status
 			return RES_ERROR;
 		}
 	} return RES_OK;

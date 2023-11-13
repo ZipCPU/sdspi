@@ -84,6 +84,6 @@ The SDIO controller has been optimized for speed, rather than area.
 A [perl script](usage.pl) is also available to measure the logic usage of these
 two IP components via Yosys.  The result of these measurements are kept
 [here](usage.txt).  As of this writing, the [SDSPI](sdspi.v) controller takes
-only 541 Xilinx 6-LUTs, whereas the [SDIO](sdio.v) controller requires
-1353 Xilinx 6-LUTs.
+only 546 Xilinx 6-LUTs, whereas the [SDIO](sdio.v) controller requires
+1411 Xilinx 6-LUTs.
 

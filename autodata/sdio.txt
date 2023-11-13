@@ -185,7 +185,7 @@ struct @$(DEVID)_S;
 @BDEF.IONAME=_sdcard
 @BDEF.IOTYPE=struct @$(DEVID)_S
 @BDEF.OSDEF=_BOARD_HAS_@$(DEVID)
-@BDEF.OSVAL=static volatile @$BDEF.IOTYPE *const @$BDEF.IONAME = ((@$BDEF.IOTYPE *)@$[0x%08x](REGBASE));
+@BDEF.OSVAL=static volatile @$(BDEF.IOTYPE) *const @$(BDEF.IONAME) = ((@$(BDEF.IOTYPE) *)@$[0x%08x](REGBASE));
 @SIM.CLOCK=clk
 @SIM.INCLUDE=
 // #include "sdiosim.h"

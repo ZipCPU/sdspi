@@ -42,7 +42,7 @@ $path_cnt = @ARGV;
 
 $filelist = "sdio_files.txt";
 $testlist = "sdio_testcases.txt";
-$exefile  = "sdiosim";
+$exefile  = "./sdiosim";
 $linestr  = "----------------------------------------";
 $report   = "sdio_report.txt";
 $toplevel = "tb_sdio";

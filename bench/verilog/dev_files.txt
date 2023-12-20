@@ -1,7 +1,9 @@
 tb_sdio.v
+tb_emmc.v
 IOBUF.v
 wb_bfm.v
 mdl_sdio.v
+mdl_emmc.v
 mdl_sdcmd.v
 mdl_sdrx.v
 mdl_sdtx.v

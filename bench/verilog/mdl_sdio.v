@@ -56,7 +56,7 @@ module	mdl_sdio #(
 	reg	[1:0]	cfg_width;
 	wire	[3:0]	ign_dat;
 
-	wire		cmd_valid, cmd_ds;
+	wire		cmd_valid, cmd_ds, cmd_crc_err;
 	wire	[5:0]	cmd;
 	wire	[31:0]	cmd_arg;
 
@@ -100,10 +100,12 @@ module	mdl_sdio #(
 	mdl_sdcmd
 	tb_sdcmd (
 		// {{{
+		.rst_n(1'b1),		// Not used in SDIO mode
 		.sd_clk(sd_clk), .sd_cmd(sd_cmd),
 			.sd_ds(cmd_ds),
 		//
 		.o_cmd_valid(cmd_valid), .o_cmd(cmd), .o_arg(cmd_arg),
+			.o_crc_err(cmd_crc_err),
 		//
 		.i_valid(reply_valid), .i_type(reply_type),
 			.o_busy(reply_busy), .i_reply(reply),
@@ -120,6 +122,7 @@ module	mdl_sdio #(
 	mdl_sdrx
 	tb_sdrx (
 		// {{{
+		.rst_n(1'b1),		// Not used in SDIO mode
 		.sd_clk(sd_clk), .sd_dat({ ign_dat, sd_dat }),
 		//
 		.i_rx_en(read_en), .i_width(cfg_width), .i_ddr(cfg_ddr),
@@ -139,6 +142,7 @@ module	mdl_sdio #(
 	mdl_sdtx
 	tb_sdtx (
 		// {{{
+		.rst_n(1'b1),		// Not used in SDIO mode
 		.sd_clk(sd_clk), .sd_dat({ ign_dat, sd_dat }),
 			.sd_ds(tx_ds),
 		//
@@ -192,7 +196,7 @@ module	mdl_sdio #(
 		ocr[30] = cmd8_sent && host_supports_hcs && OPT_HIGH_CAPACITY;
 
 	always @(posedge sd_clk)
-	if (cmd_valid)
+	if (cmd_valid && !cmd_crc_err)
 	begin
 		cmd_alt <= 1'b0;
 		reply_crc <= 1'b1;	// All replies get CRCs by default

@@ -305,7 +305,7 @@ module	sdio #(
 
 	sdrxframe #(
 		// {{{
-		.OPT_DS(OPT_SERDES),
+		.OPT_DS(OPT_SERDES), .NUMIO(NUMIO),
 		.LGLEN(LGFIFO),
 		.MW(MW),
 		.LGTIMEOUT(LGTIMEOUT)

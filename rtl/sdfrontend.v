@@ -644,6 +644,8 @@ module	sdfrontend #(
 		reg	[1:0]	r_cmd_strb;
 		reg	[23:0]	pck_sreg;
 		reg	[7:0]	cmd_sample_ck;
+		wire		busy_pin;
+		reg	[1:0]	busy_delay;
 		// }}}
 
 		// Clock
@@ -758,6 +760,8 @@ module	sdfrontend #(
 					start_io[0] = (|sample_pck[3:0])
 						&&(0 == (sample_pck[3:0]&in_pin[3:0]));
 				end
+
+				assign	busy_pin = !in_pin[0];
 			end
 
 			always @(*)
@@ -861,14 +865,25 @@ module	sdfrontend #(
 		begin
 			dat0_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
+			busy_delay <= -1;
+		end else if (busy_delay != 0)
+		begin
+			dat0_busy <= 1'b0;
+			wait_for_busy <= 1'b1;
+			busy_delay <= busy_delay - 1;
 		end else if (wait_for_busy)
 		begin
-			if (busy_strb && !busy_data)
+			if (busy_pin)
 			begin
-				dat0_busy <= !w_rx_data[0];
+				// Once busy is activated, we stop waiting for
+				// it, mark ourselves as busy, and then follow
+				// the pin for our busy indicators.
+				dat0_busy <= 1'b1;
 				wait_for_busy <= 1'b0;
 			end
-		end else if (busy_strb && busy_data)
+		end else if (!wait_for_busy && !busy_pin)
+			// Once busy is released, we don't become busy again
+			// until we reset
 			dat0_busy <= 1'b0;
 
 		assign	o_data_busy = dat0_busy;
@@ -1026,13 +1041,13 @@ module	sdfrontend #(
 		// {{{
 		// The rule here is that only the positive edges of the
 		// data strobe will qualify the CMD pin;
-		always @(posedge i_ds or posedge cmd_ds_en)
+		always @(posedge i_ds or negedge cmd_ds_en)
 		if (!cmd_ds_en)
 			acmd_started <= 0;
 		else if (!raw_cmd)
 			acmd_started <= 1;
 
-		always @(posedge i_ds or posedge cmd_ds_en)
+		always @(posedge i_ds or negedge cmd_ds_en)
 		if (!cmd_ds_en)
 			acmd_count <= 0;
 		else if (acmd_started || !raw_cmd)
@@ -1042,12 +1057,12 @@ module	sdfrontend #(
 			.LGFIFO(4), .WIDTH(1), .WRITE_ON_POSEDGE(1'b1)
 		) u_pcmd_fifo_0 (
 			// {{{
-			.i_wclk(i_ds), .i_wr_reset_n(!cmd_ds_en),
+			.i_wclk(i_ds), .i_wr_reset_n(cmd_ds_en),
 			.i_wr((acmd_started || !raw_cmd)&& acmd_count == 1'b0),
 				.i_wr_data(raw_cmd),
 			.o_wr_full(ign_acmd_full[0]),
 			//
-			.i_rclk(i_clk), .i_rd_reset_n(!cmd_ds_en),
+			.i_rclk(i_clk), .i_rd_reset_n(cmd_ds_en),
 			.i_rd(acmd_empty == 2'b0), .o_rd_data(af_cmd[1]),
 			.o_rd_empty(acmd_empty[0])
 			// }}}
@@ -1061,7 +1076,7 @@ module	sdfrontend #(
 			.i_wr(acmd_count), .i_wr_data(raw_cmd),
 			.o_wr_full(ign_acmd_full[1]),
 			//
-			.i_rclk(i_clk), .i_rd_reset_n(i_cmd_en),
+			.i_rclk(i_clk), .i_rd_reset_n(cmd_ds_en),
 			.i_rd(acmd_empty == 2'b0), .o_rd_data(af_cmd[0]),
 			.o_rd_empty(acmd_empty[1])
 			// }}}

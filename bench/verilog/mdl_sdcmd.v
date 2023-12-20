@@ -43,6 +43,8 @@ module	mdl_sdcmd #(
 		parameter realtime FF_HOLD = 1.2
 	) (
 		// {{{
+		input	wire		rst_n,
+		//
 		input	wire		sd_clk,
 		inout	wire		sd_cmd,
 		output	wire		sd_ds,
@@ -50,6 +52,7 @@ module	mdl_sdcmd #(
 		output	reg		o_cmd_valid,
 		output	reg	[5:0]	o_cmd,
 		output	reg	[31:0]	o_arg,
+		output	reg		o_crc_err,
 		//
 		input	wire		i_valid, i_type,
 		output	wire		o_busy,
@@ -87,8 +90,14 @@ module	mdl_sdcmd #(
 	initial o_cmd = 6'h0;
 	initial o_arg = 32'h0;
 	initial	r_incoming = 1'b0;
-	always @(posedge sd_clk)
+	always @(posedge sd_clk or negedge rst_n)
+	if (!rst_n)
 	begin
+		o_cmd_valid = 1'b0;
+		o_cmd = 6'h0;
+		o_arg = 32'h0;
+		r_incoming = 1'b0;
+	end else begin
 		o_cmd_valid <= 1'b0;
 		if (r_incoming)
 		begin
@@ -114,6 +123,28 @@ module	mdl_sdcmd #(
 		end
 	end
 
+	(* keep *) wire	[7:0]	check_crc;
+
+	assign	check_crc = { CMDCRC(ireg[47:8]), 1'b1 };
+
+	initial	o_crc_err <= 1'b0;
+	always @(posedge sd_clk or negedge rst_n)
+	if (!rst_n)
+		o_crc_err <= 1'b0;
+	else begin
+		o_crc_err <= 1'b0;
+		if (r_incoming && icount == 48)
+		begin
+			if (ireg[47:46] != 2'b01)
+				o_crc_err <= 1'b1;
+			
+			if (!ireg[0])
+				o_crc_err <= 1'b1;
+			if (ireg[7:1] != CMDCRC(ireg[47:8]))
+				o_crc_err <= 1'b1;
+		end
+	end
+
 	always @(posedge sd_clk)
 	if (r_incoming && icount == 48)
 	begin
@@ -136,8 +167,14 @@ module	mdl_sdcmd #(
 	initial	oreg   = 0;
 	initial	r_outgoing = 0;
 	initial	ds = 0;
-	always @(posedge sd_clk)
-	if (i_valid && !o_busy)
+	always @(posedge sd_clk or negedge rst_n)
+	if (!rst_n)
+	begin
+		o_collision <= 0;
+		ocount <= 0;
+		oreg   <= 0;
+		r_outgoing <= 0;
+	end else if (i_valid && !o_busy)
 	begin
 		ocount <= (i_type) ? 136 : 48;
 		r_outgoing <= 1;
@@ -162,20 +199,37 @@ module	mdl_sdcmd #(
 		r_outgoing <= (ocount != 0);
 		if (!o_collision)
 		begin
+			// If ...
+			// 1. We are actively sending
+			// 2. !i_drive--we're in open/drain mode
+			// 3. r_cmd--we're sending a 1'b1
+			// 4. but receiving a zero (sd_cmd == 1'b0)
+			// Then we have a collision, and need to back off.
 			o_collision <= r_active && !i_drive
 					&& (sd_cmd === 1'b0 && r_cmd);
 		end
 	end
 
-	always @(negedge sd_clk)
-	if (r_outgoing)
+	// Command data strobe
+	// {{{
+	always @(negedge sd_clk or negedge rst_n)
+	if (!rst_n)
+		ds <= 1'b0;
+	else if (r_outgoing || (i_valid && !o_busy))
 		ds <= #FF_HOLD 1'b1;
 
 	always @(posedge sd_clk)
 		ds <= #FF_HOLD 1'b0;
 
-	always @(negedge sd_clk)
-	if (r_outgoing)
+	assign	sd_ds = ds;
+	// }}}
+
+	always @(negedge sd_clk or negedge rst_n)
+	if (!rst_n)
+	begin
+		r_active <= 1'b0;
+		r_cmd    <= 1'b1;
+	end else if (r_outgoing)
 	begin
 		r_cmd    <= #FF_HOLD oreg[135];
 		r_active <= #FF_HOLD 1'b1;
@@ -184,7 +238,7 @@ module	mdl_sdcmd #(
 		r_cmd    <= 1'b1;
 	end
 
-	assign	sd_cmd = (r_active && (i_drive || !r_cmd)) ? r_cmd : 1'bz;
+	assign	sd_cmd = (r_active && (i_drive || (!r_cmd && !o_collision))) ? r_cmd : 1'bz;
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////

@@ -41,6 +41,8 @@ module mdl_sdtx #(
 		parameter realtime FF_HOLD  = 1.25
 	) (
 		// {{{
+		input	wire		rst_n,
+		//
 		inout	wire		sd_clk,
 		inout	wire	[7:0]	sd_dat,
 		output	wire		sd_ds,
@@ -72,11 +74,20 @@ module mdl_sdtx #(
 	// tx_sreg, r_count, r_crc r_active: positive edge of the clock
 	// {{{
 	// Setup for the positive clock edge
-	always @(negedge sd_clk)
+	always @(negedge sd_clk or negedge rst_n)
+	if (!rst_n)
+		r_ready <= 1'b0;
+	else
 		r_ready <= o_ready;
 
-	always @(negedge sd_clk)
-	if (!i_en && !r_active)
+	always @(negedge sd_clk or negedge rst_n)
+	if (!rst_n)
+	begin
+		tx_sreg <= 0;
+		r_count <= 0;
+		r_crc   <= 0;
+		ds      <= 0;
+	end else if (!i_en && !r_active)
 	begin
 		tx_sreg <= 0;
 		r_count <= 0;
@@ -103,7 +114,7 @@ module mdl_sdtx #(
 					tx_sreg  <= #FF_HOLD { 8'b0, 8'bx, i_data };
 				else
 					tx_sreg  <= #FF_HOLD { 8'b0, i_data, 8'hff };
-				r_count  <= 17 + (i_ddr ? 1:0);
+				r_count  <= 5 + (i_ddr ? 1:0);
 			end else begin // 1b width
 				if (i_ddr)
 					tx_sreg  <= #FF_HOLD { 1'b0, 1'bx, i_data, 6'h3f, 8'hff };
@@ -152,7 +163,7 @@ module mdl_sdtx #(
 			if (!r_crc)
 			begin
 				r_crc <= 1'b1;
-				r_count <= 16;
+				r_count <= 16 + (i_ddr ? 16:0);
 			end else
 				r_active <= 0;
 		end
@@ -163,10 +174,13 @@ module mdl_sdtx #(
 	// {{{
 	initial	r_active = 1'b0;
 	always @(posedge sd_clk)
+	if (rst_n)
 		ds <= #FF_HOLD 1'b0;
 
 	always @(posedge sd_clk)
-	if (i_ddr && r_active)
+	if (!rst_n)
+	begin
+	end else if (i_ddr && r_active)
 	begin
 		r_count <= #FF_HOLD r_count - 1;
 		if (i_width[0])
@@ -197,7 +211,7 @@ module mdl_sdtx #(
 			if (!r_crc)
 			begin
 				r_crc <= #FF_HOLD 1'b1;
-				r_count <= #FF_HOLD 16;
+				r_count <= #FF_HOLD 32;
 			end else
 				r_active <= #FF_HOLD 0;
 		end
@@ -222,18 +236,22 @@ module mdl_sdtx #(
 	// {{{
 	generate for(gk=0; gk<8; gk=gk+1)
 	begin : GEN_CRC
-		reg	[15:0]	pedge_crc, nedge_crc;
+		reg	[15:0]	pedge_crc, nedge_crc;	// DEBUG ONLY signals
 
-		always @(posedge sd_clk)
-		if (!i_en && !r_active)
+		always @(posedge sd_clk or negedge rst_n)
+		if (!rst_n)
+			crc[gk] <= 0;
+		else if (!i_en && !r_active)
 			crc[gk] <= 0;
 		else if (!r_crc)
 			crc[gk] <= STEPCRC(crc[gk], sd_dat[gk]);
 		else
 			crc[gk] <= crc[gk] << 1;
 
-		always @(negedge sd_clk)
-		if (!i_ddr || (!i_en && !r_active) || !i_ddr)
+		always @(negedge sd_clk or negedge rst_n)
+		if (!rst_n)
+			crc[8+gk] <= 0;
+		else if (!i_ddr || (!i_en && !r_active) || !i_ddr)
 			crc[8+gk] <= 0;
 		else if (!r_crc)
 			crc[8+gk] <= STEPCRC(crc[8+gk], sd_dat[gk]);
@@ -241,7 +259,7 @@ module mdl_sdtx #(
 			crc[8+gk] <= crc[8+gk] << 1;
 
 		always @(*) pedge_crc = crc[  gk];
-		always @(*) nedge_crc = crc[4+gk];
+		always @(*) nedge_crc = crc[8+gk];
 
 	end endgenerate
 	// }}}
@@ -257,8 +275,11 @@ module mdl_sdtx #(
 	end endfunction
 	// }}}
 
+	// Keep Verilator happy (it won't be w/o timing support, but ...)
+	// {{{
 	// Verilator lint_off UNUSED
 	wire	unused;
-	assign	unused = &{ i_last };
+	assign	unused = &{ 1'b0, i_last };
 	// Verilator lint_on  UNUSED
+	// }}}
 endmodule

@@ -40,6 +40,8 @@
 // }}}
 module	mdl_sdrx(
 		// {{{
+		input	wire		rst_n,
+		//
 		input	wire		sd_clk,
 		inout	wire	[7:0]	sd_dat,
 		//
@@ -61,7 +63,7 @@ module	mdl_sdrx(
 	parameter		NCRC = 16;
 	parameter [NCRC-1:0]	CRC_POLYNOMIAL  = 16'h1021;
 	reg	[7:0]		rail_fail, eval_rail, half_fail, eval_half;
-	reg			rx_started, rx_complete;
+	reg			rx_started, rx_complete, half_started;
 	reg	[15:0]		rail_count, max_rail_count, full_count;
 	reg	[31:0]		rx_sreg;
 
@@ -81,8 +83,13 @@ module	mdl_sdrx(
 	end
 
 	initial	rx_started = 0;
-	always @(posedge sd_clk)
-	if (!i_rx_en)
+	always @(posedge sd_clk or negedge rst_n)
+	if (!rst_n)
+	begin
+		rx_started  <= 1'b0;
+		rx_complete <= 1'b0;
+		rail_count  <= 0;
+	end else if (!i_rx_en)
 	begin
 		rx_started  <= 1'b0;
 		rx_complete <= 1'b0;
@@ -101,7 +108,7 @@ module	mdl_sdrx(
 		rx_started <= 1'b1;
 
 	always @(negedge sd_clk)
-	if (!rx_started || rx_complete || !i_ddr)
+	if (!rst_n || !rx_started || rx_complete || !i_ddr)
 	begin
 		// Do nothing
 	end else if (rx_started && rail_count[0])
@@ -110,6 +117,13 @@ module	mdl_sdrx(
 		if (rail_count == max_rail_count)
 			rx_complete <= 1'b1;
 	end
+
+	always @(negedge sd_clk)
+	if (!rst_n || !rx_started || rx_complete || !i_ddr)
+	begin
+		half_started <= 1'b0;
+	end else if (rx_started)
+		half_started <= 1'b1;
 
 	generate for(gk=0; gk<8; gk=gk+1)
 	begin : GEN_CRC_CHECK
@@ -120,14 +134,21 @@ module	mdl_sdrx(
 		initial	eval_rail[gk] = 1'b0;
 
 		initial	validpin = 0;
-		always @(posedge sd_clk)
-		if (gk == 0 || (i_width[0] && gk<4) || i_width[1])
+		always @(posedge sd_clk or negedge rst_n)
+		if (!rst_n)
+			validpin <= 0;
+		else if (gk == 0 || (i_width[0] && gk<4) || i_width[1])
 			validpin <= 1;
 		else
 			validpin <= 0;
 
-		always @(posedge sd_clk)
-		if (!i_rx_en || !rx_started || !validpin)
+		always @(posedge sd_clk or negedge rst_n)
+		if (!rst_n)
+		begin
+			crcfill <= 0;
+			eval_rail[gk] <= 1'b0;
+			rail_fail[gk] <= 1'b0;
+		end else if (!i_rx_en || !rx_started || !validpin)
 		begin
 			crcfill <= 0;
 			eval_rail[gk] <= 1'b0;
@@ -142,15 +163,20 @@ module	mdl_sdrx(
 			rail_fail[gk] <= (crcfill != 0) ||(sd_dat[gk] === 1'b0);
 		end
 
-		always @(negedge sd_clk)
-		if (!i_rx_en || !rx_started || !validpin || !i_ddr)
+		always @(negedge sd_clk or negedge rst_n)
+		if (!rst_n)
+		begin
+			halffill <= 0;
+			eval_half[gk] <= 1'b0;
+			half_fail[gk] <= 1'b0;
+		end else if (!i_rx_en || !half_started || !validpin || !i_ddr)
 		begin
 			halffill <= 0;
 			eval_half[gk] <= 1'b0;
 			half_fail[gk] <= 1'b0;
 		end else if (rx_started && !rx_complete)
 		begin
-			halffill <= STEPCRC(crcfill, sd_dat[gk] !== 1'b0);
+			halffill <= STEPCRC(halffill, sd_dat[gk] !== 1'b0);
 			eval_half[gk] <= 1'b0;
 			half_fail[gk] <= 1'b0;
 		end else if (rx_started && !eval_half[gk]) // && rx_complete
@@ -162,8 +188,10 @@ module	mdl_sdrx(
 
 	end endgenerate
 
-	always @(posedge sd_clk)
-	if (!i_rx_en)
+	always @(posedge sd_clk or negedge rst_n)
+	if (!rst_n)
+		rx_sreg <= 0;
+	else if (!i_rx_en)
 		rx_sreg <= 0;
 	else if (rx_started && !rx_complete)
 	begin
@@ -190,7 +218,7 @@ module	mdl_sdrx(
 	end
 
 	always @(negedge sd_clk)
-	if (i_ddr && rx_started && !rx_complete)
+	if (rst_n && i_ddr && rx_started && !rx_complete)
 	begin
 		if (i_width[0])
 		begin
@@ -223,30 +251,41 @@ module	mdl_sdrx(
 		full_count = rail_count;
 
 	initial	o_valid = 0;
-	always @(posedge sd_clk)
-	if (!i_rx_en)
+	always @(posedge sd_clk or negedge rst_n)
+	if (!rst_n)
+		o_valid <= 1'b0;
+	else if (!i_rx_en)
 		o_valid <= 1'b0;
 	else if (full_count != 0 && full_count[4:0] == 0 && { 5'h0, full_count[15:3] } <= i_len)
 		o_valid <= 1'b1;
 	else
 		o_valid <= 1'b0;
 
-	always @(posedge sd_clk)
-	if (!i_rx_en)
-		o_data <= 32'b0;
+reg [31:0]	r_data;
+	always @(posedge sd_clk or negedge rst_n)
+	if (!rst_n)
+		r_data <= 32'b0;
+	else if (!i_rx_en)
+		r_data <= 32'b0;
 	else if (full_count != 0 && full_count[4:0] == 0)
-		o_data <= rx_sreg;
+		r_data <= rx_sreg;
+
+always @(*)	o_data = !o_valid ? r_data : (o_last) ? 32'h01 : 32'h0;
 
 	initial	o_last = 0;
-	always @(posedge sd_clk)
-	if (!i_rx_en)
+	always @(posedge sd_clk or negedge rst_n)
+	if (!rst_n)
+		o_last <= 1'b0;
+	else if (!i_rx_en)
 		o_last <= 1'b0;
 	else if (full_count != 0 && full_count[4:0] == 0)
 		o_last <= ({ 5'h0, full_count[15:3] } >= i_len);
 
 	initial	{ o_good, o_err } = 0;
-	always @(posedge sd_clk)
-	if (!i_rx_en)
+	always @(posedge sd_clk or negedge rst_n)
+	if (!rst_n)
+		{ o_good, o_err } <= 0;
+	else if (!i_rx_en)
 		{ o_good, o_err } <= 0;
 	else if ( ((i_width[0] && (&eval_rail[3:0]))
 				|| (i_width[1] && (&eval_rail))

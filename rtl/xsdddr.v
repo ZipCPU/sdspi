@@ -72,11 +72,18 @@ module	xsdddr #(
 `ifdef	OPENSIM
 	// {{{
 	reg	[1:0]	r_out;
+	reg		r_pin;
 
 	always @(posedge i_clk)
 		r_out <= i_data;
 
-	assign	w_out = (i_clk) ? r_out[1] : r_out[0];
+	always @(posedge i_clk)
+		r_pin <= i_data[1];
+	always @(negedge i_clk)
+		r_pin <= r_out[0];
+
+	// assign	w_out = (i_clk) ? r_out[1] : r_out[0];
+	assign	w_out = r_pin;
 	assign	io_pin_tristate = high_z;
 	assign	o_pin = w_out;
 

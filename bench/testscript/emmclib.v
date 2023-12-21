@@ -58,7 +58,9 @@ localparam [31:0]	EMMC_DS    = 32'h000100,
 			EMMC_DSCMD = 32'h200300,
 			EMMC_W1    = 32'h000000,
 			EMMC_W4    = 32'h000400,
-			EMMC_W8    = 32'h000800;
+			EMMC_W8    = 32'h000800,
+			EMMC_WTEST = 32'h000c00,
+			EMMC_SHFTMSK=32'h1f0000;
 
 localparam [31:0]	SPEED_100KHZ   = 32'h00fc,
 			SPEED_200KHZ   = 32'h007f,
@@ -69,7 +71,8 @@ localparam [31:0]	SPEED_100KHZ   = 32'h00fc,
 			SPEED_25MHZ    = 32'h0003,
 			SPEED_50MHZ    = 32'h0002,
 			SPEED_100MHZ   = 32'h0001,
-			SPEED_200MHZ   = 32'h0000;
+			SPEED_200MHZ   = 32'h0000,
+			SPEED_CLKOFF   = 32'h8000;
 
 localparam [31:0]	SPEED_DS     = 32'h03000|SPEED_25MHZ,	// Push/Pull,
 			SPEED_HSSDR  = 32'h03000|SPEED_50MHZ,	// | push/pull

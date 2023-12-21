@@ -39,16 +39,49 @@
 // }}}
 
 task	testscript;
-	reg	[31:0]	read_data, op_cond, r6;
+	reg	[31:0]	read_data, op_cond, r6, sample_shift;
 	reg		sector_addressing;
 	reg	[15:0]	rca;
 	reg	[127:0]	CID, CSD;
+	integer		numio;
+	reg		opt_ds;
+	reg	[7:0]	max_spd;
 begin
 	// u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_100KHZ | EMMC_W1);
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_1MHZ | EMMC_W1);
+
+	// Read our capabilities back from the controller
+	// {{{
+	numio = 8; opt_ds = 1'b1;
+	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_200MHZ | EMMC_WTEST
+				| SPEED_CLKOFF | EMMC_DS | EMMC_DDR
+				| EMMC_SHFTMSK);
+	do begin
+		u_bfm.readio(ADDR_SDPHY, read_data);
+	end while(read_data[7:0] > 8'h2);
+	u_bfm.readio(ADDR_SDPHY, read_data);
+	case(read_data[11:10])
+	2'b01: numio = 4;
+	2'b10: numio = 8;
+	default: numio = 1;
+	endcase
+
+	opt_ds = read_data[8];
+
+	max_spd = read_data[7:0];
+	if (3'h0 == read_data[18:16])
+		sample_shift = { 11'h0, 5'h08, 16'h0 };
+	else
+		sample_shift = { 11'h0, 5'h00, 16'h0 };
+	// }}}
+
+	// Now set up for the capabilities we will be using
+	// {{{
+	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_1MHZ | EMMC_W1 | sample_shift);
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
 	end while(read_data[7:0] != SPEED_1MHZ[7:0]);
+	// }}}
+
 	u_bfm.readio(ADDR_SDCARD, read_data);
 	emmc_go_idle;
 
@@ -116,7 +149,7 @@ begin
 
 	// Test at SPEED_DS=25MHz SDR, 1b
 	// {{{
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_DS | EMMC_W1);
+	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_DS | EMMC_W1 | sample_shift);
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
 	end while(read_data[7:0] != SPEED_DS[7:0]);
@@ -133,11 +166,13 @@ begin
 	$display("1b 25MHz SDR TRANSFER TEST: Passed");
 	// }}}
 
+	if (numio >= 4)
+	begin
 	// Test at SPEED_DS=25MHZ SDR, 4b
 	// {{{
 	emmc_set_bus_width(1'b0, 1'b0, 2'b01);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_DS | EMMC_W4);
+	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_DS | EMMC_W4 | sample_shift);
 
 	emmc_test_bus;
 
@@ -150,12 +185,15 @@ begin
 
 	$display("4b 25MHz SDR TRANSFER TEST: Passed");
 	// }}}
+	end
 
+	if (numio >= 8)
+	begin
 	// Test at SPEED_DS=25MHZ SDR, 8b
 	// {{{
 	emmc_set_bus_width(1'b0, 1'b0, 2'b10);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_DS | EMMC_W8);
+	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_DS | EMMC_W8 | sample_shift);
 
 	emmc_test_bus;
 
@@ -168,12 +206,13 @@ begin
 
 	$display("8b 25MHz SDR TRANSFER TEST: Passed");
 	// }}}
+	end
 
 	// Test at SPEED_HSSDR=50MHZ SDR, 1b
 	// {{{
 	emmc_set_bus_width(1'b0, 1'b0, 2'b00);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | EMMC_W1);
+	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | EMMC_W1 | sample_shift);
 
 	emmc_test_bus;
 
@@ -188,201 +227,228 @@ begin
 	$display("1b 50MHz SDR TRANSFER TEST: Passed");
 	// }}}
 
-	// Test at SPEED_HSSDR=50MHZ SDR, 4b
-	// {{{
-	emmc_set_bus_width(1'b0, 1'b0, 2'b01);
+	if (numio >= 4)
+	begin
+		// Test at SPEED_HSSDR=50MHZ SDR, 4b
+		// {{{
+		emmc_set_bus_width(1'b0, 1'b0, 2'b01);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | EMMC_W4);
+		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | EMMC_W4 | sample_shift);
 
-	emmc_test_bus;
+		emmc_test_bus;
 
-	emmc_send_random_block(32'h0b * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h09 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h0a * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h08 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h0b * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h09 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h0a * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h08 * (sector_addressing ? 1 : 512));
 
-	emmc_read_block(32'h0a * (sector_addressing ? 1 : 512));
-	emmc_read_block(32'h0b * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h0a * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h0b * (sector_addressing ? 1 : 512));
 
-	$display("4b 50MHz SDR TRANSFER TEST: Passed");
-	// }}}
+		$display("4b 50MHz SDR TRANSFER TEST: Passed");
+		// }}}
+	end
 
-	// Test at SPEED_HSSDR=50MHZ SDR, 8b
-	// {{{
-	emmc_set_bus_width(1'b0, 1'b0, 2'b10);
+	if (numio >= 8)
+	begin
+		// Test at SPEED_HSSDR=50MHZ SDR, 8b
+		// {{{
+		emmc_set_bus_width(1'b0, 1'b0, 2'b10);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | EMMC_W8);
+		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | EMMC_W8 | sample_shift);
 
-	emmc_test_bus;
+		emmc_test_bus;
 
-	emmc_send_random_block(32'h0b * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h09 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h0a * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h08 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h0b * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h09 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h0a * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h08 * (sector_addressing ? 1 : 512));
 
-	emmc_read_block(32'h0a * (sector_addressing ? 1 : 512));
-	emmc_read_block(32'h0b * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h0a * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h0b * (sector_addressing ? 1 : 512));
 
-	$display("8b 50MHz SDR TRANSFER TEST: Passed");
-	// }}}
+		$display("8b 50MHz SDR TRANSFER TEST: Passed");
+		// }}}
+	end
 
 	// There is no 1b DDR configuration
 
-	// Test at SPEED_HSDDR=50MHZ DDR, 4b
-	// {{{
-	emmc_switch(8'd185, 8'h1);
-	emmc_set_bus_width(1'b0, 1'b1, 2'b01);
+	if (numio >= 4)
+	begin
+		// Test at SPEED_HSDDR=50MHZ DDR, 4b
+		// {{{
+		emmc_switch(8'd185, 8'h1);
+		emmc_set_bus_width(1'b0, 1'b1, 2'b01);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSDDR | EMMC_W4);
+		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSDDR | EMMC_W4 | sample_shift);
 
-	emmc_test_bus;
+		emmc_test_bus;
 
-	emmc_send_random_block(32'h0b * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h09 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h0a * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h08 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h0b * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h09 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h0a * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h08 * (sector_addressing ? 1 : 512));
 
-	emmc_read_block(32'h0a * (sector_addressing ? 1 : 512));
-	emmc_read_block(32'h0b * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h0a * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h0b * (sector_addressing ? 1 : 512));
 
-	$display("4b 50MHz DDR TRANSFER TEST: Passed");
-	// }}}
+		$display("4b 50MHz DDR TRANSFER TEST: Passed");
+		// }}}
+	end
 
-	// Test at SPEED_HSDDR=50MHZ DDR, 8b
-	// {{{
-	emmc_switch(8'd185, 8'h1);
-	emmc_set_bus_width(1'b0, 1'b1, 2'b10);
+	if (numio >= 8)
+	begin
+		// Test at SPEED_HSDDR=50MHZ DDR, 8b
+		// {{{
+		emmc_switch(8'd185, 8'h1);
+		emmc_set_bus_width(1'b0, 1'b1, 2'b10);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSDDR | EMMC_W8);
+		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSDDR | EMMC_W8 | sample_shift);
 
-	emmc_test_bus;
+		emmc_test_bus;
 
-	emmc_send_random_block(32'h0b * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h09 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h0a * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h08 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h0b * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h09 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h0a * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h08 * (sector_addressing ? 1 : 512));
 
-	emmc_read_block(32'h0a * (sector_addressing ? 1 : 512));
-	emmc_read_block(32'h0b * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h0a * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h0b * (sector_addressing ? 1 : 512));
 
-	$display("8b 50MHz DDR TRANSFER TEST: Passed");
-	// }}}
+		$display("8b 50MHz DDR TRANSFER TEST: Passed");
+		// }}}
+	end
 
-	// Test at SPEED_SDR100=100MHZ SDR, 1b
-	// {{{
-	emmc_set_bus_width(1'b0, 1'b0, 2'b0);
+	if (max_spd <= 1)
+	begin
+		// Test at SPEED_SDR100=100MHZ SDR, 1b
+		// {{{
+		emmc_set_bus_width(1'b0, 1'b0, 2'b0);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | EMMC_W1);
+		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | EMMC_W1 | sample_shift);
 
-	emmc_test_bus;
+		emmc_test_bus;
 
-	emmc_send_random_block(32'h0b * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h09 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h0a * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h08 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h0b * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h09 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h0a * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h08 * (sector_addressing ? 1 : 512));
 
-	emmc_read_block(32'h0a * (sector_addressing ? 1 : 512));
-	emmc_read_block(32'h0b * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h0a * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h0b * (sector_addressing ? 1 : 512));
 
-	$display("1b 100MHz SDR TRANSFER TEST: Passed");
-	// }}}
+		$display("1b 100MHz SDR TRANSFER TEST: Passed");
+		// }}}
 
-	// Test at SPEED_SDR100=100MHZ SDR, 4b
-	// {{{
-	emmc_set_bus_width(1'b0, 1'b0, 2'b01);
+		if (numio >= 4)
+		begin
+			// Test at SPEED_SDR100=100MHZ SDR, 4b
+			// {{{
+			emmc_set_bus_width(1'b0, 1'b0, 2'b01);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | EMMC_W4);
+			u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | EMMC_W4 | sample_shift);
 
-	emmc_test_bus;
+			emmc_test_bus;
 
-	emmc_send_random_block(32'h0b * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h09 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h0a * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h08 * (sector_addressing ? 1 : 512));
+			emmc_send_random_block(32'h0b * (sector_addressing ? 1 : 512));
+			emmc_send_random_block(32'h09 * (sector_addressing ? 1 : 512));
+			emmc_send_random_block(32'h0a * (sector_addressing ? 1 : 512));
+			emmc_send_random_block(32'h08 * (sector_addressing ? 1 : 512));
 
-	emmc_read_block(32'h0a * (sector_addressing ? 1 : 512));
-	emmc_read_block(32'h0b * (sector_addressing ? 1 : 512));
+			emmc_read_block(32'h0a * (sector_addressing ? 1 : 512));
+			emmc_read_block(32'h0b * (sector_addressing ? 1 : 512));
 
-	$display("4b 100MHz SDR TRANSFER TEST: Passed");
-	// }}}
+			$display("4b 100MHz SDR TRANSFER TEST: Passed");
+			// }}}
+		end
 
-	// Test at SPEED_SDR100=100MHZ SDR, 8b
-	// {{{
-	emmc_set_bus_width(1'b0, 1'b0, 2'b10);
+		if (numio >= 8)
+		begin
+			// Test at SPEED_SDR100=100MHZ SDR, 8b
+			// {{{
+			emmc_set_bus_width(1'b0, 1'b0, 2'b10);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | EMMC_W8);
+			u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | EMMC_W8 | sample_shift);
 
-	emmc_test_bus;
+			emmc_test_bus;
 
-	emmc_send_random_block(32'h0c * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h0d * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h0e * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h0f * (sector_addressing ? 1 : 512));
+			emmc_send_random_block(32'h0c * (sector_addressing ? 1 : 512));
+			emmc_send_random_block(32'h0d * (sector_addressing ? 1 : 512));
+			emmc_send_random_block(32'h0e * (sector_addressing ? 1 : 512));
+			emmc_send_random_block(32'h0f * (sector_addressing ? 1 : 512));
 
-	emmc_read_block(32'h0d * (sector_addressing ? 1 : 512));
-	emmc_read_block(32'h0c * (sector_addressing ? 1 : 512));
+			emmc_read_block(32'h0d * (sector_addressing ? 1 : 512));
+			emmc_read_block(32'h0c * (sector_addressing ? 1 : 512));
 
-	$display("8b 100MHz SDR TRANSFER TEST: Passed");
-	// }}}
+			$display("8b 100MHz SDR TRANSFER TEST: Passed");
+			// }}}
+		end
+	end
 
-	// Test at SPEED_SDR200, fastest SDR speed=200MHz SDR, 8b
-	// {{{
-	emmc_switch(8'd185, 8'h2);
-	emmc_set_bus_width(1'b0, 1'b0, 2'b10);
+	if (max_spd == 0 && numio >= 8)
+	begin
+		// Test at SPEED_SDR200, fastest SDR speed=200MHz SDR, 8b
+		// {{{
+		emmc_switch(8'd185, 8'h2);
+		emmc_set_bus_width(1'b0, 1'b0, 2'b10);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR200 | EMMC_W8);
+		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR200 | EMMC_W8 | sample_shift);
 
-	emmc_test_bus;
+		emmc_test_bus;
 
-	emmc_send_random_block(32'h10 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h11 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h12 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h13 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h10 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h11 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h12 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h13 * (sector_addressing ? 1 : 512));
 
-	emmc_read_block(32'h10 * (sector_addressing ? 1 : 512));
-	emmc_read_block(32'h11 * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h10 * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h11 * (sector_addressing ? 1 : 512));
 
-	$display("8b 200MHz SDR TRANSFER TEST: Passed");
-	// }}}
+		$display("8b 200MHz SDR TRANSFER TEST: Passed");
+		// }}}
+	end
 
-	// Test at SPEED_HS400, fastest DDR speed=200MHz + DS, 8b
-	// {{{
-	emmc_switch(8'd185, 8'h3);
-	emmc_set_bus_width(1'b0, 1'b1, 2'b10);
+	if (max_spd == 0 && opt_ds && numio >= 8)
+	begin
+		// Test at SPEED_HS400, fastest DDR speed=200MHz + DS, 8b
+		// {{{
+		emmc_switch(8'd185, 8'h3);
+		emmc_set_bus_width(1'b0, 1'b1, 2'b10);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B|SPEED_HS400 | EMMC_W8);
+		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B|SPEED_HS400 | EMMC_W8 | sample_shift);
 
-	emmc_test_bus;
+		emmc_test_bus;
 
-	emmc_send_random_block(32'h10 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h11 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h12 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h13 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h10 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h11 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h12 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h13 * (sector_addressing ? 1 : 512));
 
-	emmc_read_block(32'h10 * (sector_addressing ? 1 : 512));
-	emmc_read_block(32'h11 * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h10 * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h11 * (sector_addressing ? 1 : 512));
 
-	$display("8b 200MHz DDR+DS TRANSFER TEST: Passed");
-	// }}}
+		$display("8b 200MHz DDR+DS TRANSFER TEST: Passed");
+		// }}}
 
-	// Test at SPEED_HS400 + Enhanced DDR, SPEED=200MHz + EnhDS, 8b
-	// {{{
-	emmc_set_bus_width(1'b1, 1'b1, 2'b10);
+		// Test at SPEED_HS400 + Enhanced DDR, SPEED=200MHz + EnhDS, 8b
+		// {{{
+		emmc_set_bus_width(1'b1, 1'b1, 2'b10);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B|EMMC_DSCMD|SPEED_HS400 | EMMC_W8);
+		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B|EMMC_DSCMD|SPEED_HS400 | EMMC_W8 | sample_shift);
 
-	emmc_test_bus;
+		emmc_test_bus;
 
-	emmc_send_random_block(32'h10 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h11 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h12 * (sector_addressing ? 1 : 512));
-	emmc_send_random_block(32'h13 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h10 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h11 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h12 * (sector_addressing ? 1 : 512));
+		emmc_send_random_block(32'h13 * (sector_addressing ? 1 : 512));
 
-	emmc_read_block(32'h10 * (sector_addressing ? 1 : 512));
-	emmc_read_block(32'h11 * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h10 * (sector_addressing ? 1 : 512));
+		emmc_read_block(32'h11 * (sector_addressing ? 1 : 512));
 
-	$display("8b 200MHz DDR+EDS TRANSFER TEST: Passed");
-	// }}}
+		$display("8b 200MHz DDR+EDS TRANSFER TEST: Passed");
+		// }}}
+	end
 
 	repeat(512)
 		@(posedge clk);

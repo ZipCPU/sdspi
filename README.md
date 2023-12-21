@@ -79,11 +79,13 @@ register.
   project](https://github.com/ZipCPU/eth10g), where it is being used to control
   both an SD card as well as an eMMC chip.  Many of the components of this IP
   have formal proofs, which they are known to pass.  Notably missing among the
-  component proofs is a proof of the front end.  Both
-  [Verilog](bench/verilog/mdl_sdio.v) and [C++](bench/cpp/sdiosim.cpp) models
-  have been built which can be used to test this controller in simulation,
-  although only the [Verilog SDIO model](bench/verilog/mdl_sdio.v) has been
-  tested to date.
+  component proofs is a proof of the [front end](rtl/sdfrontend.v).  The
+  [front end](rtl/sdfrontend.v)'s verification depends upon integrated
+  simulation testing.  Both [Verilog](bench/verilog/mdl_sdio.v) and
+  [C++](bench/cpp/sdiosim.cpp) models have been built which can be used to
+  test this controller in simulation, although only the Verilog
+  [SDIO](bench/verilog/mdl_sdio.v) and [eMMC](bench/verilog/mdl_emmc.v) models
+  have been tested to date.
 
 For more information, please consult the [SDIO user guide](doc/sdio.pdf).
 

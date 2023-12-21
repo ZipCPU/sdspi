@@ -137,10 +137,15 @@ module	sdfrontend #(
 		// SERDES support, there's no support for the DS (data strobe)
 		// pin either.  Think of this as a compatibility mode.
 		//
-		// Fastest clock supported = incoming clock speed / 2
+		// Fastest clock supported = incoming clock speed / 2.  That's
+		// also the fastest clock supported *if you get lucky*.  It's
+		// possible that there won't be enough sub-clock resolution
+		// to land close enough to the middle of the eye at this
+		// frequency.
 		//
 		wire		next_pedge, next_dedge;
-		reg		resp_started, io_started, last_ck;
+		reg		resp_started, last_ck;
+		reg	[1:0]	io_started;
 		reg		r_cmd_data, r_cmd_strb, r_rx_strb;
 		reg	[7:0]	r_rx_data;
 		reg	[1:0]	ck_sreg, pck_sreg, ck_psreg;
@@ -225,7 +230,7 @@ module	sdfrontend #(
 			cmd_sample_ck = 0;
 		else
 			// Verilator lint_off WIDTH
-			cmd_sample_ck = { pck_sreg[1:0], next_pedge } >> i_sample_shift;
+			cmd_sample_ck = { pck_sreg[1:0], next_pedge } >> i_sample_shift[4:3];
 			// Verilator lint_on  WIDTH
 		// }}}
 
@@ -239,9 +244,11 @@ module	sdfrontend #(
 
 		always @(posedge i_clk)
 		if (i_reset || i_data_en || !i_rx_en || i_cfg_ds)
-			io_started <= 1'b0;
+			io_started <= 2'b0;
+		else if (i_cfg_ddr && io_started[0] && sample_ck)
+			io_started <= 2'b11;
 		else if (!i_dat[0] && sample_pck)
-			io_started <= 1'b1;
+			io_started <= (i_cfg_ddr) ? 2'b01 : 2'b11;
 
 		// dat0_busy, wait_for_busy
 		// {{{
@@ -275,7 +282,7 @@ module	sdfrontend #(
 
 			if (i_data_en || sample_ck == 0 || i_cfg_ds)
 				r_rx_strb <= 1'b0;
-			else if (io_started)
+			else if (io_started[1])
 				r_rx_strb <= 1'b1;
 			else
 				r_rx_strb <= 1'b0;
@@ -362,6 +369,7 @@ module	sdfrontend #(
 				r_cmd_strb, r_cmd_data, r_rx_strb;
 		reg	[1:0]	io_started;
 		reg	[7:0]	r_rx_data;
+		reg	[1:0]	busy_delay;
 		// Verilator lint_off UNUSED
 		wire		io_clk_tristate, ign_clk;
 		assign		ign_clk = o_ck;
@@ -517,7 +525,7 @@ module	sdfrontend #(
 		end else if (io_started == 2'b01 && sample_ck != 0)
 			io_started <= 2'b11;
 
-		// dat0_busy, wait_for_busy
+		// dat0_busy, wait_for_busy, busy_delay
 		// {{{
 		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
@@ -525,6 +533,12 @@ module	sdfrontend #(
 		begin
 			dat0_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
+			busy_delay <= -1;
+		end else if (busy_delay != 0)
+		begin
+			dat0_busy <= 1'b0;
+			wait_for_busy <= 1'b1;
+			busy_delay <= busy_delay - 1;
 		end else if (wait_for_busy && (cmd_sample_ck != 0)
 				&& (cmd_sample_ck & {w_dat[8],w_dat[0]})==2'b0)
 		begin
@@ -857,7 +871,7 @@ module	sdfrontend #(
 		end
 		// }}}
 
-		// o_data_busy, dat0_busy, wait_for_busy
+		// o_data_busy, dat0_busy, wait_for_busy, busy_delay
 		// {{{
 		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)

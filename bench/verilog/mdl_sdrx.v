@@ -261,16 +261,13 @@ module	mdl_sdrx(
 	else
 		o_valid <= 1'b0;
 
-reg [31:0]	r_data;
 	always @(posedge sd_clk or negedge rst_n)
 	if (!rst_n)
-		r_data <= 32'b0;
+		o_data <= 32'b0;
 	else if (!i_rx_en)
-		r_data <= 32'b0;
+		o_data <= 32'b0;
 	else if (full_count != 0 && full_count[4:0] == 0)
-		r_data <= rx_sreg;
-
-always @(*)	o_data = !o_valid ? r_data : (o_last) ? 32'h01 : 32'h0;
+		o_data <= rx_sreg;
 
 	initial	o_last = 0;
 	always @(posedge sd_clk or negedge rst_n)

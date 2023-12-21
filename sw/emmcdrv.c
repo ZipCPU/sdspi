@@ -145,9 +145,7 @@ static	void	emmc_go_idle(EMMCDRV *dev);
 static	void	emmc_all_send_cid(EMMCDRV *dev);
 static	uint32_t emmc_send_rca(EMMCDRV *dev);
 static	void	emmc_select_card(EMMCDRV *dev);	// CMD7
-static	uint32_t emmc_send_if_cond(EMMCDRV *dev, uint32_t ifcond); // CMD8
 static	uint32_t emmc_send_op_cond(EMMCDRV *dev, uint32_t opcond); // ACMD41
-static	void	emmc_set_bus_width(EMMCDRV *dev, uint32_t width); // CMD6
 static	void	emmc_send_app_cmd(EMMCDRV *dev);  // CMD 55
 static	uint32_t emmc_read_ocr(EMMCDRV *dev, uint32_t width);	  // CMD 58
 static	void	emmc_dump_cid(EMMCDRV *dev);
@@ -304,28 +302,6 @@ void	emmc_select_card(EMMCDRV *dev) {			// CMD7
 }
 // }}}
 
-uint32_t emmc_send_if_cond(EMMCDRV *dev, uint32_t ifcond) { // CMD8
-	// {{{
-	unsigned	c, r;
-
-	dev->d_dev->sd_data = ifcond;
-	dev->d_dev->sd_cmd = SDIO_READREG+8;
-
-	emmc_wait_while_busy(dev);
-
-	c = dev->d_dev->sd_cmd;
-	r = dev->d_dev->sd_data;
-
-	if (EMMCDEBUG && EMMCINFO) {
-		txstr("CMD8:    SEND_IF_COND\n");
-		txstr("  Cmd:     "); txhex(c); txstr("\n");
-		txstr("  Data:    "); txhex(r); txstr("\n");
-	}
-
-	return r;
-}
-// }}}
-
 uint32_t emmc_send_op_cond(EMMCDRV *dev, uint32_t opcond) { // CMD1
 	// {{{
 	unsigned	c, r;
@@ -345,28 +321,6 @@ uint32_t emmc_send_op_cond(EMMCDRV *dev, uint32_t opcond) { // CMD1
 	}
 
 	return r;
-}
-// }}}
-
-void	emmc_set_bus_width(EMMCDRV *dev, uint32_t width) { // CMD6
-	// {{{
-	emmc_send_app_cmd(dev);
-
-	dev->d_dev->sd_data = width;
-	dev->d_dev->sd_cmd = SDIO_READREG+6;
-
-	emmc_wait_while_busy(dev);
-
-	if (EMMCDEBUG && EMMCINFO) {
-		unsigned	c, r;
-
-		c = dev->d_dev->sd_cmd;
-		r = dev->d_dev->sd_data;
-
-		txstr("CMD6:    SET_BUS_WIDTH\n");
-		txstr("  Cmd:     "); txhex(c); txstr("\n");
-		txstr("  Data:    "); txhex(r); txstr("\n");
-	}
 }
 // }}}
 

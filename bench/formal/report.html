@@ -1,7 +1,7 @@
 <HTML><HEAD><TITLE>Formal Verification Report</TITLE></HEAD>
 <BODY>
 <H1 align=center>SD Controller Formal Verification Report</H1>
-<H2 align=center>20230902</H2>
+<H2 align=center>20231227</H2>
 <TABLE border>
 <TR><TH>Status</TH><TH>Component</TD><TH>Proof</TH><TH>Component description</TH></TR>
 <TR></TR>
@@ -11,11 +11,15 @@
 <TR><TD bgcolor=#caeec8>Pass</TD><TD>llsdspi</TD><TD>_prfc</TD></TR>
 <TR><TD bgcolor=#caeec8>7 Cover points</TD><TD>llsdspi</TD><TD>_cvr</TD></TR>
 <TR></TR>
+<TR><TD bgcolor=#caeec8>Pass</TD><TD>sdaxil</TD><TD>_prf</TD><TD rowspan=3>SDIO AXI-Lite Bus handler</TD></TR>
+<TR><TD bgcolor=#caeec8>Pass</TD><TD>sdaxil</TD><TD>_prfds</TD></TR>
+<TR><TD bgcolor=#caeec8>Pass</TD><TD>sdaxil</TD><TD>_prfdr</TD></TR>
+<TR></TR>
 <TR><TD bgcolor=#caeec8>Pass</TD><TD>sdckgen</TD><TD>_prf</TD><TD rowspan=1>SDIO Divided clock generator</TD></TR>
 <TR></TR>
-<TR><TD bgcolor=#caeec8>Pass</TD><TD>sdcmd</TD><TD>_prf</TD><TD rowspan=3>SDIO CMD wire controller</TD></TR>
-<TR><TD bgcolor=#caeec8>Pass</TD><TD>sdcmd</TD><TD>_prfds</TD></TR>
-<TR><TD bgcolor=#caeec8>8 Cover points</TD><TD>sdcmd</TD><TD>_cvr</TD></TR>
+<TR><TD bgcolor=#ffa4a4>FAIL</TD><TD>sdcmd</TD><TD>_prf</TD><TD rowspan=3>SDIO CMD wire controller</TD></TR>
+<TR><TD bgcolor=#ffa4a4>FAIL</TD><TD>sdcmd</TD><TD>_prfds</TD></TR>
+<TR><TD bgcolor=#ffa4a4>FAIL</TD><TD>sdcmd</TD><TD>_cvr</TD></TR>
 <TR></TR>
 <TR><TD bgcolor=#caeec8>Pass</TD><TD>sdrxframe</TD><TD>_prfs</TD><TD rowspan=3>SDIO receive data handler</TD></TR>
 <TR><TD bgcolor=#caeec8>25 Cover points</TD><TD>sdrxframe</TD><TD>_cvr</TD></TR>
@@ -26,7 +30,7 @@
 <TR><TD bgcolor=#caeec8>34 Cover points</TD><TD>sdtxframe</TD><TD>_cvr</TD><TD rowspan=2>SDIO transmit data controller</TD></TR>
 <TR><TD bgcolor=#caeec8>Pass</TD><TD>sdtxframe</TD><TD>_prf</TD></TR>
 <TR></TR>
-<TR><TD bgcolor=#caeec8>Pass</TD><TD>sdwb</TD><TD>_prfdr</TD><TD rowspan=3>SDIO Bus handler</TD></TR>
+<TR><TD bgcolor=#caeec8>Pass</TD><TD>sdwb</TD><TD>_prfdr</TD><TD rowspan=3>SDIO Wishbone Bus handler</TD></TR>
 <TR><TD bgcolor=#caeec8>Pass</TD><TD>sdwb</TD><TD>_prfds</TD></TR>
 <TR><TD bgcolor=#caeec8>Pass</TD><TD>sdwb</TD><TD>_prf</TD></TR>
 <TR></TR>

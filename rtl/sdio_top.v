@@ -55,8 +55,37 @@ module sdio_top #(
 	) (
 		// {{{
 		input	wire			i_clk, i_reset, i_hsclk,
-		// Control (Wishbone) interface
+		// Control interface
 		// {{{
+`ifdef	SDIO_AXIL
+		// (Optional) AXI-Lite interface
+		// {{{
+		input	wire		S_AXIL_AWVALID,
+		output	wire		S_AXIL_AWREADY,
+		input	wire	[4:0]	S_AXIL_AWADDR,
+		input	wire	[2:0]	S_AXIL_AWPROT,
+		//
+		input	wire		S_AXIL_WVALID,
+		output	wire		S_AXIL_WREADY,
+		input	wire	[31:0]	S_AXIL_WDATA,
+		input	wire	[3:0]	S_AXIL_WSTRB,
+		//
+		output	wire		S_AXIL_BVALID,
+		input	wire		S_AXIL_BREADY,
+		output	wire	[1:0]	S_AXIL_BRESP,
+		//
+		input	wire		S_AXIL_ARVALID,
+		output	wire		S_AXIL_ARREADY,
+		input	wire	[4:0]	S_AXIL_ARADDR,
+		input	wire	[2:0]	S_AXIL_ARPROT,
+		//
+		output	wire		S_AXIL_RVALID,
+		input	wire		S_AXIL_RREADY,
+		output	wire	[31:0]	S_AXIL_RDATA,
+		output	wire	[1:0]	S_AXIL_RRESP,
+		// }}}
+`else
+		// Control (Wishbone) interface
 		input	wire		i_wb_cyc, i_wb_stb, i_wb_we,
 		input	wire	[2:0]	i_wb_addr,
 		input	wire [MW-1:0]	i_wb_data,
@@ -64,6 +93,7 @@ module sdio_top #(
 		//
 		output	wire		o_wb_stall, o_wb_ack,
 		output	wire [MW-1:0]	o_wb_data,
+`endif
 		// }}}
 		// IO interface
 		// {{{
@@ -95,7 +125,7 @@ module sdio_top #(
 	wire	[4:0]	cfg_sample_shift;
 	wire	[7:0]	sdclk;
 		//
-	wire		cmd_en, pp_cmd;
+	wire		cmd_en, pp_cmd, cmd_collision;
 	wire	[1:0]	cmd_data;
 		//
 	wire		data_en, pp_data, rx_en;
@@ -125,6 +155,36 @@ module sdio_top #(
 	) u_sdio (
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset),
+		// Control interface
+		// {{{
+`ifdef	SDIO_AXIL
+		// AXI-Lite
+		// {{{
+		.S_AXIL_AWVALID(S_AXIL_AWVALID),
+		.S_AXIL_AWREADY(S_AXIL_AWREADY),
+		.S_AXIL_AWADDR(S_AXIL_AWADDR),
+		.S_AXIL_AWPROT(S_AXIL_AWPROT),
+		//
+		.S_AXIL_WVALID(S_AXIL_WVALID),
+		.S_AXIL_WREADY(S_AXIL_WREADY),
+		.S_AXIL_WDATA(S_AXIL_WDATA),
+		.S_AXIL_WSTRB(S_AXIL_WSTRB),
+		//
+		.S_AXIL_BVALID(S_AXIL_BVALID),
+		.S_AXIL_BREADY(S_AXIL_BREADY),
+		.S_AXIL_BRESP(S_AXIL_BRESP),
+		//
+		.S_AXIL_ARVALID(S_AXIL_ARVALID),
+		.S_AXIL_ARREADY(S_AXIL_ARREADY),
+		.S_AXIL_ARADDR(S_AXIL_ARADDR),
+		.S_AXIL_ARPROT(S_AXIL_ARPROT),
+		//
+		.S_AXIL_RVALID(S_AXIL_RVALID),
+		.S_AXIL_RREADY(S_AXIL_RREADY),
+		.S_AXIL_RDATA(S_AXIL_RDATA),
+		.S_AXIL_RRESP(S_AXIL_RRESP),
+		// }}}
+`else
 		// Control (Wishbone) interface
 		// {{{
 		.i_wb_cyc(i_wb_cyc), .i_wb_stb(i_wb_stb), .i_wb_we(i_wb_we),
@@ -132,6 +192,8 @@ module sdio_top #(
 		//
 		.o_wb_stall(o_wb_stall), .o_wb_ack(o_wb_ack),
 		.o_wb_data(o_wb_data),
+		// }}}
+`endif
 		// }}}
 		.i_card_detect(i_card_detect),
 		.o_1p8v(o_1p8v),
@@ -149,6 +211,7 @@ module sdio_top #(
 		.o_tx_data(tx_data),
 		//
 		.i_cmd_strb(rply_strb), .i_cmd_data(rply_data),
+			.i_cmd_collision(cmd_collision),
 		.i_card_busy(card_busy),
 		.i_rx_strb(rx_strb),
 		.i_rx_data(rx_data),
@@ -181,6 +244,7 @@ module sdio_top #(
 		.i_rx_en(rx_en),
 		.o_cmd_strb(rply_strb),
 		.o_cmd_data(rply_data),
+		.o_cmd_collision(cmd_collision),
 		//
 		.o_rx_strb(rx_strb),
 		.o_rx_data(rx_data),

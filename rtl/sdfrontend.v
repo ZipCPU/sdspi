@@ -84,6 +84,7 @@ module	sdfrontend #(
 		// {{{
 		output	wire	[1:0]	o_cmd_strb,
 		output	wire	[1:0]	o_cmd_data,
+		output	reg		o_cmd_collision,
 		//
 		output	wire	[1:0]	o_rx_strb,
 		output	wire	[15:0]	o_rx_data,
@@ -124,6 +125,7 @@ module	sdfrontend #(
 	reg		dat0_busy, wait_for_busy;
 	wire		raw_cmd;
 	wire	[NUMIO-1:0]	raw_iodat;
+	wire		w_cmd_collision;
 `ifndef	VERILATOR
 	wire			io_cmd_tristate, i_cmd, o_cmd;
 	wire	[NUMIO-1:0]	io_dat_tristate, i_dat, o_dat;
@@ -153,8 +155,8 @@ module	sdfrontend #(
 
 		assign	o_ck = i_sdclk[7];
 
-		assign	io_cmd_tristate
-				= !(i_cmd_en && (i_pp_cmd || !i_cmd_data[1]));
+		assign	io_cmd_tristate = o_cmd_collision
+				|| !(i_cmd_en && (i_pp_cmd || !i_cmd_data[1]));
 		assign	o_cmd = i_cmd_data[1];
 		assign	raw_cmd = i_cmd;
 
@@ -172,12 +174,23 @@ module	sdfrontend #(
 		// assign	io_dat = (o_dat & ~io_dat_tristate)
 		//		| (i_dat & io_dat_tristate);
 
-		assign	next_pedge = !last_ck && i_sdclk[7];
+		assign	next_pedge = !last_ck && o_ck;
 		assign	next_dedge = next_pedge || (i_cfg_ddr
-					&& last_ck && !i_sdclk[7]);
+					&& last_ck && !o_ck);
+
+		assign	w_cmd_collision = io_cmd_tristate && i_cmd_en && !i_cmd
+				&& next_pedge;
+					// && !i_pp_cmd;
 
 		always @(posedge i_clk)
-			last_ck <= i_sdclk[7];
+		if (i_reset || !i_cmd_en)
+			o_cmd_collision <= 1'b0;
+		else if (w_cmd_collision)
+			o_cmd_collision <= 1'b1;
+
+		initial	last_ck = 1'b0;
+		always @(posedge i_clk)
+			last_ck <= o_ck;
 
 		// sample_ck
 		// {{{
@@ -268,11 +281,8 @@ module	sdfrontend #(
 		assign	o_data_busy = dat0_busy;
 		// }}}
 
-		initial	last_ck = 1'b0;
 		always @(posedge i_clk)
 		begin
-			last_ck <= i_sdclk[7];
-
 			if (i_cmd_en || !cmd_sample_ck || i_cfg_dscmd)
 				r_cmd_strb <= 1'b0;
 			else if (!i_cmd || resp_started)
@@ -367,6 +377,7 @@ module	sdfrontend #(
 		reg	[1:0]	sample_ck, cmd_sample_ck, sample_pck;
 		reg		resp_started, last_ck, r_last_cmd_enabled,
 				r_cmd_strb, r_cmd_data, r_rx_strb;
+		wire	[1:0]	my_cmd_data;
 		reg	[1:0]	io_started;
 		reg	[7:0]	r_rx_data;
 		reg	[1:0]	busy_delay;
@@ -399,15 +410,27 @@ module	sdfrontend #(
 		xsdddr #(.OPT_BIDIR(1'b1))
 		u_cmd_ddr(
 			.i_clk(i_clk),
-			.i_en(i_reset || r_last_cmd_enabled || (i_cmd_en && (i_pp_cmd || !i_cmd_data[1]))),
+			.i_en(i_reset || r_last_cmd_enabled
+				|| (!o_cmd_collision && i_cmd_en
+					&& (i_pp_cmd || !i_cmd_data[1]))),
 			.i_data({(2){ i_reset || i_cmd_data[1] }}),
 			.io_pin_tristate(io_cmd_tristate),
 			.o_pin(o_cmd),
 			.i_pin(i_cmd),
+			.o_mine(my_cmd_data),
 			.o_wide(w_cmd)
 		);
 
 		assign	raw_cmd = i_cmd;
+
+		assign	w_cmd_collision = i_cmd_en && !i_pp_cmd
+					&& |(my_cmd_data & ~w_cmd);
+
+		always @(posedge i_clk)
+		if (i_reset || !i_cmd_en || i_pp_cmd)
+			o_cmd_collision <= 1'b0;
+		else if (w_cmd_collision)
+			o_cmd_collision <= 1'b1;
 		// }}}
 
 		// DATA
@@ -647,7 +670,8 @@ module	sdfrontend #(
 		reg		last_ck;
 		wire	[7:0]	next_ck_sreg, next_ck_psreg;
 		reg	[23:0]	ck_sreg, ck_psreg;
-		wire	[7:0]	next_pedge, next_nedge, wide_cmd_data;
+		wire	[7:0]	next_pedge, next_nedge, wide_cmd_data,
+				my_cmd_data;
 		reg	[7:0]	sample_ck, sample_pck;
 		reg	[1:0]	r_cmd_data;
 		reg		busy_strb, busy_data;
@@ -907,7 +931,6 @@ module	sdfrontend #(
 		//
 		// CMD
 		// {{{
-
 		always @(posedge i_clk)
 		if (i_reset || i_cfg_dscmd || i_cmd_en)
 			pck_sreg <= 0;
@@ -931,13 +954,26 @@ module	sdfrontend #(
 			.i_clk(i_clk),
 			.i_hsclk(i_hsclk),
 			.i_en(r_last_cmd_enabled
-				||(i_cmd_en && (i_pp_cmd || !i_cmd_data[1]))),
+				||(!w_cmd_collision && !o_cmd_collision
+					&& i_cmd_en
+					&& (i_pp_cmd || !i_cmd_data[1]))),
 			.i_data({ {(4){i_cmd_data[1]}}, {(4){i_cmd_data[0]}} }),
 			.io_tristate(io_cmd_tristate),
 			.o_pin(o_cmd),
 			.i_pin(i_cmd),
+			.o_mine(my_cmd_data),
 			.o_raw(raw_cmd), .o_wide(wide_cmd_data)
 		);
+
+		assign	w_cmd_collision = i_cmd_en && !i_pp_cmd && !i_cfg_dscmd
+					&& |(my_cmd_data & ~wide_cmd_data);
+
+		always @(posedge i_clk)
+		if (i_reset || !i_cmd_en || i_pp_cmd || i_cfg_dscmd)
+
+			o_cmd_collision <= 1'b0;
+		else if (w_cmd_collision)
+			o_cmd_collision <= 1'b1;
 
 		// resp_started
 		// {{{

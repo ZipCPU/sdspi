@@ -114,6 +114,9 @@ sub simline($) {
 	my $tstname = "";
 	my $args = "";
 
+	my $defs = "";
+	my $parm = "";
+
 	my $vcddump=0;
 	my $vcdfile="";
 
@@ -155,22 +158,38 @@ sub simline($) {
 
 		## Set up the IVerilog command
 		$cmd = "iverilog -g2012";
-
-		$cmd = $cmd . " -DIVERILOG";
-		$cmd = $cmd . " -DSCRIPT=\\\"../testscript/$tstscript.v\\\"";
+		$defs = $defs . " -DIVERILOG";
 		
-		while($args =~ /\s*(\S+)=(\S+)(.*)$/) {
-			$p = $1;
-			$v = $2;
-			$args = $3;
+		while($args =~ /\s*(\S+)\s*(.*)$/) {
+			if ($args =~ /\s*(\S+)\s*=\s*(\S+)(.*)$/) {
+				$p = $1;
+				$v = $2;
+				$args = $3;
+			} elsif ($args =~ /\s*(\S+)\s*(.*)$/) {
+				$p = $1;
+				$v = "";
+				$args = $2;
+			}
 
-			if ($v =~ /\"(.*)\"/) {
+			if ($p =~ /^-D(\S+)/) {
+				$p = $1;
+				if ($v =~ /\"(.*)\"/) {
+					$str = $1;
+					$defs = $defs . " -D$p=\\\"$str\\\"";
+				} else {
+					$defs = $defs . " -D$p=$v";
+				}
+			} elsif ($v =~ /\"(.*)\"/) {
 				$str = $1;
-				$cmd = $cmd . " -P$toplevel.$p=\\\"$str\\\"";
+				$parm = $parm . " -P$toplevel.$p=\\\"$str\\\"";
 			} else {
-				$cmd = $cmd . " -P$toplevel.$p=$v";
+				$parm = $parm . " -P$toplevel.$p=$v";
 			}
 		}
+
+		$defs = $defs . " -DSCRIPT=\\\"../testscript/$tstscript.v\\\"";
+
+		$cmd = $cmd . " " . $defs . " " . $parm;
 
 		$cmd = $cmd . " -c " . $filelist;
 		$cmd = $cmd . " -o " . $exefile;

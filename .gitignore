@@ -11,6 +11,8 @@ obj-zip
 *.log
 .*.swp
 .*.swo
+.swp
+.swo
 svn-commit*
 *_tb
 *_tb.dbl
@@ -18,3 +20,4 @@ svn-commit*
 *dump.txt
 tags
 cpudefs.h
+/*.pdf

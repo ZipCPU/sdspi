@@ -49,6 +49,7 @@ $dir = ".";
 	"spitxdata",
 	##
 	"sdio",
+	"sdaxil",
 	"sdwb",
 	"sdcmd",
 	"sdckgen",
@@ -64,7 +65,8 @@ $dir = ".";
 	"spitxdata"	=> "SPI Data transmit handler",
 	##
 	"sdio"		=> "Main SDIO controller",
-	"sdwb"		=> "SDIO Bus handler",
+	"sdaxil"	=> "SDIO AXI-Lite Bus handler",
+	"sdwb"		=> "SDIO Wishbone Bus handler",
 	"sdcmd"		=> "SDIO CMD wire controller",
 	"sdckgen"	=> "SDIO Divided clock generator",
 	"sdtxframe"	=> "SDIO transmit data controller",

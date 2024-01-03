@@ -11,6 +11,7 @@ my $sdio   = "";
 ## {{{
 my @files = (
 	"sdio.v", "sdwb.v", "sdckgen.v",
+		"sdaxil.v", "sdskid.v",
 		"sdcmd.v", "sdrxframe.v", "sdtxframe.v",
 	"sdspi.v", "spicmd.v", "spirxdata.v", "spitxdata.v",
 		"llsdspi.v",
@@ -24,15 +25,17 @@ my $xilinxsynth = "synth_xilinx";
 my $asicsynth   = "synth";
 my $asicpost    = "abc -g cmos2";
 
-sub	calcusage($$$$) {
+sub	calcusage($$$$$) {
 	## {{{
-	my($synth,$toplvl,$config,$postsynth)=@_;
+	my($synth,$toplvl,$bus,$config,$postsynth)=@_;
 
 	## Build the script
 	## {{{
 	unlink($scriptf);
 	open(SCRIPT, "> $scriptf");
-	foreach $key (@files) {
+	if ($bus =~ "axil") {
+		print SCRIPT "read -define SDIO_AXIL\n";
+	} foreach $key (@files) {
 		print SCRIPT "read -sv $key\n";
 	}
 
@@ -70,15 +73,20 @@ sub	topusage() {
 	## {{{
 	my $result = "";
 
-	$result = sprintf("SDIO:      %5d %5d %6d\n",
-		calcusage($ice40synth, "sdio", "",""),
-		calcusage($xilinxsynth,"sdio", "",""),
-		calcusage($asicsynth,  "sdio", "",$asicpost));
+	$result = sprintf("SDIO(AXIL):%5d %5d %7d\n",
+		calcusage($ice40synth, "sdio", "axil", "",""),
+		calcusage($xilinxsynth,"sdio", "axil", "",""),
+		calcusage($asicsynth,  "sdio", "axil", "",$asicpost));
 
-	$result = $result . sprintf("SDSPI:     %5d %5d %6d\n",
-		calcusage($ice40synth, "sdspi", "",""),
-		calcusage($xilinxsynth,"sdspi", "",""),
-		calcusage($asicsynth,  "sdspi", "",$asicpost));
+	$result = $result . sprintf("SDIO:      %5d %5d %7d\n",
+		calcusage($ice40synth, "sdio", "wb", "",""),
+		calcusage($xilinxsynth,"sdio", "wb", "",""),
+		calcusage($asicsynth,  "sdio", "wb", "",$asicpost));
+
+	$result = $result . sprintf("SDSPI:     %5d %5d %7d\n",
+		calcusage($ice40synth, "sdspi", "wb", "",""),
+		calcusage($xilinxsynth,"sdspi", "wb", "",""),
+		calcusage($asicsynth,  "sdspi", "wb", "",$asicpost));
 
 	$result
 }

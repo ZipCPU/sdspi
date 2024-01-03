@@ -1,0 +1,34 @@
+[tasks]
+prf
+prfds prf opt_serdes opt_emmc
+prfdr prf opt_ddr
+# cvr
+
+[options]
+prf: mode prove
+# cvr: mode cover
+prf: depth 10
+
+[engines]
+smtbmc
+
+[script]
+read -formal sdaxil.v
+read -formal sdskid.v
+read -formal faxil_slave.v
+read -formal faxil_register.v
+--pycode-begin--
+cmd = "hierarchy -top sdaxil"
+cmd += " -chparam OPT_SERDES %d" % (1 if "opt_serdes" in tags else 0)
+cmd += " -chparam OPT_DDR    %d" % (1 if "opt_ddr"  in tags else 0)
+cmd += " -chparam NUMIO      %d" % (8 if "opt_emmc" in tags else 0)
+output(cmd)
+--pycode-end--
+proc -norom
+prep -top sdaxil
+
+[files]
+../../rtl/sdaxil.v
+../../rtl/sdskid.v
+faxil_slave.v
+faxil_register.v

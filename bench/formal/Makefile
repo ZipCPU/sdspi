@@ -36,7 +36,7 @@
 ##
 ## }}}
 .PHONY: all
-all:	sdspi llsdspi spicmd spitxdata spirxdata sdcmd sdwb sdckgen sdtxframe sdrxframe report
+all:	sdspi llsdspi spicmd spitxdata spirxdata sdcmd sdwb sdaxil sdckgen sdtxframe sdrxframe report
 
 RTL := ../../rtl
 ## SDSPI components
@@ -48,6 +48,7 @@ SPICMD  := spicmd
 ## SDIO components
 SDCMD := sdcmd
 SDWB  := sdwb
+SDAXIL:= sdaxil
 SDCK  := sdckgen
 SDTX  := sdtxframe
 SDRX  := sdrxframe
@@ -139,6 +140,20 @@ $(SDWB)_prfdr/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prfdr
 # $(SDWB)_cvr/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
 #	sby -f $(SDWB).sby cvr
+## }}}
+
+.PHONY: $(SDAXIL)
+## {{{
+$(SDAXIL): $(SDAXIL)_prf/PASS # $(SDCMD)_cvr/PASS
+$(SDAXIL): $(SDAXIL)_prfds/PASS $(SDAXIL)_prfdr/PASS
+$(SDAXIL)_prf/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
+	sby -f $(SDAXIL).sby prf
+$(SDAXIL)_prfds/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
+	sby -f $(SDAXIL).sby prfds
+$(SDAXIL)_prfdr/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
+	sby -f $(SDAXIL).sby prfdr
+# $(SDAXIL)_cvr/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
+#	sby -f $(SDAXIL).sby cvr
 ## }}}
 
 .PHONY: $(SDCK)

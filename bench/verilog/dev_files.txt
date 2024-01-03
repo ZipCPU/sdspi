@@ -2,6 +2,7 @@ tb_sdio.v
 tb_emmc.v
 IOBUF.v
 wb_bfm.v
+axil_bfm.v
 mdl_sdio.v
 mdl_emmc.v
 mdl_sdcmd.v
@@ -15,6 +16,7 @@ mdl_sdtx.v
 ../../rtl/sdio.v
 ../../rtl/sdckgen.v
 ../../rtl/sdwb.v
+../../rtl/sdaxil.v
 ../../rtl/sdcmd.v
 ../../rtl/sdtxframe.v
 ../../rtl/sdrxframe.v

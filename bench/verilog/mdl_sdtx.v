@@ -49,6 +49,7 @@ module mdl_sdtx #(
 		input	wire		i_en,
 		input	wire	[1:0]	i_width,
 		input	wire		i_ddr,
+		input	wire		i_ppull,
 		//
 		input	wire		i_valid,
 		output	wire		o_ready,
@@ -218,15 +219,46 @@ module mdl_sdtx #(
 	end
 	// }}}
 
-	assign	sd_dat[0] = !r_active ? 1'bz
-				: (i_width[0]) ? tx_sreg[44]
+	assign	w_dat[0] = (i_width[0]) ? tx_sreg[44]
 				: (i_width[1]) ? tx_sreg[40] : tx_sreg[47];
 
-	assign	sd_dat[3:1] = (!r_active || i_width==0) ? 3'bz
-				: i_width[0] ? tx_sreg[47:45]
+	assign	w_dat[3:1] = i_width[0] ? tx_sreg[47:45]
 						: tx_sreg[43:41];
-	assign	sd_dat[7:4] = (!r_active ||!i_width[1]) ? 4'bz
-					: tx_sreg[47:44];
+	assign	w_dat[7:4] = tx_sreg[47:44];
+
+	assign	sd_dat[0] = (!r_active || (!i_ppull && w_dat[0])) ? 1'bz : w_dat[0];
+	assign	sd_dat[1] = (!r_active || (!i_ppull && w_dat[1]) || (i_width != 2'b00)) ? 1'bz : w_dat[1];
+	assign	sd_dat[2] = (!r_active || (!i_ppull && w_dat[2]) || (i_width != 2'b00)) ? 1'bz : w_dat[2];
+	assign	sd_dat[3] = (!r_active || (!i_ppull && w_dat[3]) || (i_width != 2'b00)) ? 1'bz : w_dat[3];
+	assign	sd_dat[4] = (!r_active || (!i_ppull && w_dat[4]) || (i_width[1])) ? 1'bz : w_dat[4];
+	assign	sd_dat[5] = (!r_active || (!i_ppull && w_dat[5]) || (i_width[1])) ? 1'bz : w_dat[5];
+	assign	sd_dat[6] = (!r_active || (!i_ppull && w_dat[6]) || (i_width[1])) ? 1'bz : w_dat[6];
+	assign	sd_dat[7] = (!r_active || (!i_ppull && w_dat[7]) || (!i_width[1])) ? 1'bz : w_dat[7];
+
+	always @(*)
+	begin
+		if (!r_active)
+			sd_dat = 8'bz;
+		else if (i_ppull)
+		begin
+			if (i_width[1])
+				sd_dat = w_dat;
+			else if (i_width[0])
+				sd_dat = { 4'bz, w_dat[3:0] };
+			else
+				sd_dat = { 7'bz, w_dat[0] };
+		end else begin
+			sd_dat[0] = (w_dat[0]) ? 1'bz : 1'b0;
+			sd_dat[1] = (w_dat[1] || i_width == 0) ? 1'bz : 1'b0;
+			sd_dat[2] = (w_dat[2] || i_width == 0) ? 1'bz : 1'b0;
+			sd_dat[3] = (w_dat[3] || i_width == 0) ? 1'bz : 1'b0;
+			sd_dat[4] = (w_dat[4] || !i_width[1])  ? 1'bz : 1'b0;
+			sd_dat[5] = (w_dat[5] || !i_width[1])  ? 1'bz : 1'b0;
+			sd_dat[6] = (w_dat[6] || !i_width[1])  ? 1'bz : 1'b0;
+			sd_dat[7] = (w_dat[7] || !i_width[1])  ? 1'bz : 1'b0;
+		end
+	end
+
 	assign	sd_ds = ds;
 
 	assign	o_ready = !r_active || (sd_clk && r_count == 1)

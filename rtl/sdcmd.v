@@ -80,6 +80,7 @@ module	sdcmd #(
 		// {{{
 		input	wire	[1:0]		i_cmd_strb,
 		input	wire	[1:0]		i_cmd_data,
+		input	wire			i_cmd_collision,
 		// input	wire		i_dat_busy,
 
 		input	wire			S_ASYNC_VALID,
@@ -151,6 +152,11 @@ module	sdcmd #(
 	begin
 		active <= 0;
 		srcount <= 0;
+	end else if (OPT_EMMC && active && i_cmd_collision)
+	begin
+		// This will only happen on an IRQ return
+		active  <= 0;
+		srcount <= 0;
 	end else if (lcl_accept)
 	begin
 		srcount <= 48;
@@ -173,7 +179,10 @@ module	sdcmd #(
 	always @(posedge i_clk)
 	if (i_reset)
 		tx_sreg <= 48'hffff_ffff_ffff;
-	else if (lcl_accept)
+	else if (OPT_EMMC && active && i_cmd_collision)
+	begin
+		tx_sreg <= 48'hffff_ffff_ffff;
+	end else if (lcl_accept)
 		tx_sreg <= { 1'b0, i_cmd, i_arg,
 				CMDCRC({ 1'b0, i_cmd, i_arg }), 1'b1 };
 	else if (i_ckstb)
@@ -687,7 +696,7 @@ module	sdcmd #(
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
-	(* anyconst *) reg f_nvr_request;
+	(* anyconst *) reg f_nvr_request, f_nvr_collision;
 	reg	f_past_valid, f_busy;
 	reg	[7:0]	f_last_resp_count;
 	reg	[47:0]	f_tx_reg, f_tx_now;
@@ -708,6 +717,11 @@ module	sdcmd #(
 		assume(!i_cmd_request);
 		assert(!active);
 	end
+
+	always @(*)
+	if (!OPT_EMMC || f_nvr_collision)
+		assume(!i_cmd_collision);
+
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Command requests

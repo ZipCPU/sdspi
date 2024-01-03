@@ -68,6 +68,36 @@ module	sdio #(
 	) (
 		// {{{
 		input	wire		i_clk, i_reset,
+		// Control interface
+		// {{{
+`ifdef	SDIO_AXIL
+		// AXI-Lite
+		// {{{
+		input	wire		S_AXIL_AWVALID,
+		output	wire		S_AXIL_AWREADY,
+		input	wire	[4:0]	S_AXIL_AWADDR,
+		input	wire	[2:0]	S_AXIL_AWPROT,
+		//
+		input	wire		S_AXIL_WVALID,
+		output	wire		S_AXIL_WREADY,
+		input	wire	[31:0]	S_AXIL_WDATA,
+		input	wire	[3:0]	S_AXIL_WSTRB,
+		//
+		output	wire		S_AXIL_BVALID,
+		input	wire		S_AXIL_BREADY,
+		output	wire	[1:0]	S_AXIL_BRESP,
+		//
+		input	wire		S_AXIL_ARVALID,
+		output	wire		S_AXIL_ARREADY,
+		input	wire	[4:0]	S_AXIL_ARADDR,
+		input	wire	[2:0]	S_AXIL_ARPROT,
+		//
+		output	wire		S_AXIL_RVALID,
+		input	wire		S_AXIL_RREADY,
+		output	wire	[31:0]	S_AXIL_RDATA,
+		output	wire	[1:0]	S_AXIL_RRESP,
+		// }}}
+`else
 		// Control (Wishbone) interface
 		// {{{
 		input	wire		i_wb_cyc, i_wb_stb, i_wb_we,
@@ -77,6 +107,8 @@ module	sdio #(
 		//
 		output	wire		o_wb_stall, o_wb_ack,
 		output	wire [MW-1:0]	o_wb_data,
+		// }}}
+`endif
 		// }}}
 		input	wire		i_card_detect,
 		output	wire		o_1p8v,
@@ -100,6 +132,7 @@ module	sdio #(
 		output	wire	[31:0]	o_tx_data,
 		//
 		input	wire	[1:0]	i_cmd_strb, i_cmd_data,
+		input	wire		i_cmd_collision,
 		input	wire		i_card_busy,
 		input	wire	[1:0]	i_rx_strb,
 		input	wire	[15:0]	i_rx_data,
@@ -160,6 +193,101 @@ module	sdio #(
 	wire			rx_done, rx_err, rx_ercode, rx_active, rx_en;
 	// }}}
 
+`ifdef	SDIO_AXIL
+	sdaxil #(
+		// {{{
+		.LGFIFO(LGFIFO), .NUMIO(NUMIO),
+		.OPT_SERDES(OPT_SERDES),
+		.OPT_DDR(OPT_DDR),
+		.OPT_DS(OPT_DS),
+		.OPT_CARD_DETECT(OPT_CARD_DETECT),
+		.OPT_1P8V(OPT_1P8V),
+		// .OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN)
+		// .OPT_DMA(OPT_DMA)
+		.OPT_EMMC(OPT_EMMC),
+		.MW(MW)
+		// }}}
+	) u_control (
+		// {{{
+		.i_clk(i_clk), .i_reset(i_reset),
+		// AXI-Lite
+		// {{{
+		.S_AXIL_AWVALID(S_AXIL_AWVALID),
+		.S_AXIL_AWREADY(S_AXIL_AWREADY),
+		.S_AXIL_AWADDR(S_AXIL_AWADDR),
+		.S_AXIL_AWPROT(S_AXIL_AWPROT),
+		//
+		.S_AXIL_WVALID(S_AXIL_WVALID),
+		.S_AXIL_WREADY(S_AXIL_WREADY),
+		.S_AXIL_WDATA(S_AXIL_WDATA),
+		.S_AXIL_WSTRB(S_AXIL_WSTRB),
+		//
+		.S_AXIL_BVALID(S_AXIL_BVALID),
+		.S_AXIL_BREADY(S_AXIL_BREADY),
+		.S_AXIL_BRESP(S_AXIL_BRESP),
+		//
+		.S_AXIL_ARVALID(S_AXIL_ARVALID),
+		.S_AXIL_ARREADY(S_AXIL_ARREADY),
+		.S_AXIL_ARADDR(S_AXIL_ARADDR),
+		.S_AXIL_ARPROT(S_AXIL_ARPROT),
+		//
+		.S_AXIL_RVALID(S_AXIL_RVALID),
+		.S_AXIL_RREADY(S_AXIL_RREADY),
+		.S_AXIL_RDATA(S_AXIL_RDATA),
+		.S_AXIL_RRESP(S_AXIL_RRESP),
+		// }}}
+		// Configuration options
+		// {{{
+		.o_cfg_clk90(cfg_clk90), .o_cfg_ckspeed(cfg_ckspeed),
+		.o_cfg_shutdown(cfg_clk_shutdown),
+		.o_cfg_width(cfg_width), .o_cfg_ds(o_cfg_ds),
+			.o_cfg_dscmd(o_cfg_dscmd), .o_cfg_ddr(o_cfg_ddr),
+		.o_pp_cmd(o_pp_cmd), .o_pp_data(o_pp_data),
+		.o_cfg_sample_shift(o_cfg_sample_shift),
+		.i_ckspd(clk_ckspd),
+		// }}}
+		.o_soft_reset(soft_reset),
+		// CMD control interface
+		// {{{
+		.o_cmd_request(cmd_request), .o_cmd_type(cmd_type),
+		.o_cmd_selfreply(cmd_selfreply),
+		.o_cmd_id(cmd_id), .o_arg(cmd_arg),
+		//
+		.i_cmd_busy(cmd_busy), .i_cmd_done(cmd_done),
+			.i_cmd_err(cmd_err), .i_cmd_ercode(cmd_ercode),
+		//
+		.i_cmd_response(rsp_stb), .i_resp(rsp_id),
+			.i_arg(rsp_arg),
+		//
+		.i_cmd_mem_valid(cmd_mem_valid), .i_cmd_mem_strb(cmd_mem_strb),
+			.i_cmd_mem_addr(cmd_mem_addr),
+			.i_cmd_mem_data(cmd_mem_data),
+		// }}}
+		// TX interface
+		// {{{
+		.o_tx_en(tx_en),
+		//
+		.o_tx_mem_valid(tx_mem_valid),
+			.i_tx_mem_ready(tx_mem_ready && tx_en),
+		.o_tx_mem_data(tx_mem_data), .o_tx_mem_last(tx_mem_last),
+		.i_tx_busy(o_data_en),
+		// }}}
+		// RX interface
+		// {{{
+		.o_rx_en(rx_en), .o_crc_en(crc_en), .o_length(rx_length),
+		//
+		.i_rx_mem_valid(rx_mem_valid), .i_rx_mem_strb(rx_mem_strb),
+			.i_rx_mem_addr(rx_mem_addr),.i_rx_mem_data(rx_mem_data),
+		//
+		.i_rx_done(rx_done), .i_rx_err(rx_err), .i_rx_ercode(rx_ercode),
+		// }}}
+		.i_card_detect(i_card_detect),
+		.i_card_busy(i_card_busy),
+		.o_1p8v(o_1p8v),
+		.o_int(o_int)
+		// }}}
+	);
+`else
 	sdwb #(
 		// {{{
 		.LGFIFO(LGFIFO), .NUMIO(NUMIO),
@@ -236,6 +364,7 @@ module	sdio #(
 		.o_int(o_int)
 		// }}}
 	);
+`endif
 
 	assign	o_rx_en = rx_en && rx_active;
 
@@ -273,6 +402,7 @@ module	sdio #(
 		//
 		.o_cmd_en(o_cmd_en), .o_cmd_data(o_cmd_data),
 		.i_cmd_strb(i_cmd_strb), .i_cmd_data(i_cmd_data),
+			.i_cmd_collision(i_cmd_collision),
 		.S_ASYNC_VALID(S_AC_VALID), .S_ASYNC_DATA(S_AC_DATA),
 		//
 		.o_cmd_response(rsp_stb), .o_resp(rsp_id),

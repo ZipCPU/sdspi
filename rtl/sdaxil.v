@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdwb.v
+// Filename: 	sdaxil.v
 // {{{
 // Project:	SDIO SD-Card controller
 //
@@ -62,7 +62,7 @@
 `timescale 1ns/1ps
 `default_nettype	none
 // }}}
-module	sdwb #(
+module	sdaxil #(
 		// {{{
 		parameter	LGFIFO = 15,	// FIFO size in bytes
 		parameter	NUMIO=4,
@@ -101,15 +101,31 @@ module	sdwb #(
 	) (
 		// {{{
 		input	wire			i_clk, i_reset,
-		// Wishbone interface
+		// AXI-Lite control interface
 		// {{{
-		input	wire			i_wb_cyc, i_wb_stb, i_wb_we,
-		input	wire	[2:0]		i_wb_addr,
-		input	wire	[32-1:0]	i_wb_data,
-		input	wire	[32/8-1:0]	i_wb_sel,
-		output	wire			o_wb_stall,
-		output	reg			o_wb_ack,
-		output	reg	[32-1:0]	o_wb_data,
+		input	wire			S_AXIL_AWVALID,
+		output	wire			S_AXIL_AWREADY,
+		input	wire	[4:0]		S_AXIL_AWADDR,
+		input	wire	[2:0]		S_AXIL_AWPROT,
+
+		input	wire			S_AXIL_WVALID,
+		output	wire			S_AXIL_WREADY,
+		input	wire	[31:0]		S_AXIL_WDATA,
+		input	wire	[3:0]		S_AXIL_WSTRB,
+
+		output	wire			S_AXIL_BVALID,
+		input	wire			S_AXIL_BREADY,
+		output	wire	[1:0]		S_AXIL_BRESP,
+
+		input	wire			S_AXIL_ARVALID,
+		output	wire			S_AXIL_ARREADY,
+		input	wire	[4:0]		S_AXIL_ARADDR,
+		input	wire	[2:0]		S_AXIL_ARPROT,
+
+		output	wire			S_AXIL_RVALID,
+		input	wire			S_AXIL_RREADY,
+		output	wire	[31:0]		S_AXIL_RDATA,
+		output	wire	[1:0]		S_AXIL_RRESP,
 		// }}}
 		// Configuration options
 		// {{{
@@ -205,6 +221,16 @@ module	sdwb #(
 	reg	cmd_busy, new_cmd_request, new_data_request, new_tx_request;
 	reg	w_selfreply_request, r_clk_shutdown;
 
+	wire		awskd_valid;
+	wire	[2:0]	awskd_addr;
+
+	wire		wskd_valid;
+	wire	[31:0]	wskd_data;
+	wire	[3:0]	wskd_strb;
+
+	wire		arskd_valid;
+	wire	[2:0]	arskd_addr;
+
 	reg		bus_wrvalid, bus_rdvalid;
 	reg	[31:0]	bus_rddata;
 	wire		bus_write, bus_read;
@@ -255,15 +281,77 @@ module	sdwb #(
 	// Registers
 	// {{{
 
+	// Skidbuffers
+	// {{{
+
+	// awskd
+	sdskid #(
+		// {{{
+`ifdef	FORMAL
+		.OPT_PASSTHROUGH(1'b1),
+`endif
+		.OPT_OUTREG(1'b0), .DW(6)
+		// }}}
+	) awskd(
+		// {{{
+		.i_clk(i_clk), .i_reset(i_reset),
+		.i_valid(S_AXIL_AWVALID), .o_ready(S_AXIL_AWREADY),
+			.i_data( S_AXIL_AWADDR[4:2]),
+		.o_valid(awskd_valid), .i_ready(bus_write),
+			.o_data( awskd_addr)
+		// }}}
+	);
+
+	// wskd
+	sdskid #(
+		// {{{
+`ifdef	FORMAL
+		.OPT_PASSTHROUGH(1'b1),
+`endif
+		.OPT_OUTREG(1'b0),
+		.DW(4+32)
+		// }}}
+	) wskd(
+		// {{{
+		.i_clk(i_clk), .i_reset(i_reset),
+		.i_valid(S_AXIL_WVALID), .o_ready(S_AXIL_WREADY),
+			.i_data({ S_AXIL_WSTRB, S_AXIL_WDATA }),
+		.o_valid(wskd_valid), .i_ready(bus_write),
+			.o_data( { wskd_strb, wskd_data })
+		// }}}
+	);
+
+	// arskd
+	sdskid #(
+		// {{{
+`ifdef	FORMAL
+		.OPT_PASSTHROUGH(1'b1),
+`endif
+		.OPT_OUTREG(1'b0),
+		.DW(6)
+		// }}}
+	) arskd(
+		// {{{
+		.i_clk(i_clk), .i_reset(i_reset),
+		.i_valid(S_AXIL_ARVALID), .o_ready(S_AXIL_ARREADY),
+			.i_data( S_AXIL_ARADDR[4:2]),
+		.o_valid(arskd_valid), .i_ready(bus_read),
+			.o_data( arskd_addr)
+		// }}}
+	);
+
+	// }}}
+
 	// CMD/control register
 	// {{{
-	assign	bus_write = i_wb_stb && !o_wb_stall && i_wb_we;
-	assign	bus_wraddr = i_wb_addr;
-	assign	bus_wdata  = i_wb_data;
-	assign	bus_wstrb  = i_wb_sel;
+	assign	bus_write = awskd_valid && wskd_valid && (!S_AXIL_BVALID || S_AXIL_BREADY);
+	assign	bus_wraddr = awskd_addr;
+	assign	bus_wdata  = wskd_data;
+	assign	bus_wstrb  = wskd_strb;
 
-	assign	bus_read   = i_wb_stb && !o_wb_stall && !i_wb_we;
-	assign	bus_rdaddr = i_wb_addr;
+	assign	bus_read   = arskd_valid && (!S_AXIL_RVALID || S_AXIL_RREADY
+							|| !pre_valid);
+	assign	bus_rdaddr = arskd_addr;
 
 	assign	bus_cmd_stb = bus_write && bus_wraddr == ADDR_CMD
 			&&((!r_cmd_err && !r_rx_err)
@@ -875,8 +963,8 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		o_cfg_ddr <= 1'b0;
-	else if (bus_phy_stb && i_wb_sel[1])
-		o_cfg_ddr <= i_wb_data[8];
+	else if (bus_phy_stb && bus_wstrb[1])
+		o_cfg_ddr <= bus_wdata[8];
 	// }}}
 
 	// o_cfg_width: Control the number of data bits, whether 1, 4, or 8
@@ -887,9 +975,9 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		r_width <= WIDTH_1W;
-	else if (bus_phy_stb && i_wb_sel[1])
+	else if (bus_phy_stb && bus_wstrb[1])
 	begin
-		case(i_wb_data[11:10])
+		case(bus_wdata[11:10])
 		2'b00: r_width <= WIDTH_1W;
 		2'b01: if (NUMIO < 4) r_width <= WIDTH_1W;
 			else r_width <= WIDTH_4W;
@@ -910,12 +998,12 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		r_ckspeed <= 252;
-	else if (bus_phy_stb && i_wb_sel[0])
+	else if (bus_phy_stb && bus_wstrb[0])
 	begin
-		r_ckspeed <= i_wb_data[7:0];
-		if (!OPT_SERDES && !OPT_DDR && i_wb_data[7:0] < 2)
+		r_ckspeed <= bus_wdata[7:0];
+		if (!OPT_SERDES && !OPT_DDR && bus_wdata[7:0] < 2)
 			r_ckspeed <= 8'h2;
-		else if (!OPT_SERDES && i_wb_data[7:0] == 0)
+		else if (!OPT_SERDES && bus_wdata[7:0] == 0)
 			r_ckspeed <= 8'h1;
 	end
 
@@ -991,8 +1079,8 @@ module	sdwb #(
 			r_card_removed <= 1'b1;
 		else if (!card_present)
 			r_card_removed <= 1'b1;
-		else if (bus_cmd_stb && i_wb_data[CARD_REMOVED_BIT]
-					&& i_wb_sel[CARD_REMOVED_BIT/8])
+		else if (bus_cmd_stb && bus_wdata[CARD_REMOVED_BIT]
+					&& bus_wstrb[CARD_REMOVED_BIT/8])
 			r_card_removed <= 1'b0;
 
 		assign	card_removed = r_card_removed;
@@ -1085,14 +1173,14 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		fif_wraddr <= 0;
-	else if (bus_cmd_stb && ((i_wb_sel[1]
-			&& (i_wb_data[USE_FIFO_BIT]
-				|| i_wb_data[9:8] == R2_REPLY
-				|| r_fifo != i_wb_data[FIFO_ID_BIT]))
-			|| (i_wb_sel[0] && i_wb_data[7])))
+	else if (bus_cmd_stb && ((bus_wstrb[1]
+			&& (bus_wdata[USE_FIFO_BIT]
+				|| bus_wdata[9:8] == R2_REPLY
+				|| r_fifo != bus_wdata[FIFO_ID_BIT]))
+			|| (bus_wstrb[0] && bus_wdata[7])))
 		fif_wraddr <= 0;
-	else if (i_wb_stb && !o_wb_stall && i_wb_we && i_wb_sel[0]
-					&& (i_wb_addr == ADDR_FIFOA || i_wb_addr == ADDR_FIFOB))
+	else if (bus_write && bus_wstrb[0]
+			&& (bus_wraddr == ADDR_FIFOA || bus_wraddr == ADDR_FIFOB))
 		fif_wraddr <= fif_wraddr + 1;
 	// }}}
 
@@ -1102,14 +1190,13 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		fif_rdaddr <= 0;
-	else if (bus_cmd_stb && ((i_wb_sel[1]
-			&& (i_wb_data[USE_FIFO_BIT]
-				|| i_wb_data[9:8] == R2_REPLY
-				|| r_fifo != i_wb_data[FIFO_ID_BIT]))
-			|| (i_wb_sel[0] && i_wb_data[7])))
+	else if (bus_cmd_stb && ((bus_wstrb[1]
+			&& (bus_wdata[USE_FIFO_BIT]
+				|| bus_wdata[9:8] == R2_REPLY
+				|| r_fifo != bus_wdata[FIFO_ID_BIT]))
+			|| (bus_wstrb[0] && bus_wdata[7])))
 		fif_rdaddr <= 0;
-	else if (i_wb_stb && !i_wb_we && i_wb_sel[0]
-					&& (i_wb_addr == ADDR_FIFOA || i_wb_addr == ADDR_FIFOB))
+	else if (bus_read && (bus_rdaddr == ADDR_FIFOA || bus_rdaddr == ADDR_FIFOB))
 		fif_rdaddr <= fif_rdaddr + 1;
 	// }}}
 
@@ -1214,12 +1301,12 @@ module	sdwb #(
 	begin
 		mem_wr_strb_a <= 0;
 
-		if (i_wb_stb && i_wb_we && i_wb_addr == ADDR_FIFOA
-				&& (|i_wb_sel))
+		if (bus_write && bus_wraddr == ADDR_FIFOA
+				&& (|bus_wstrb))
 		begin
 			mem_wr_addr_a <= fif_wraddr;
-			mem_wr_strb_a <= i_wb_sel;
-			mem_wr_data_a <= i_wb_data;
+			mem_wr_strb_a <= bus_wstrb;
+			mem_wr_data_a <= bus_wdata;
 		end
 
 		if (!r_fifo && i_cmd_mem_valid)
@@ -1303,6 +1390,15 @@ module	sdwb #(
 	// {{{
 
 	always @(posedge i_clk)
+	if (i_reset)
+		pre_valid <= 1'b0;
+	else if (bus_read)
+		pre_valid <= 1'b1;
+	else if (!S_AXIL_RVALID || S_AXIL_RREADY)
+		pre_valid <= 1'b0;
+
+	always @(posedge i_clk)
+	if (!S_AXIL_RVALID || S_AXIL_RREADY || !pre_valid)
 	begin
 		pre_data <= 0;
 
@@ -1332,6 +1428,7 @@ module	sdwb #(
 	end
 
 	always @(posedge i_clk)
+	if (!S_AXIL_RVALID || S_AXIL_RREADY)
 	begin
 		bus_rddata <= 0;
 		case(pre_sel)
@@ -1342,20 +1439,34 @@ module	sdwb #(
 		endcase
 	end
 
-	assign	o_wb_stall = 1'b0;
-
-	initial	{ o_wb_ack, pre_valid } = 2'b00;
+	initial	bus_wrvalid = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || !i_wb_cyc)
-		{ o_wb_ack, pre_valid } <= 2'b00;
-	else
-		{ o_wb_ack, pre_valid } <= { pre_valid, i_wb_stb && !o_wb_stall };
+	if (i_reset)
+		bus_wrvalid <= 1'b0;
+	else if (!S_AXIL_BVALID || S_AXIL_BREADY)
+		bus_wrvalid <= bus_write;
+
+	initial	bus_rdvalid = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset)
+		bus_rdvalid <= 1'b0;
+	else if (!S_AXIL_RVALID || S_AXIL_RREADY)
+		bus_rdvalid <= pre_valid;
+
+	assign	S_AXIL_BVALID = bus_wrvalid;
+	assign	S_AXIL_RVALID = bus_rdvalid;
+	assign	S_AXIL_RDATA  = bus_rddata;
+
+	assign	S_AXIL_BRESP = 2'b00;
+	assign	S_AXIL_RRESP = 2'b00;
 	// }}}
 
 	// Keep Verilator happy
 	// {{{
 	wire	unused;
-	assign	unused = &{ 1'b0, next_tx_mem };
+	assign	unused = &{ 1'b0, next_tx_mem,
+			S_AXIL_AWPROT, S_AXIL_ARPROT,
+			S_AXIL_AWADDR[1:0], S_AXIL_ARADDR[1:0] };
 	// }}}
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -1382,28 +1493,52 @@ module	sdwb #(
 	// Wishbone interface
 	// {{{
 	localparam	F_LGDEPTH=3;
-	wire	[F_LGDEPTH-1:0]	fwb_nacks, fwb_nreqs, fwb_outstanding;
+	wire	[F_LGDEPTH-1:0]	faxil_awoutstanding, faxil_woutstanding,
+				faxil_aroutstanding;
 
-	fwb_slave #(
-		.AW(3), .DW(32),
-		.F_LGDEPTH(3)
-	) fwb (
+	faxil_slave #(
+		.C_AXI_ADDR_WIDTH(5), .F_LGDEPTH(3)
+	) faxil (
 		// {{{
-		.i_clk(i_clk), .i_reset(i_reset),
-		.i_wb_cyc(i_wb_cyc), .i_wb_stb(i_wb_stb), .i_wb_we(i_wb_we),
-		.i_wb_addr(i_wb_addr), .i_wb_data(i_wb_data),
-				.i_wb_sel(i_wb_sel),
-		.i_wb_ack(o_wb_ack), .i_wb_stall(o_wb_stall),
-			.i_wb_idata(o_wb_data), .i_wb_err(1'b0),
-		.f_nreqs(fwb_nreqs), .f_nacks(fwb_nacks),
-			.f_outstanding(fwb_outstanding)
+		.i_clk(i_clk), .i_axi_reset_n(!i_reset),
+		//
+		.i_axi_awvalid(S_AXIL_AWVALID),
+		.i_axi_awready(S_AXIL_AWREADY),
+		.i_axi_awaddr(S_AXIL_AWADDR),
+		.i_axi_awprot(S_AXIL_AWPROT),
+		//
+		.i_axi_wvalid(S_AXIL_WVALID),
+		.i_axi_wready(S_AXIL_WREADY),
+		.i_axi_wdata(S_AXIL_WDATA),
+		.i_axi_wstrb(S_AXIL_WSTRB),
+		//
+		.i_axi_bvalid(S_AXIL_BVALID),
+		.i_axi_bready(S_AXIL_BREADY),
+		.i_axi_bresp(S_AXIL_BRESP),
+		//
+		.i_axi_arvalid(S_AXIL_ARVALID),
+		.i_axi_arready(S_AXIL_ARREADY),
+		.i_axi_araddr(S_AXIL_ARADDR),
+		.i_axi_arprot(S_AXIL_ARPROT),
+		//
+		.i_axi_rvalid(S_AXIL_RVALID),
+		.i_axi_rready(S_AXIL_RREADY),
+		.i_axi_rdata(S_AXIL_RDATA),
+		.i_axi_rresp(S_AXIL_RRESP),
+		//
+		.f_axi_awr_outstanding(faxil_awoutstanding),
+		.f_axi_wr_outstanding(faxil_woutstanding),
+		.f_axi_rd_outstanding(faxil_aroutstanding)
 		// }}}
 	);
 
 	always @(posedge i_clk)
-	if (f_past_valid && i_wb_cyc)
+	if (f_past_valid)
 	begin
-		assert(fwb_outstanding == (pre_valid ? 1:0) + (o_wb_ack ? 1:0));
+		assert(faxil_awoutstanding == (S_AXIL_BVALID ? 1:0));
+		assert(faxil_woutstanding  == (S_AXIL_BVALID ? 1:0));
+		assert(faxil_aroutstanding == (S_AXIL_RVALID ? 1:0)
+				+ (pre_valid ? 1:0));
 	end
 
 	// }}}
@@ -1487,10 +1622,10 @@ module	sdwb #(
 
 	always @(*)
 	begin
-		f_mem_request = bus_cmd_stb && (&i_wb_sel[1:0])
-			&& ((i_wb_data[9:8] == R2_REPLY)
-				|| (i_wb_data[USE_DMA_BIT] && OPT_DMA)
-				|| i_wb_data[USE_FIFO_BIT]);
+		f_mem_request = bus_cmd_stb && (&bus_wstrb[1:0])
+			&& ((bus_wdata[9:8] == R2_REPLY)
+				|| (bus_wdata[USE_DMA_BIT] && OPT_DMA)
+				|| bus_wdata[USE_FIFO_BIT]);
 	end
 
 	always @(posedge i_clk)
@@ -1499,7 +1634,7 @@ module	sdwb #(
 		&& !$past(cmd_busy)
 		&& $past(bus_cmd_stb))
 	begin
-		if ($past(i_wb_sel[1:0] != 2'b11))
+		if ($past(bus_wstrb[1:0] != 2'b11))
 		begin
 			assert(!o_cmd_request);
 		end else if ($past(mem_busy && f_mem_request))
@@ -1508,16 +1643,16 @@ module	sdwb #(
 			// memory is already in use
 			assert(!o_cmd_request);
 		end else begin
-			if ($past(i_wb_data[7]))
+			if ($past(bus_wdata[7]))
 			begin
 				assert(!o_cmd_request);
-			end else if ($past(i_wb_data[7:6] == 2'b01))
+			end else if ($past(bus_wdata[7:6] == 2'b01))
 			begin
 				assert(o_cmd_request);
-			end else if ($past(i_wb_data[9:6] == 4'b00
-					&&  i_wb_data[5:0] != 6'h0
-					&& !(i_wb_data[USE_DMA_BIT] && OPT_DMA)
-					&& !i_wb_data[USE_FIFO_BIT]))
+			end else if ($past(bus_wdata[9:6] == 4'b00
+					&&  bus_wdata[5:0] != 6'h0
+					&& !(bus_wdata[USE_DMA_BIT] && OPT_DMA)
+					&& !bus_wdata[USE_FIFO_BIT]))
 			begin
 				assert(o_cmd_request && o_cmd_selfreply);
 			end else
@@ -1526,8 +1661,8 @@ module	sdwb #(
 
 		if (o_cmd_request)
 		begin
-			assert(o_cmd_type == $past(i_wb_data[9:8]));
-			assert(o_cmd_id   == $past(i_wb_data[6:0]));
+			assert(o_cmd_type == $past(bus_wdata[9:8]));
+			assert(o_cmd_id   == $past(bus_wdata[6:0]));
 			assert(o_arg      == $past(r_arg));
 			assert(cmd_busy);
 		end
@@ -1537,33 +1672,33 @@ module	sdwb #(
 	if (f_past_valid && !$past(i_reset || o_soft_reset) && !$past(mem_busy)
 		&& !$past(r_cmd_err)
 		&& !$past(cmd_busy)
-		&& $past(bus_cmd_stb) && $past(&i_wb_sel[1:0]))
+		&& $past(bus_cmd_stb) && $past(&bus_wstrb[1:0]))
 	begin
-		if ($past(i_wb_data == 16'h0240))
+		if ($past(bus_wdata == 16'h0240))
 		begin
 			assert(o_cmd_request);
 			assert(mem_busy);
 		end
 
-		if ($past(i_wb_data) == 16'h0940)
+		if ($past(bus_wdata) == 16'h0940)
 		begin
 			assert(o_cmd_request);
 			assert(r_rx_request);
 		end
 
-		if ($past(i_wb_data) == 16'h0d40)
+		if ($past(bus_wdata) == 16'h0d40)
 		begin
 			assert(o_cmd_request);
 			assert(r_tx_request);
 		end
 
-		if ($past(i_wb_data) == 16'h0800)
+		if ($past(bus_wdata) == 16'h0800)
 		begin
 			assert(!o_cmd_request);
 			assert(r_rx_request);
 		end
 
-		if ($past(i_wb_data) == 16'h0c00)
+		if ($past(bus_wdata) == 16'h0c00)
 		begin
 			assert(!o_cmd_request);
 			assert(r_tx_request);
@@ -1572,16 +1707,16 @@ module	sdwb #(
 
 	always @(posedge i_clk)
 	if (f_past_valid && $past(bus_cmd_stb)
-		&&(($past(i_wb_sel[1:0])==2'b11 && $past(i_wb_data == 16'h080))
-		  || $past(i_wb_sel[1] && i_wb_data[FIFO_ID_BIT] != r_fifo)
-		  || $past(i_wb_sel[1] && i_wb_data[USE_FIFO_BIT])
-		  || $past(i_wb_sel[0] && i_wb_data[7])
+		&&(($past(bus_wstrb[1:0])==2'b11 && $past(bus_wdata == 16'h080))
+		  || $past(bus_wstrb[1] && bus_wdata[FIFO_ID_BIT] != r_fifo)
+		  || $past(bus_wstrb[1] && bus_wdata[USE_FIFO_BIT])
+		  || $past(bus_wstrb[0] && bus_wdata[7])
 		  ||($past(!o_cmd_request)&&(o_cmd_request
 				&& o_cmd_type == R2_REPLY))))
 	begin
 		assert(fif_wraddr == 0);
 		assert(fif_rdaddr == 0);
-		if ($past(i_wb_sel[0] && i_wb_data[7]))
+		if ($past(bus_wstrb[0] && bus_wdata[7]))
 		begin
 			assert(!$rose(o_cmd_request));
 			assert(!$rose(mem_busy));
@@ -1591,15 +1726,15 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (f_past_valid && !$past(i_reset || o_soft_reset)
 		&& !$past(o_cmd_request)
-		&& $past(bus_cmd_stb) && $past(&i_wb_sel[1:0]))
+		&& $past(bus_cmd_stb) && $past(&bus_wstrb[1:0]))
 	begin
-		if ($past(i_wb_data[15:0] == 16'h0028
-			|| i_wb_data[15:0] == 16'h0040))
+		if ($past(bus_wdata[15:0] == 16'h0028
+			|| bus_wdata[15:0] == 16'h0040))
 		begin
 			assert(o_cmd_request);
 			assert(o_cmd_selfreply);
 			assert(o_cmd_type == RNO_REPLY);
-			assert(o_cmd_id == $past(i_wb_data[6:0]));
+			assert(o_cmd_id == $past(bus_wdata[6:0]));
 		end
 	end
 
@@ -1773,8 +1908,9 @@ module	sdwb #(
 
 	// PHY register
 	// {{{
-	fwb_register #(
-		.AW(3), .DW(MW), .ADDR(ADDR_PHY),
+	faxil_register #(
+		// {{{
+		.AW(5), .ADDR({ ADDR_PHY, 2'b00 }),
 		.MASK(32'h0018_b100
 			| (OPT_1P8V   ? 32'h0040_0000 : 32'h00)
 			| (OPT_SERDES ? 32'h001f_0000 : 32'h00)
@@ -1784,14 +1920,19 @@ module	sdwb #(
 			| (OPT_SERDES ? 32'h00
 			:  OPT_DDR    ? 32'h0023_0200
 			:               32'h0024_0200))
-	) fwb_phy (
+		// }}}
+	) faxil_phy (
 		// {{{
-		.i_clk(i_clk), .i_reset(i_reset || o_soft_reset),
-		.i_wb_stb(i_wb_stb), .i_wb_we(i_wb_we),
-		.i_wb_addr(i_wb_addr), .i_wb_data(i_wb_data),
-				.i_wb_sel(i_wb_sel),
-		.i_wb_ack(pre_valid && !f_past_soft),
-			.i_wb_return(pre_data),
+		.S_AXI_ACLK(i_clk), .S_AXI_ARESETN(!i_reset && !o_soft_reset),
+		.S_AXIL_AWW(bus_write),
+		.S_AXIL_AWADDR({ bus_wraddr, 2'b00 }),
+		.S_AXIL_WDATA(bus_wdata),
+		.S_AXIL_WSTRB(bus_wstrb),
+		.S_AXIL_BVALID(S_AXIL_BVALID),
+		.S_AXIL_AR(bus_read),
+		.S_AXIL_ARADDR(bus_rdaddr),
+		.S_AXIL_RVALID(pre_valid),
+		.S_AXIL_RDATA(pre_data),
 		.i_register(w_phy_ctrl)
 		// }}}
 	);
@@ -1835,17 +1976,34 @@ module	sdwb #(
 	// {{{
 	always @(*)
 	if (o_tx_en || r_tx_request)
-		assume(!i_wb_stb || !i_wb_we
-				|| i_wb_addr != ADDR_FIFOA + r_fifo);
+		assume(!bus_write || bus_wraddr != ADDR_FIFOA + r_fifo);
 
 	always @(*)
 	if (cmd_busy && o_cmd_type == R2_REPLY)
-		assume(!i_wb_stb || i_wb_addr != ADDR_FIFOA + r_fifo);
+		assume(!bus_write || bus_wraddr != ADDR_FIFOA + r_fifo);
 
 	always @(*)
 	if (o_rx_en || r_rx_request)
-		assume(!i_wb_stb || i_wb_addr != ADDR_FIFOA + r_fifo);
+		assume(!bus_write || bus_wraddr != ADDR_FIFOA + r_fifo);
 	// }}}
+
+	// To make faxil_register to work, when cleared by reset, assume the
+	// read/writes won't impact reset.
+	reg	past_reset;
+	always @(posedge i_clk)
+		past_reset <= i_reset || o_soft_reset;
+
+	always @(*)
+	if (past_reset)
+		assume(!S_AXIL_AWVALID && !S_AXIL_ARVALID);
+
+	always @(*)
+	if (o_soft_reset)
+	begin
+		assume(!S_AXIL_AWVALID && !S_AXIL_WVALID && !S_AXIL_BVALID);
+		assume(!S_AXIL_ARVALID && !pre_valid && !S_AXIL_RVALID);
+	end
+
 	// }}}
 `endif	// FORMAL
 // }}}

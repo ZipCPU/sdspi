@@ -49,11 +49,32 @@ module	tb_sdio;
 	wire			clk, hsclk;
 	reg			reset;
 
+`ifdef	SDIO_AXIL
+	wire			BFM_AWVALID, BFM_AWREADY;
+	wire	[AW-1:0]	BFM_AWADDR;
+	wire	[2:0]		BFM_AWPROT;
+
+	wire			BFM_WVALID, BFM_WREADY;
+	wire	[32-1:0]	BFM_WDATA;
+	wire	[32/8-1:0]	BFM_WSTRB;
+
+	wire			BFM_BVALID, BFM_BREADY;
+	wire	[1:0]		BFM_BRESP;
+
+	wire			BFM_ARVALID, BFM_ARREADY;
+	wire	[AW-1:0]	BFM_ARADDR;
+	wire	[2:0]		BFM_ARPROT;
+
+	wire			BFM_RVALID, BFM_RREADY;
+	wire	[32-1:0]	BFM_RDATA;
+	wire	[1:0]		BFM_RRESP;
+`else
 	wire			bfm_cyc, bfm_stb, bfm_we,
 				bfm_stall, bfm_ack, bfm_err;
 	wire	[AW-1:0]	bfm_addr;
 	wire	[DW-1:0]	bfm_data, bfm_idata;
 	wire	[DW/8-1:0]	bfm_sel;
+`endif
 
 	wire			sd_cmd, sd_ck;
 	wire	[3:0]		sd_dat;
@@ -101,33 +122,97 @@ module	tb_sdio;
 		// {{{
 		.i_clk(clk), .i_reset(reset), .i_hsclk(hsclk),
 		//
+`ifdef	SDIO_AXIL
+		.S_AXIL_AWVALID( BFM_AWVALID),
+		.S_AXIL_AWREADY( BFM_AWREADY),
+		.S_AXIL_AWADDR( BFM_AWADDR),
+		.S_AXIL_AWPROT( BFM_AWPROT),
+		//
+		.S_AXIL_WVALID( BFM_WVALID),
+		.S_AXIL_WREADY( BFM_WREADY),
+		.S_AXIL_WDATA( BFM_WDATA),
+		.S_AXIL_WSTRB( BFM_WSTRB),
+		//
+		.S_AXIL_BVALID( BFM_BVALID),
+		.S_AXIL_BREADY( BFM_BREADY),
+		.S_AXIL_BRESP( BFM_BRESP),
+		//
+		.S_AXIL_ARVALID( BFM_ARVALID),
+		.S_AXIL_ARREADY( BFM_ARREADY),
+		.S_AXIL_ARADDR( BFM_ARADDR),
+		.S_AXIL_ARPROT( BFM_ARPROT),
+		//
+		.S_AXIL_RVALID( BFM_RVALID),
+		.S_AXIL_RREADY( BFM_RREADY),
+		.S_AXIL_RDATA( BFM_RDATA),
+		.S_AXIL_RRESP( BFM_RRESP),
+`else
 		.i_wb_cyc(bfm_cyc), .i_wb_stb(bfm_stb), .i_wb_we(bfm_we),
 		.i_wb_addr(bfm_addr), .i_wb_data(bfm_data),.i_wb_sel(bfm_sel),
 		.o_wb_stall(bfm_stall),.o_wb_ack(bfm_ack),.o_wb_data(bfm_idata),
+`endif
 		//
 		.o_ck(sd_ck), .i_ds(1'b0), .io_cmd(sd_cmd), .io_dat(sd_dat),
 		.i_card_detect(1'b1), .o_int(interrupt), .o_debug(scope_debug)
 		// }}}
 	);
 
+`ifndef	SDIO_AXIL
 	assign	bfm_err = 1'b0;
+`endif
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
-	// Wishbone bus functional model
+	// AXI-Lite / Wishbone bus functional model
 	// {{{
 
+`ifdef	SDIO_AXIL
+	axil_bfm #(
+		.AW(AW), .DW(DW), .LGFIFO(4)
+	) u_bfm (
+		// {{{
+		.i_aclk(clk), .i_aresetn(!reset),
+		//
+		.AXIL_AWVALID( BFM_AWVALID),
+		.AXIL_AWREADY( BFM_AWREADY),
+		.AXIL_AWADDR( BFM_AWADDR),
+		.AXIL_AWPROT( BFM_AWPROT),
+		//
+		.AXIL_WVALID( BFM_WVALID),
+		.AXIL_WREADY( BFM_WREADY),
+		.AXIL_WDATA( BFM_WDATA),
+		.AXIL_WSTRB( BFM_WSTRB),
+		//
+		.AXIL_BVALID( BFM_BVALID),
+		.AXIL_BREADY( BFM_BREADY),
+		.AXIL_BRESP( BFM_BRESP),
+		//
+		.AXIL_ARVALID( BFM_ARVALID),
+		.AXIL_ARREADY( BFM_ARREADY),
+		.AXIL_ARADDR( BFM_ARADDR),
+		.AXIL_ARPROT( BFM_ARPROT),
+		//
+		.AXIL_RVALID( BFM_RVALID),
+		.AXIL_RREADY( BFM_RREADY),
+		.AXIL_RDATA( BFM_RDATA),
+		.AXIL_RRESP( BFM_RRESP)
+		// }}}
+	);
+`else
 	wb_bfm #(
 		.AW(AW), .DW(DW), .LGFIFO(4)
 	) u_bfm (
+		// {{{
 		.i_clk(clk), .i_reset(reset),
 		//
 		.o_wb_cyc(bfm_cyc), .o_wb_stb(bfm_stb), .o_wb_we(bfm_we),
 		.o_wb_addr(bfm_addr), .o_wb_data(bfm_data), .o_wb_sel(bfm_sel),
 		.i_wb_stall(bfm_stall), .i_wb_ack(bfm_ack),
 			.i_wb_data(bfm_idata), .i_wb_err(bfm_err)
+		// }}}
 	);
+`endif
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////

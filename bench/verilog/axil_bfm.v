@@ -41,10 +41,13 @@
 `default_nettype none
 // }}}
 module	axil_bfm #(
+		// {{{
 		parameter AW = 5,
+		localparam	ADDR_WIDTH=AW,
 		parameter DW = 32,
 		parameter LGFIFO = 4,
-		parameter [0:0]	OPT_DEBUG = 1'b0
+		parameter [0:0]	OPT_DEBUG = 1'b1
+		// }}}
 	) (
 		// {{{
 		input	wire			i_aclk, i_aresetn,
@@ -59,19 +62,19 @@ module	axil_bfm #(
 		output	reg	[DW-1:0]	AXIL_WDATA,
 		output	reg	[DW/8-1:0]	AXIL_WSTRB,
 		//
-		input	reg			AXIL_BVALID,
+		input	wire			AXIL_BVALID,
 		output	wire			AXIL_BREADY,
-		input	reg	[1:0]		AXIL_BRESP,
+		input	wire	[1:0]		AXIL_BRESP,
 		//
 		output	reg			AXIL_ARVALID,
 		input	wire			AXIL_ARREADY,
 		output	reg	[AW-1:0]	AXIL_ARADDR,
 		output	reg	[2:0]		AXIL_ARPROT,
 		//
-		input	reg			AXIL_RVALID,
+		input	wire			AXIL_RVALID,
 		output	wire			AXIL_RREADY,
-		input	reg	[DW-1:0]	AXIL_RDATA,
-		input	reg	[1:0]		AXIL_RRESP
+		input	wire	[DW-1:0]	AXIL_RDATA,
+		input	wire	[1:0]		AXIL_RRESP
 		// }}}
 	);
 
@@ -99,51 +102,67 @@ module	axil_bfm #(
 	// {{{
 	// These will queue tasks into the request FIFO
 
-	initial	{ fifo_rdaddr, fifo_wraddr } = 0;
+	initial	{ awfifo_rdaddr, awfifo_wraddr } = 0;
+	initial	{  wfifo_rdaddr,  wfifo_wraddr } = 0;
+	initial	{ arfifo_rdaddr, arfifo_wraddr } = 0;
 
 	task writeio(input [ADDR_WIDTH-1:0] addr, input [DW-1:0] dat);
 		// {{{
 	begin
 		if (OPT_DEBUG)
 			$display("BFM:WRITE @0x%04x <-- %08x", addr, dat);
-		wait(i_aresetn);
+
+		if (i_aresetn !== 1'b1)
+		begin
+			wait(i_aresetn == 1'b1);
+			@(posedge i_aclk);
+			@(posedge i_aclk);
+		end
 
 		while(
 			((awfifo_wraddr[LGFIFO-1:0] == awfifo_rdaddr[LGFIFO-1:0])
 				&&(awfifo_wraddr[LGFIFO] != awfifo_rdaddr[LGFIFO]))
 			||((wfifo_wraddr[LGFIFO-1:0] == wfifo_rdaddr[LGFIFO-1:0])
-				&&(wfifo_wraddr[LGFIFO] != wfifo_rdaddr[LGFIFO]))
+				&&(wfifo_wraddr[LGFIFO] != wfifo_rdaddr[LGFIFO])))
 		begin
 			@(posedge i_aclk);
 		end
 
 		awfifo[awfifo_wraddr[LGFIFO-1:0]] = addr;
-		wfifo[  wfifo_wraddr[LGFIFO-1:0]] = { 4'hf, data };
+		wfifo[  wfifo_wraddr[LGFIFO-1:0]] = { 4'hf, dat };
 		awfifo_wraddr = awfifo_wraddr + 1;
 		 wfifo_wraddr =  wfifo_wraddr + 1;
+		awfifo_fill   = awfifo_fill + 1;
+		 wfifo_fill   =  wfifo_fill + 1;
 	end endtask
 	// }}}
 
 	task write_f(input [ADDR_WIDTH-1:0] addr, input [DW-1:0] dat);
 		// {{{
 	begin
-		write_f(addr, dat);
+		writeio(addr, dat);
 
 		// Now wait for the last read to finish
 		while(aw_outstanding > 0 || w_outstanding > 0
 				|| awfifo_fill != 0 || wfifo_fill != 0)
 			@(posedge i_aclk);
-
 	end endtask
 	// }}}
 
 	task readio(input [ADDR_WIDTH-1:0] addr, output [DW-1:0] dat);
+		// {{{
 		reg			returned, err_flag;
 		reg	[LGFIFO:0]	read_busaddr;
 		reg	[31:0]		return_count;
 	begin
-		err_flag = 1'b0;
+		while(i_aresetn !== 1'b1)
+		begin
+			wait(i_aresetn === 1'b1);
+			@(posedge i_aclk);
+			@(posedge i_aclk);
+		end
 
+		err_flag = 1'b0;
 		while((arfifo_wraddr[LGFIFO-1:0] == arfifo_rdaddr[LGFIFO-1:0])
 			&&(arfifo_wraddr[LGFIFO] != arfifo_rdaddr[LGFIFO]))
 		begin
@@ -152,31 +171,36 @@ module	axil_bfm #(
 
 		arfifo[arfifo_wraddr[LGFIFO-1:0]] = addr;
 		arfifo_wraddr = arfifo_wraddr + 1;
-		return_count  = arfifo_wraddr - arfifo_rdaddr + ar_outstanding;
+		return_count = 0;
+		return_count[LGFIFO-1:0] = arfifo_wraddr[LGFIFO-1:0] - arfifo_rdaddr[LGFIFO-1:0];
+		return_count = return_count + ar_outstanding;
+// $display("READ ARFIFO(0x%08x, %6d, %6d, %6d,count=%2d) at %t", addr, arfifo_wraddr, arfifo_rdaddr, ar_outstanding, return_count, $time);
 
 
 		do begin
 			@(posedge i_aclk)
-			if (S_AXIL_RVALID && S_AXIL_RREADY)
+			if (AXIL_RVALID === 1'b1 && AXIL_RREADY === 1'b1)
 			begin
 				return_count <= return_count - 1;
-				dat <= S_AXIL_RDATA;
+				dat <= AXIL_RDATA;
+				err_flag <= (AXIL_RRESP != 2'b00);
 			end
 			wait(!i_aclk);
-		end while(return_count > 1);
+		end while(return_count >= 1);
 
 		if (OPT_DEBUG)
-			$display("BFM:READ  @0x%04x --> %08x", addr, dat);
+			$display("BFM:READ  @0x%04x --> %08x at %t", addr, dat, $time);
 	end endtask
+	// }}}
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Issue requests
 	// {{{
-	assign	aw_committed = aw_outstanding + (S_AXIL_AWVALID ? 1:0);
-	assign	w_committed  =  w_outstanding + (S_AXIL_WVALID  ? 1:0);
-	assign	ar_committed = ar_outstanding + (S_AXIL_ARVALID ? 1:0);
+	assign	aw_committed = aw_outstanding + (AXIL_AWVALID ? 1:0);
+	assign	w_committed  =  w_outstanding + (AXIL_WVALID  ? 1:0);
+	assign	ar_committed = ar_outstanding + (AXIL_ARVALID ? 1:0);
 	assign	aw_full = (&aw_committed);
 	assign	 w_full = (& w_committed);
 	assign	ar_full = (&ar_committed);
@@ -184,7 +208,7 @@ module	axil_bfm #(
 	always @(posedge i_aclk)
 	if (!i_aresetn)
 		aw_outstanding <= 0;
-	else case({ S_AXIL_AWVALID && S_AXIL_AWREADY, S_AXIL_BVALID && S_AXIL_BREADY })
+	else case({ AXIL_AWVALID && AXIL_AWREADY, AXIL_BVALID && AXIL_BREADY })
 	2'b10: aw_outstanding <= aw_outstanding + 1;
 	2'b01: aw_outstanding <= (aw_outstanding > 0)
 					? (aw_outstanding - 1) : 0;
@@ -194,8 +218,8 @@ module	axil_bfm #(
 	always @(posedge i_aclk)
 	if (!i_aresetn)
 		w_outstanding <= 0;
-	else case({ S_AXIL_WVALID && S_AXIL_WREADY,
-				S_AXIL_BVALID && S_AXIL_BREADY })
+	else case({ AXIL_WVALID && AXIL_WREADY,
+				AXIL_BVALID && AXIL_BREADY })
 	2'b10: w_outstanding <= w_outstanding + 1;
 	2'b01: w_outstanding <= (w_outstanding > 0)
 					? (w_outstanding - 1) : 0;
@@ -203,10 +227,10 @@ module	axil_bfm #(
 	endcase
 
 	always @(posedge i_aclk)
-	if (i_aresetn)
+	if (!i_aresetn)
 		ar_outstanding <= 0;
-	else case({ S_AXIL_ARVALID && S_AXIL_ARREADY,
-					S_AXIL_RVALID && S_AXIL_RREADY })
+	else case({ AXIL_ARVALID && AXIL_ARREADY,
+					AXIL_RVALID && AXIL_RREADY })
 	2'b10: ar_outstanding <= ar_outstanding + 1;
 	2'b01: ar_outstanding <= (ar_outstanding > 0)
 					? (ar_outstanding - 1) : 0;
@@ -221,78 +245,95 @@ module	axil_bfm #(
 	always @(*)  w_requests =  wfifo_fill +  w_outstanding;
 	always @(*) ar_requests = arfifo_fill + ar_outstanding;
 
+	// AW* issue
+	// {{{
 	always @(posedge i_aclk)
 	if (!i_aresetn)
 	begin
 		// {{{
 		awfifo_rdaddr <= 0;
-		S_AXIL_AWVALID <= 0;
-		S_AXIL_AWADDR  <= 0;
+		AXIL_AWVALID <= 0;
+		AXIL_AWADDR  <= 0;
+		AXIL_AWPROT  <= 0;
 		// }}}
-	end else if ((!S_AXIL_AWVALID || S_AXIL_AWREADY) && (awfifo_fill != 0))
+	end else if ((!AXIL_AWVALID || AXIL_AWREADY) && (awfifo_fill != 0))
 	begin
 		// {{{
-		S_AXIL_AWVALID <= 1'b1;
-		S_AXIL_AWADDR  <= awfifo[awfifo_rdaddr];
+		AXIL_AWVALID <= 1'b1;
+		AXIL_AWADDR  <= awfifo[awfifo_rdaddr[LGFIFO-1:0]];
 		awfifo_rdaddr  <= awfifo_rdaddr + 1;
 		// }}}
-	end else if (S_AXIL_AWREADY)
+	end else if (AXIL_AWREADY)
 	begin
 		// {{{
-		S_AXIL_AWVALID <= 1'b0;
-		S_AXIL_AWADDR  <= 0;
+		AXIL_AWVALID <= 1'b0;
+		AXIL_AWADDR  <= 0;
 		// }}}
 	end
+	// }}}
 
+	// W* issue
+	// {{{
 	always @(posedge i_aclk)
 	if (!i_aresetn)
 	begin
 		// {{{
 		wfifo_rdaddr <= 0;
-		S_AXIL_WVALID <= 0;
-		S_AXIL_WDATA  <= 0;
-		S_AXIL_WSTRB  <= 0;
+		AXIL_WVALID <= 0;
+		AXIL_WDATA  <= 0;
+		AXIL_WSTRB  <= 0;
 		// }}}
-	end else if ((!S_AXIL_WVALID || S_AXIL_WREADY) && (wfifo_fill != 0))
+	end else if ((!AXIL_WVALID || AXIL_WREADY) && (wfifo_fill != 0))
 	begin
 		// {{{
-		S_AXIL_WVALID <= 1'b1;
-		{ S_AXIL_WSTRB, S_AXIL_WDATA } <= wfifo[wfifo_rdaddr];
+		AXIL_WVALID <= 1'b1;
+		{ AXIL_WSTRB, AXIL_WDATA } <= wfifo[wfifo_rdaddr[LGFIFO-1:0]];
 		wfifo_rdaddr  <= wfifo_rdaddr + 1;
 		// }}}
-	end else if (S_AXIL_WREADY)
+	end else if (AXIL_WREADY)
 	begin
 		// {{{
-		S_AXIL_WVALID <= 1'b0;
-		S_AXIL_WDATA  <= 0;
-		S_AXIL_WSTRB  <= 0;
+		AXIL_WVALID <= 1'b0;
+		AXIL_WDATA  <= 0;
+		AXIL_WSTRB  <= 0;
 		// }}}
 	end
+	// }}}
 
+	// AR* issue
+	// {{{
+	wire	[AW-1:0]	next_araddr;
+	assign	next_araddr = arfifo[arfifo_rdaddr[LGFIFO-1:0]];
 
 	always @(posedge i_aclk)
 	if (!i_aresetn)
 	begin
 		// {{{
 		arfifo_rdaddr <= 0;
-		S_AXIL_ARVALID <= 0;
-		S_AXIL_ARADDR  <= 0;
+		AXIL_ARVALID <= 0;
+		AXIL_ARADDR  <= 0;
+		AXIL_ARPROT  <= 0;
 		// }}}
-	end else if ((!S_AXIL_ARVALID || S_AXIL_ARREADY) && (arfifo_fill != 0))
+	end else if ((!AXIL_ARVALID || AXIL_ARREADY) && (arfifo_fill != 0))
 	begin
 		// {{{
-		S_AXIL_ARVALID <= 1'b1;
-		S_AXIL_ARADDR  <= arfifo[arfifo_rdaddr];
+		AXIL_ARVALID <= 1'b1;
+		AXIL_ARADDR  <= arfifo[arfifo_rdaddr[LGFIFO-1:0]];
 		arfifo_rdaddr  <= arfifo_rdaddr + 1;
 		// }}}
-	end else if (S_AXIL_ARREADY)
+	end else if (AXIL_ARREADY)
 	begin
 		// {{{
-		S_AXIL_ARVALID <= 1'b0;
-		S_AXIL_ARADDR  <= 0;
+		AXIL_ARVALID <= 1'b0;
+		AXIL_ARADDR  <= 0;
+		AXIL_ARPROT  <= 0;
 		// }}}
 	end
+	// }}}
 
 	// }}}
+
+	assign	AXIL_BREADY = 1'b1;
+	assign	AXIL_RREADY = 1'b1;
 endmodule
 

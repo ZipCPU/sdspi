@@ -267,7 +267,7 @@ module	sdwb #(
 
 	assign	bus_cmd_stb = bus_write && bus_wraddr == ADDR_CMD
 			&&((!r_cmd_err && !r_rx_err)
-					|| (bus_wstrb[1] && bus_wstrb[15]));
+					|| (bus_wstrb[1] && bus_wdata[15]));
 
 
 	// o_soft_reset
@@ -875,8 +875,8 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		o_cfg_ddr <= 1'b0;
-	else if (bus_phy_stb && i_wb_sel[1])
-		o_cfg_ddr <= i_wb_data[8];
+	else if (bus_phy_stb && bus_wstrb[1])
+		o_cfg_ddr <= bus_wdata[8];
 	// }}}
 
 	// o_cfg_width: Control the number of data bits, whether 1, 4, or 8
@@ -887,9 +887,9 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		r_width <= WIDTH_1W;
-	else if (bus_phy_stb && i_wb_sel[1])
+	else if (bus_phy_stb && bus_wstrb[1])
 	begin
-		case(i_wb_data[11:10])
+		case(bus_wdata[11:10])
 		2'b00: r_width <= WIDTH_1W;
 		2'b01: if (NUMIO < 4) r_width <= WIDTH_1W;
 			else r_width <= WIDTH_4W;
@@ -910,12 +910,12 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		r_ckspeed <= 252;
-	else if (bus_phy_stb && i_wb_sel[0])
+	else if (bus_phy_stb && bus_wstrb[0])
 	begin
-		r_ckspeed <= i_wb_data[7:0];
-		if (!OPT_SERDES && !OPT_DDR && i_wb_data[7:0] < 2)
+		r_ckspeed <= bus_wdata[7:0];
+		if (!OPT_SERDES && !OPT_DDR && bus_wdata[7:0] < 2)
 			r_ckspeed <= 8'h2;
-		else if (!OPT_SERDES && i_wb_data[7:0] == 0)
+		else if (!OPT_SERDES && bus_wdata[7:0] == 0)
 			r_ckspeed <= 8'h1;
 	end
 
@@ -991,8 +991,8 @@ module	sdwb #(
 			r_card_removed <= 1'b1;
 		else if (!card_present)
 			r_card_removed <= 1'b1;
-		else if (bus_cmd_stb && i_wb_data[CARD_REMOVED_BIT]
-					&& i_wb_sel[CARD_REMOVED_BIT/8])
+		else if (bus_cmd_stb && bus_wdata[CARD_REMOVED_BIT]
+					&& bus_wstrb[CARD_REMOVED_BIT/8])
 			r_card_removed <= 1'b0;
 
 		assign	card_removed = r_card_removed;
@@ -1085,14 +1085,14 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		fif_wraddr <= 0;
-	else if (bus_cmd_stb && ((i_wb_sel[1]
-			&& (i_wb_data[USE_FIFO_BIT]
-				|| i_wb_data[9:8] == R2_REPLY
-				|| r_fifo != i_wb_data[FIFO_ID_BIT]))
-			|| (i_wb_sel[0] && i_wb_data[7])))
+	else if (bus_cmd_stb && ((bus_wstrb[1]
+			&& (bus_wdata[USE_FIFO_BIT]
+				|| bus_wdata[9:8] == R2_REPLY
+				|| r_fifo != bus_wdata[FIFO_ID_BIT]))
+			|| (bus_wstrb[0] && bus_wdata[7])))
 		fif_wraddr <= 0;
-	else if (i_wb_stb && !o_wb_stall && i_wb_we && i_wb_sel[0]
-					&& (i_wb_addr == ADDR_FIFOA || i_wb_addr == ADDR_FIFOB))
+	else if (bus_write && bus_wstrb[0]
+			&& (bus_wraddr == ADDR_FIFOA || bus_wraddr == ADDR_FIFOB))
 		fif_wraddr <= fif_wraddr + 1;
 	// }}}
 
@@ -1102,14 +1102,14 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		fif_rdaddr <= 0;
-	else if (bus_cmd_stb && ((i_wb_sel[1]
-			&& (i_wb_data[USE_FIFO_BIT]
-				|| i_wb_data[9:8] == R2_REPLY
-				|| r_fifo != i_wb_data[FIFO_ID_BIT]))
-			|| (i_wb_sel[0] && i_wb_data[7])))
+	else if (bus_cmd_stb && ((bus_wstrb[1]
+			&& (bus_wdata[USE_FIFO_BIT]
+				|| bus_wdata[9:8] == R2_REPLY
+				|| r_fifo != bus_wdata[FIFO_ID_BIT]))
+			|| (bus_wstrb[0] && bus_wdata[7])))
 		fif_rdaddr <= 0;
-	else if (i_wb_stb && !i_wb_we && i_wb_sel[0]
-					&& (i_wb_addr == ADDR_FIFOA || i_wb_addr == ADDR_FIFOB))
+	else if (bus_read && i_wb_sel[0]
+			&& (bus_rdaddr == ADDR_FIFOA || bus_rdaddr == ADDR_FIFOB))
 		fif_rdaddr <= fif_rdaddr + 1;
 	// }}}
 
@@ -1214,12 +1214,12 @@ module	sdwb #(
 	begin
 		mem_wr_strb_a <= 0;
 
-		if (i_wb_stb && i_wb_we && i_wb_addr == ADDR_FIFOA
-				&& (|i_wb_sel))
+		if (bus_write && bus_wraddr == ADDR_FIFOA
+				&& (|bus_wstrb))
 		begin
 			mem_wr_addr_a <= fif_wraddr;
-			mem_wr_strb_a <= i_wb_sel;
-			mem_wr_data_a <= i_wb_data;
+			mem_wr_strb_a <= bus_wstrb;
+			mem_wr_data_a <= bus_wdata;
 		end
 
 		if (!r_fifo && i_cmd_mem_valid)
@@ -1350,6 +1350,8 @@ module	sdwb #(
 		{ o_wb_ack, pre_valid } <= 2'b00;
 	else
 		{ o_wb_ack, pre_valid } <= { pre_valid, i_wb_stb && !o_wb_stall };
+
+	assign	o_wb_data = bus_rddata;
 	// }}}
 
 	// Keep Verilator happy

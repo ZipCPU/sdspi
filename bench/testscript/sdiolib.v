@@ -108,8 +108,10 @@ task	sdio_wait_while_busy;
 	reg	[31:0]	read_data;
 	reg		prior_interrupt;
 begin
+$display("WAIT-WHILE-BUSY");
 	r_interrupted = 1'b0;
 	u_bfm.readio(ADDR_SDCARD, read_data);
+$display("FIRST-CHECK: %08x", read_data);
 	while(read_data & SDIO_BUSY)
 	begin
 		do begin
@@ -118,7 +120,15 @@ begin
 			// $display("CHECK IF BUSY -- %08x", read_data);
 			// if (read_data & SDIO_BUSY) assert(!prior_interrupt);
 		end while(read_data & SDIO_BUSY);
-		assert(r_interrupted);
+		if (1'b1 !== r_interrupted)
+		begin
+			$display("ERR: NO INTERRUPT!");
+			assert(r_interrupted)
+				else begin
+					$display("ERROR: I");
+					error_flag = 1'b1;
+				end
+		end
 	end
 
 	r_interrupted = 1'b0;
@@ -131,12 +141,13 @@ task	sdcard_go_idle;					// CMD0
 begin
 	// Send a command 0
 	u_bfm.writeio(ADDR_SDDATA, 32'h0); // 0x048040
-	u_bfm.writeio(ADDR_SDCARD, SDIO_CMD | SDIO_RNONE | SDIO_ERR);
+	u_bfm.write_f(ADDR_SDCARD, SDIO_CMD | SDIO_RNONE | SDIO_ERR);
 
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(!ctrl_reg[15]); // && ctrl_reg[17:16] == 2'b01);
+	assert(!ctrl_reg[15])
+		else begin $display("ERROR: A"); error_flag = 1'b1; end // && ctrl_reg[17:16] == 2'b01);
 end endtask
 // }}}
 
@@ -146,12 +157,13 @@ task	sdcard_all_send_cid;				// CMD2
 begin
 	// Send CMD2: ALL_SEND_CID
 	u_bfm.writeio(ADDR_SDDATA, 32'h0);
-	u_bfm.writeio(ADDR_SDCARD, SDIO_READCID);	// 0x08242
+	u_bfm.write_f(ADDR_SDCARD, SDIO_READCID);	// 0x08242
 
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: B"); error_flag = 1'b1; end
 
 	// We leave the CID in the FIFO to be read out later
 end endtask
@@ -163,12 +175,13 @@ task	sdcard_send_relative_addr(output [31:0] r6);
 begin
 	// Send CMD3: SEND_RELATIVE_ADDR
 	u_bfm.writeio(ADDR_SDDATA, 32'h0);
-	u_bfm.writeio(ADDR_SDCARD, SDIO_READREG + 3);
+	u_bfm.write_f(ADDR_SDCARD, SDIO_READREG + 3);
 
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: C"); error_flag = 1'b1; end
 	u_bfm.readio(ADDR_SDDATA, r6);
 end endtask
 // }}}
@@ -179,12 +192,13 @@ task	sdcard_select_card(input[15:0] rca);		// CMD 7
 begin
 	// Send CMD3: SEND_RELATIVE_ADDR
 	u_bfm.writeio(ADDR_SDDATA, { rca, 16'h0 });
-	u_bfm.writeio(ADDR_SDCARD, SDIO_READREG + 7);
+	u_bfm.write_f(ADDR_SDCARD, SDIO_READREG + 7);
 
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: D"); error_flag = 1'b1; end
 	// u_bfm.readio(ADDR_SDDATA, r6);
 end endtask
 // }}}
@@ -193,16 +207,20 @@ task	sdcard_send_if_cond(inout [31:0] ifcond);	// CMD8
 	// {{{
 	reg	[31:0]	ctrl_reg;
 begin
+$display("SEND-IF-COND");
 	sdio_wait_while_busy;
 
 	// Send CMD*: SEND_IF_COND
 	u_bfm.writeio(ADDR_SDDATA, ifcond);
-	u_bfm.writeio(ADDR_SDCARD, SDIO_READREG + 8); // 0x8148
+	u_bfm.write_f(ADDR_SDCARD, SDIO_READREG + 8); // 0x8148
 
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
+	if(1'b0 !== ctrl_reg[15] || 2'b01 !== ctrl_reg[17:16])
+		$display("ERROR: IF-COND, Invalid response");
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: E"); error_flag = 1'b1; end
 	u_bfm.readio(ADDR_SDDATA, ifcond);
 end endtask
 // }}}
@@ -211,11 +229,12 @@ task	sdcard_send_op_cond(inout [31:0] op_cond);	// ACMD41
 	// {{{
 	reg	[31:0]	ctrl_reg, read_reg;
 begin
+$display("SEND-OP-COND");
 	sdcard_send_app_cmd;
 
 	// Send a command 41
 	u_bfm.writeio(ADDR_SDDATA, op_cond);			// 0x4000_0000
-	u_bfm.writeio(ADDR_SDCARD, SDIO_READREG + 32'd41); // 0x8169
+	u_bfm.write_f(ADDR_SDCARD, SDIO_READREG + 32'd41); // 0x8169
 
 	sdio_wait_while_busy;
 
@@ -232,12 +251,13 @@ begin
 
 	// Send an ACMD 6
 	u_bfm.writeio(ADDR_SDDATA, { 30'h0, width });
-	u_bfm.writeio(ADDR_SDCARD, SDIO_READREG + 32'd6);
+	u_bfm.write_f(ADDR_SDCARD, SDIO_READREG + 32'd6);
 
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: F"); error_flag = 1'b1; end
 end endtask
 // }}}
 
@@ -245,13 +265,15 @@ task	sdcard_send_app_cmd;				// CMD 55
 	// {{{
 	reg	[31:0]	ctrl_reg;
 begin
+$display("SEND-APP-CMD");
 	u_bfm.writeio(ADDR_SDDATA, 32'h0);
-	u_bfm.writeio(ADDR_SDCARD, SDIO_READREG + 55); // 0x8177
+	u_bfm.write_f(ADDR_SDCARD, SDIO_READREG + 55); // 0x8177
 
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(!ctrl_reg[15] && ctrl_reg[17:16] == 2'b01);
+	assert(!ctrl_reg[15] && ctrl_reg[17:16] == 2'b01)
+		else begin $display("ERROR: G"); error_flag = 1'b1; end
 	// u_bfm.readio(ADDR_SDDATA, r6);
 end endtask
 // }}}
@@ -262,7 +284,7 @@ task	sdcard_read_ocr(output [31:0] read_data);	// CMD58
 begin
 	// Send a command 58
 	u_bfm.writeio(ADDR_SDDATA, 32'h0);
-	u_bfm.writeio(ADDR_SDCARD, SDIO_READREG + 32'd58);
+	u_bfm.write_f(ADDR_SDCARD, SDIO_READREG + 32'd58);
 
 	sdio_wait_while_busy;
 
@@ -282,7 +304,8 @@ begin
 	if (read_data[24])
 		$display("  S18A: Switching to 1.8V allowed");
 
-	assert(read_data[30:0] == u_sdcard.ocr[30:0]) else error_flag = 1'b1;
+	assert(read_data[30:0] == u_sdcard.ocr[30:0])
+		else begin $display("ERROR: F"); error_flag = 1'b1; end
 end endtask
 // }}}
 
@@ -300,12 +323,13 @@ begin
 	u_bfm.writeio(ADDR_SDDATA, sector);
 	for(ik=0; ik<512/4; ik=ik+1)
 		u_bfm.writeio(ADDR_FIFOA, $random);
-	u_bfm.writeio(ADDR_SDCARD, SDIO_WRITEBLK);
+	u_bfm.write_f(ADDR_SDCARD, SDIO_WRITEBLK);
 
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: G"); error_flag = 1'b1; end
 end endtask
 // }}}
 
@@ -322,7 +346,7 @@ begin
 	end
 
 	u_bfm.writeio(ADDR_SDDATA, sector);
-	u_bfm.writeio(ADDR_SDCARD, SDIO_READBLK);
+	u_bfm.write_f(ADDR_SDCARD, SDIO_READBLK);
 
 	sdio_wait_while_busy;
 
@@ -333,7 +357,8 @@ begin
 		$display("CMD FAILED CODE (%d) at %t", ctrl_reg[17:16], $time);
 	end
 
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: H, Read block ERR"); error_flag = 1'b1; end
 
 	for(ik=0; ik<512/4; ik=ik+1)
 		u_bfm.writeio(ADDR_FIFOA, $random);

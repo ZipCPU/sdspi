@@ -57,6 +57,7 @@ module	xsdddr #(
 		input	wire	[1:0]	i_data,
 		output	wire		io_pin_tristate,
 		input	wire		i_pin,
+		output	wire	[1:0]	o_mine,
 		output	wire		o_pin,
 		output	wire	[1:0]	o_wide
 		// }}}
@@ -64,6 +65,7 @@ module	xsdddr #(
 
 	wire	w_in, w_out;
 	reg	high_z;
+	reg	[1:0]	r_mine;
 
 	initial	high_z = OPT_BIDIR;
 	always @(posedge i_clk)
@@ -113,6 +115,17 @@ module	xsdddr #(
 	generate if (OPT_BIDIR)
 	begin : GEN_BIDIRECTIONAL
 		// {{{
+		reg	[2:0]	r_last;
+
+		always @(posedge i_clk)
+		if (!i_en)
+			r_last <= 3'h0;
+		else
+			r_last <= { r_last[0], i_data[1], i_data[0] };
+		always @(posedge i_clk)
+			r_mine <= r_last[2:1];
+
+		assign	o_mine = r_mine;
 `ifdef	OPENSIM
 		reg		r_p, r_n;
 		reg	[1:0]	r_in;
@@ -141,6 +154,9 @@ module	xsdddr #(
 	end else begin : GEN_OUTPUT
 
 		assign	o_wide = 2'b11;
+		always @(posedge i_clk)
+			r_mine <= i_data;
+		assign	o_mine = r_mine;
 
 		// Keep Verilator happy
 		// {{{

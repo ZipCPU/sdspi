@@ -53,18 +53,18 @@
 ##		This top level contains a ZipCPU, and it's test script is a
 ##		hex file specifying the software load for the test.
 ## }}}
-SDIO sdioio	sdiostart	OPT_SERDES=0 OPT_DDR=0
+SDIO sdioio	sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=0
 SDIO sdioddr	sdiostart	OPT_SERDES=0 OPT_DDR=1
 SDIO sdio8x	sdiostart	OPT_SERDES=1 OPT_DDR=1
 SDIO axsdioio	sdiostart	OPT_SERDES=0 OPT_DDR=0 -DSDIO_AXIL
 SDIO axsdioddr	sdiostart	OPT_SERDES=0 OPT_DDR=1 -DSDIO_AXIL
 SDIO axsdio8x	sdiostart	OPT_SERDES=1 OPT_DDR=1 -DSDIO_AXIL
-EMMC emmcio	emmcstart	OPT_SERDES=0 OPT_DDR=0	OPT_VCD=1
-EMMC emmcddr	emmcstart	OPT_SERDES=0 OPT_DDR=1	OPT_VCD=1
-EMMC emmc8x	emmcstart	OPT_SERDES=1 OPT_DDR=1	OPT_VCD=1
-EMMC axemmcio	emmcstart	OPT_SERDES=0 OPT_DDR=0	OPT_VCD=1 -DSDIO_AXIL
-EMMC axemmcddr	emmcstart	OPT_SERDES=0 OPT_DDR=1	OPT_VCD=1 -DSDIO_AXIL
-EMMC axemmc8x	emmcstart	OPT_SERDES=1 OPT_DDR=1	OPT_VCD=1 -DSDIO_AXIL
+EMMC emmcio	emmcstart	OPT_SERDES=0 OPT_DDR=0	OPT_VCD=0
+EMMC emmcddr	emmcstart	OPT_SERDES=0 OPT_DDR=1	OPT_VCD=0
+EMMC emmc8x	emmcstart	OPT_SERDES=1 OPT_DDR=1	OPT_VCD=0
+EMMC axemmcio	emmcstart	OPT_SERDES=0 OPT_DDR=0	OPT_VCD=0 -DSDIO_AXIL
+EMMC axemmcddr	emmcstart	OPT_SERDES=0 OPT_DDR=1	OPT_VCD=0 -DSDIO_AXIL
+EMMC axemmc8x	emmcstart	OPT_SERDES=1 OPT_DDR=1	OPT_VCD=0 -DSDIO_AXIL
 # CPU  cpusdio	sdcheck.hex	OPT_SERDES=0 OPT_DDR=0
 # CPU  cpusdddr	sdcheck.hex	OPT_SERDES=0 OPT_DDR=1
 # CPU  cpusd8x	sdcheck.hex	OPT_SERDES=1 OPT_DDR=1

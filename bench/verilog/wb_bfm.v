@@ -40,7 +40,7 @@ module	wb_bfm #(
 		parameter AW = 5,
 		parameter DW = 32,
 		parameter LGFIFO = 4,
-		parameter [0:0]	OPT_DEBUG = 1'b0
+		parameter [0:0]	OPT_DEBUG = 1'b1
 	) (
 		// {{{
 		input	wire			i_clk, i_reset,
@@ -85,7 +85,11 @@ module	wb_bfm #(
 	begin
 		if (OPT_DEBUG)
 			$display("BFM:WRITE @0x%04x <-- %08x", addr, dat);
-		wait(!i_reset);
+		if (i_reset !== 1'b0)
+		begin
+			wait(i_reset === 1'b0);
+			@(posedge i_clk);
+		end
 
 		while((fifo_wraddr[LGFIFO-1:0] == fifo_rdaddr[LGFIFO-1:0])
 				&&(fifo_wraddr[LGFIFO] != fifo_rdaddr[LGFIFO]))
@@ -101,20 +105,27 @@ module	wb_bfm #(
 	task write_f(input [ADDR_WIDTH-1:0] addr, input [DW-1:0] dat);
 		// {{{
 	begin
-		write_f(addr, dat);
+		writeio(addr, dat);
 
 		// Now wait for the last read to finish
-		while(o_wb_cyc || fifo_fill == 0)
+		while(o_wb_cyc || fifo_fill != 0)
 			@(posedge i_clk);
 
 	end endtask
 	// }}}
 
 	task readio(input [ADDR_WIDTH-1:0] addr, output [DW-1:0] dat);
+		// {{{
 		reg	returned, err_flag;
 		reg	[LGFIFO:0]	read_busaddr;
 	begin
 		err_flag = 1'b0;
+
+		if (i_reset !== 1'b0)
+		begin
+			wait(i_reset === 1'b0);
+			@(posedge i_clk);
+		end
 
 		while((fifo_wraddr[LGFIFO-1:0] == fifo_rdaddr[LGFIFO-1:0])
 				&&(fifo_wraddr[LGFIFO] != fifo_rdaddr[LGFIFO]))
@@ -147,6 +158,7 @@ module	wb_bfm #(
 		if (OPT_DEBUG)
 			$display("BFM:READ  @0x%04x --> %08x", addr, dat);
 	end endtask
+	// }}}
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////

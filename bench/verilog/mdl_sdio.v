@@ -147,6 +147,7 @@ module	mdl_sdio #(
 			.sd_ds(tx_ds),
 		//
 		.i_en(write_en), .i_width(cfg_width), .i_ddr(cfg_ddr),
+			.i_ppull(1'b0),
 		//
 		.i_valid(tx_valid), .o_ready(tx_ready),
 			.i_data(tx_data), .i_last(tx_last)
@@ -413,13 +414,14 @@ module	mdl_sdio #(
 		// end
 	end else if (write_en && tx_valid && tx_ready)
 	begin
+		tx_data <= mem_buf[tx_addr];
 		if (tx_last)
 		begin
 			tx_valid <= 1'b0;
 			write_en <= 1'b0;
-		end
-		tx_data <= mem_buf[tx_addr];
-		tx_addr <= tx_addr + 1;
+			tx_addr  <= 0;
+		end else
+			tx_addr <= tx_addr + 1;
 		tx_last <= tx_last || (&tx_addr[6:0]);
 	end else if (!write_en)
 	begin

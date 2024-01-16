@@ -42,8 +42,13 @@ task	testscript;
 	reg	[15:0]	rca;
 	reg	[127:0]	CID;
 begin
+	@(posedge clk);
+	while(reset !== 1'b0)
+		@(posedge clk);
+	@(posedge clk);
+
 	// u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_100KHZ | SDIO_W1);
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_1MHZ | SDIO_W1);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_1MHZ | SDIO_W1);
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
 	end while(read_data[7:0] != SPEED_1MHZ[7:0]);
@@ -105,7 +110,7 @@ begin
 	// CMD7 SELECT/DESELCT Card
 	sdcard_select_card(rca);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDIO_W1);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDIO_W1);
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
 	end while(read_data[7:0] != SPEED_DS[7:0]);
@@ -127,7 +132,7 @@ begin
 
 	// Test at SPEED_DS=25MHZ SDR
 	// {{{
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDIO_W4);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDIO_W4);
 
 	// CMD6		// Select drive strength ??
 	// CMD19	// Tuning block to determine sampling point
@@ -144,7 +149,7 @@ begin
 
 	// Test at SPEED_HSSDR=50MHZ SDR
 	// {{{
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | SDIO_W4);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | SDIO_W4);
 
 	sdcard_send_random_block(32'h0b);
 	sdcard_send_random_block(32'h09);
@@ -157,7 +162,7 @@ begin
 
 	// Test at SPEED_SDR100=100MHZ SDR
 	// {{{
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | SDIO_W4);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | SDIO_W4);
 
 	sdcard_send_random_block(32'h0c);
 	sdcard_send_random_block(32'h0d);
@@ -170,7 +175,7 @@ begin
 
 	// Test at fastest SDR speed=200MHz SDR
 	// {{{
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR200 | SDIO_W4);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR200 | SDIO_W4);
 
 	sdcard_send_random_block(32'h10);
 	sdcard_send_random_block(32'h11);

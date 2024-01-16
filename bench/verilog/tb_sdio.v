@@ -42,7 +42,7 @@ module	tb_sdio;
 	parameter	[1:0]	OPT_SERDES = 1'b1;
 	parameter	[1:0]	OPT_DDR = 1'b1;
 	parameter	[0:0]	OPT_VCD = 1'b0;
-	localparam		AW = 3, DW=32;
+	localparam		DW=32;
 	localparam		VCD_FILE = "trace.vcd";
 
 	reg	[2:0]		ckcounter;
@@ -50,6 +50,9 @@ module	tb_sdio;
 	reg			reset;
 
 `ifdef	SDIO_AXIL
+	// AXI-Lite definitions
+	// {{{
+	localparam		AW = 5;
 	wire			BFM_AWVALID, BFM_AWREADY;
 	wire	[AW-1:0]	BFM_AWADDR;
 	wire	[2:0]		BFM_AWPROT;
@@ -68,12 +71,17 @@ module	tb_sdio;
 	wire			BFM_RVALID, BFM_RREADY;
 	wire	[32-1:0]	BFM_RDATA;
 	wire	[1:0]		BFM_RRESP;
+	// }}}
 `else
+	// BFM definitions
+	// {{{
+	localparam		AW = 3;
 	wire			bfm_cyc, bfm_stb, bfm_we,
 				bfm_stall, bfm_ack, bfm_err;
 	wire	[AW-1:0]	bfm_addr;
 	wire	[DW-1:0]	bfm_data, bfm_idata;
 	wire	[DW/8-1:0]	bfm_sel;
+	// }}}
 `endif
 
 	wire			sd_cmd, sd_ck;
@@ -96,11 +104,8 @@ module	tb_sdio;
 	assign	hsclk = ckcounter[0];
 	assign	clk   = ckcounter[2];
 
+	initial	reset <= 1;
 	initial	begin
-		reset <= 0;
-		@(posedge hsclk)
-			reset <= 1;
-		@(posedge clk);
 		@(posedge clk);
 		@(posedge clk)
 			reset <= 0;
@@ -123,6 +128,8 @@ module	tb_sdio;
 		.i_clk(clk), .i_reset(reset), .i_hsclk(hsclk),
 		//
 `ifdef	SDIO_AXIL
+		// AXI-Lite Control/data interface
+		// {{{
 		.S_AXIL_AWVALID( BFM_AWVALID),
 		.S_AXIL_AWREADY( BFM_AWREADY),
 		.S_AXIL_AWADDR( BFM_AWADDR),
@@ -146,10 +153,14 @@ module	tb_sdio;
 		.S_AXIL_RREADY( BFM_RREADY),
 		.S_AXIL_RDATA( BFM_RDATA),
 		.S_AXIL_RRESP( BFM_RRESP),
+		// }}}
 `else
-		.i_wb_cyc(bfm_cyc), .i_wb_stb(bfm_stb), .i_wb_we(bfm_we),
-		.i_wb_addr(bfm_addr), .i_wb_data(bfm_data),.i_wb_sel(bfm_sel),
+		// WB Control/data interface
+		// {{{
+		.i_wb_cyc(bfm_cyc),    .i_wb_stb(bfm_stb),  .i_wb_we(bfm_we),
+		.i_wb_addr(bfm_addr),  .i_wb_data(bfm_data),.i_wb_sel(bfm_sel),
 		.o_wb_stall(bfm_stall),.o_wb_ack(bfm_ack),.o_wb_data(bfm_idata),
+		// }}}
 `endif
 		//
 		.o_ck(sd_ck), .i_ds(1'b0), .io_cmd(sd_cmd), .io_dat(sd_dat),
@@ -158,7 +169,7 @@ module	tb_sdio;
 	);
 
 `ifndef	SDIO_AXIL
-	assign	bfm_err = 1'b0;
+	assign	bfm_err = 1'b0;		// Wishbone error return
 `endif
 
 	// }}}
@@ -222,6 +233,7 @@ module	tb_sdio;
 
 	mdl_sdio
 	u_sdcard (
+		// .rst_n(1'b1),
 		.sd_clk(sd_ck), .sd_cmd(sd_cmd), .sd_dat(sd_dat)
 	);
 
@@ -259,6 +271,16 @@ module	tb_sdio;
 			$display("Test pass");
 		end
 
+		$finish;
+	end
+
+	always @(posedge error_flag)
+	if (!reset)
+	begin
+		$display("ERROR-FLAG DETECTED");
+		repeat(200)
+			@(posedge clk);
+		$display("TEST-FAIL/ERROR FLAG");
 		$finish;
 	end
 	// }}}

@@ -16,6 +16,7 @@ mdl_sdtx.v
 ../../rtl/sdio.v
 ../../rtl/sdckgen.v
 ../../rtl/sdwb.v
+../../rtl/sdskid.v
 ../../rtl/sdaxil.v
 ../../rtl/sdcmd.v
 ../../rtl/sdtxframe.v

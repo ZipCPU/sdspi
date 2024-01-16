@@ -161,14 +161,17 @@ sub simline($) {
 		$defs = $defs . " -DIVERILOG";
 		
 		while($args =~ /\s*(\S+)\s*(.*)$/) {
+			my $eq = 0;
 			if ($args =~ /\s*(\S+)\s*=\s*(\S+)(.*)$/) {
 				$p = $1;
 				$v = $2;
 				$args = $3;
+				$eq = 1;
 			} elsif ($args =~ /\s*(\S+)\s*(.*)$/) {
 				$p = $1;
 				$v = "";
 				$args = $2;
+				$eq = 0;
 			}
 
 			if ($p =~ /^-D(\S+)/) {
@@ -176,8 +179,10 @@ sub simline($) {
 				if ($v =~ /\"(.*)\"/) {
 					$str = $1;
 					$defs = $defs . " -D$p=\\\"$str\\\"";
-				} else {
+				} elsif ($eq) {
 					$defs = $defs . " -D$p=$v";
+				} else {
+					$defs = $defs . " -D$p";
 				}
 			} elsif ($v =~ /\"(.*)\"/) {
 				$str = $1;

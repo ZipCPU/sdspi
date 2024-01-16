@@ -290,7 +290,7 @@ module	sdaxil #(
 `ifdef	FORMAL
 		.OPT_PASSTHROUGH(1'b1),
 `endif
-		.OPT_OUTREG(1'b0), .DW(6)
+		.OPT_OUTREG(1'b0), .DW(3)
 		// }}}
 	) awskd(
 		// {{{
@@ -328,7 +328,7 @@ module	sdaxil #(
 		.OPT_PASSTHROUGH(1'b1),
 `endif
 		.OPT_OUTREG(1'b0),
-		.DW(6)
+		.DW(3)
 		// }}}
 	) arskd(
 		// {{{
@@ -355,7 +355,7 @@ module	sdaxil #(
 
 	assign	bus_cmd_stb = bus_write && bus_wraddr == ADDR_CMD
 			&&((!r_cmd_err && !r_rx_err)
-					|| (bus_wstrb[1] && bus_wstrb[15]));
+					|| (bus_wstrb[1] && bus_wdata[15]));
 
 
 	// o_soft_reset

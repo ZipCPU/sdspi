@@ -64,9 +64,24 @@ module	xsdserdes8x #(
 		input	wire		i_pin,
 		//
 		output	wire		o_raw,
+		output	wire	[7:0]	o_mine,
 		output	wire	[7:0]	o_wide
 		// }}}
 	);
+
+	reg	[8:0]	r_last;
+	reg	[7:0]	r_mine;
+
+	always @(posedge i_clk)
+	if (!i_en)
+		r_last <= 0;
+	else
+		r_last <= { r_last[0], i_data };
+
+	always @(posedge i_clk)
+		r_mine <= r_last;
+
+	assign	o_mine = r_mine;
 
 `ifdef OPENSIM
 	reg		last_ck;
@@ -92,10 +107,13 @@ module	xsdserdes8x #(
 	assign	o_wide = rx_wide;
 	assign	o_raw = i_pin;
 
+	// Keep Verilator happy
+	// {{{
 	// Verilator lint_off UNUSED
 	wire	unused;
 	assign	unused = &{ 1'b0 };
 	// Verilator lint_on  UNUSED
+	// }}}
 `else
 	wire	w_pin, w_in, w_reset, high_z, fabric_return;
 	assign	w_reset = 1'b0;	// Active high reset
@@ -165,7 +183,10 @@ module	xsdserdes8x #(
 
 		assign	o_wide = 8'h0;
 		assign	o_raw  = fabric_return;
+		assign	o_mine = i_data;
 
+		// Keep Verilator happy
+		// {{{
 		// Verilator lint_off UNUSED
 		wire	unused;
 		assign	unused = &{ 1'b0, w_in };

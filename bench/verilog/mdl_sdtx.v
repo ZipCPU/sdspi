@@ -70,6 +70,8 @@ module mdl_sdtx #(
 	reg	[5:0]	r_count;
 	reg		r_crc, r_active, ds;
 	reg	r_ready;
+
+	wire	[7:0]	w_dat;
 	// }}}
 
 	// tx_sreg, r_count, r_crc r_active: positive edge of the clock
@@ -227,37 +229,13 @@ module mdl_sdtx #(
 	assign	w_dat[7:4] = tx_sreg[47:44];
 
 	assign	sd_dat[0] = (!r_active || (!i_ppull && w_dat[0])) ? 1'bz : w_dat[0];
-	assign	sd_dat[1] = (!r_active || (!i_ppull && w_dat[1]) || (i_width != 2'b00)) ? 1'bz : w_dat[1];
-	assign	sd_dat[2] = (!r_active || (!i_ppull && w_dat[2]) || (i_width != 2'b00)) ? 1'bz : w_dat[2];
-	assign	sd_dat[3] = (!r_active || (!i_ppull && w_dat[3]) || (i_width != 2'b00)) ? 1'bz : w_dat[3];
-	assign	sd_dat[4] = (!r_active || (!i_ppull && w_dat[4]) || (i_width[1])) ? 1'bz : w_dat[4];
-	assign	sd_dat[5] = (!r_active || (!i_ppull && w_dat[5]) || (i_width[1])) ? 1'bz : w_dat[5];
-	assign	sd_dat[6] = (!r_active || (!i_ppull && w_dat[6]) || (i_width[1])) ? 1'bz : w_dat[6];
+	assign	sd_dat[1] = (!r_active || (!i_ppull && w_dat[1]) || (i_width == 2'b00)) ? 1'bz : w_dat[1];
+	assign	sd_dat[2] = (!r_active || (!i_ppull && w_dat[2]) || (i_width == 2'b00)) ? 1'bz : w_dat[2];
+	assign	sd_dat[3] = (!r_active || (!i_ppull && w_dat[3]) || (i_width == 2'b00)) ? 1'bz : w_dat[3];
+	assign	sd_dat[4] = (!r_active || (!i_ppull && w_dat[4]) || (!i_width[1])) ? 1'bz : w_dat[4];
+	assign	sd_dat[5] = (!r_active || (!i_ppull && w_dat[5]) || (!i_width[1])) ? 1'bz : w_dat[5];
+	assign	sd_dat[6] = (!r_active || (!i_ppull && w_dat[6]) || (!i_width[1])) ? 1'bz : w_dat[6];
 	assign	sd_dat[7] = (!r_active || (!i_ppull && w_dat[7]) || (!i_width[1])) ? 1'bz : w_dat[7];
-
-	always @(*)
-	begin
-		if (!r_active)
-			sd_dat = 8'bz;
-		else if (i_ppull)
-		begin
-			if (i_width[1])
-				sd_dat = w_dat;
-			else if (i_width[0])
-				sd_dat = { 4'bz, w_dat[3:0] };
-			else
-				sd_dat = { 7'bz, w_dat[0] };
-		end else begin
-			sd_dat[0] = (w_dat[0]) ? 1'bz : 1'b0;
-			sd_dat[1] = (w_dat[1] || i_width == 0) ? 1'bz : 1'b0;
-			sd_dat[2] = (w_dat[2] || i_width == 0) ? 1'bz : 1'b0;
-			sd_dat[3] = (w_dat[3] || i_width == 0) ? 1'bz : 1'b0;
-			sd_dat[4] = (w_dat[4] || !i_width[1])  ? 1'bz : 1'b0;
-			sd_dat[5] = (w_dat[5] || !i_width[1])  ? 1'bz : 1'b0;
-			sd_dat[6] = (w_dat[6] || !i_width[1])  ? 1'bz : 1'b0;
-			sd_dat[7] = (w_dat[7] || !i_width[1])  ? 1'bz : 1'b0;
-		end
-	end
 
 	assign	sd_ds = ds;
 
@@ -276,7 +254,7 @@ module mdl_sdtx #(
 		else if (!i_en && !r_active)
 			crc[gk] <= 0;
 		else if (!r_crc)
-			crc[gk] <= STEPCRC(crc[gk], sd_dat[gk]);
+			crc[gk] <= STEPCRC(crc[gk], w_dat[gk]);
 		else
 			crc[gk] <= crc[gk] << 1;
 
@@ -286,7 +264,7 @@ module mdl_sdtx #(
 		else if (!i_ddr || (!i_en && !r_active) || !i_ddr)
 			crc[8+gk] <= 0;
 		else if (!r_crc)
-			crc[8+gk] <= STEPCRC(crc[8+gk], sd_dat[gk]);
+			crc[8+gk] <= STEPCRC(crc[8+gk], w_dat[gk]);
 		else
 			crc[8+gk] <= crc[8+gk] << 1;
 

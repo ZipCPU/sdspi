@@ -47,17 +47,27 @@ task	testscript;
 	reg		opt_ds;
 	reg	[7:0]	max_spd;
 begin
+$display("SCRIPT: Wait for reset");
+	@(posedge clk);
+	while(reset !== 1'b0)
+		@(posedge clk);
+$display("SCRIPT: Reset complete");
+	@(posedge clk);
+
 	// u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_100KHZ | EMMC_W1);
 
 	// Read our capabilities back from the controller
 	// {{{
+$display("SCRIPT: Get-Capabilities");
 	numio = 8; opt_ds = 1'b1;
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_200MHZ | EMMC_WTEST
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_200MHZ | EMMC_WTEST
 				| SPEED_CLKOFF | EMMC_DS | EMMC_DDR
 				| EMMC_SHFTMSK);
+$display("SCRIPT: Written");
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
 	end while(read_data[7:0] > 8'h2);
+$display("Set-PHY");
 	u_bfm.readio(ADDR_SDPHY, read_data);
 	case(read_data[11:10])
 	2'b01: numio = 4;
@@ -72,21 +82,26 @@ begin
 		sample_shift = { 11'h0, 5'h08, 16'h0 };
 	else
 		sample_shift = { 11'h0, 5'h00, 16'h0 };
+$display("Set-Sample-Shift");
 	// }}}
 
 	// Now set up for the capabilities we will be using
 	// {{{
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_1MHZ | EMMC_W1 | sample_shift);
+$display("Set-PHY");
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_1MHZ | EMMC_W1 | sample_shift);
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
 	end while(read_data[7:0] != SPEED_1MHZ[7:0]);
+$display("Speed checks");
 	// }}}
 
 	u_bfm.readio(ADDR_SDCARD, read_data);
+$display("GO-IDLE");
 	emmc_go_idle;
 
 	// Send OP COND
 	// {{{
+$display("OP-COND");
 	op_cond = 32'hc0ff_8080;		// Request high capacity
 	emmc_send_op_cond(op_cond);
 
@@ -149,7 +164,7 @@ begin
 
 	// Test at SPEED_DS=25MHz SDR, 1b
 	// {{{
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_DS | EMMC_W1 | sample_shift);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | EMMC_W1 | sample_shift);
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
 	end while(read_data[7:0] != SPEED_DS[7:0]);
@@ -172,7 +187,7 @@ begin
 	// {{{
 	emmc_set_bus_width(1'b0, 1'b0, 2'b01);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_DS | EMMC_W4 | sample_shift);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | EMMC_W4 | sample_shift);
 
 	emmc_test_bus;
 
@@ -193,7 +208,7 @@ begin
 	// {{{
 	emmc_set_bus_width(1'b0, 1'b0, 2'b10);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_DS | EMMC_W8 | sample_shift);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | EMMC_W8 | sample_shift);
 
 	emmc_test_bus;
 
@@ -212,7 +227,7 @@ begin
 	// {{{
 	emmc_set_bus_width(1'b0, 1'b0, 2'b00);
 
-	u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | EMMC_W1 | sample_shift);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | EMMC_W1 | sample_shift);
 
 	emmc_test_bus;
 
@@ -233,7 +248,7 @@ begin
 		// {{{
 		emmc_set_bus_width(1'b0, 1'b0, 2'b01);
 
-		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | EMMC_W4 | sample_shift);
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | EMMC_W4 | sample_shift);
 
 		emmc_test_bus;
 
@@ -255,7 +270,7 @@ begin
 		// {{{
 		emmc_set_bus_width(1'b0, 1'b0, 2'b10);
 
-		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | EMMC_W8 | sample_shift);
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | EMMC_W8 | sample_shift);
 
 		emmc_test_bus;
 
@@ -280,7 +295,7 @@ begin
 		emmc_switch(8'd185, 8'h1);
 		emmc_set_bus_width(1'b0, 1'b1, 2'b01);
 
-		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSDDR | EMMC_W4 | sample_shift);
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_HSDDR | EMMC_W4 | sample_shift);
 
 		emmc_test_bus;
 
@@ -303,7 +318,7 @@ begin
 		emmc_switch(8'd185, 8'h1);
 		emmc_set_bus_width(1'b0, 1'b1, 2'b10);
 
-		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_HSDDR | EMMC_W8 | sample_shift);
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_HSDDR | EMMC_W8 | sample_shift);
 
 		emmc_test_bus;
 
@@ -325,7 +340,7 @@ begin
 		// {{{
 		emmc_set_bus_width(1'b0, 1'b0, 2'b0);
 
-		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | EMMC_W1 | sample_shift);
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | EMMC_W1 | sample_shift);
 
 		emmc_test_bus;
 
@@ -346,7 +361,7 @@ begin
 			// {{{
 			emmc_set_bus_width(1'b0, 1'b0, 2'b01);
 
-			u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | EMMC_W4 | sample_shift);
+			u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | EMMC_W4 | sample_shift);
 
 			emmc_test_bus;
 
@@ -368,7 +383,7 @@ begin
 			// {{{
 			emmc_set_bus_width(1'b0, 1'b0, 2'b10);
 
-			u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | EMMC_W8 | sample_shift);
+			u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | EMMC_W8 | sample_shift);
 
 			emmc_test_bus;
 
@@ -392,7 +407,7 @@ begin
 		emmc_switch(8'd185, 8'h2);
 		emmc_set_bus_width(1'b0, 1'b0, 2'b10);
 
-		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_SDR200 | EMMC_W8 | sample_shift);
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR200 | EMMC_W8 | sample_shift);
 
 		emmc_test_bus;
 
@@ -415,7 +430,7 @@ begin
 		emmc_switch(8'd185, 8'h3);
 		emmc_set_bus_width(1'b0, 1'b1, 2'b10);
 
-		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B|SPEED_HS400 | EMMC_W8 | sample_shift);
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B|SPEED_HS400 | EMMC_W8 | sample_shift);
 
 		emmc_test_bus;
 
@@ -434,7 +449,7 @@ begin
 		// {{{
 		emmc_set_bus_width(1'b1, 1'b1, 2'b10);
 
-		u_bfm.writeio(ADDR_SDPHY, SECTOR_16B|EMMC_DSCMD|SPEED_HS400 | EMMC_W8 | sample_shift);
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B|EMMC_DSCMD|SPEED_HS400 | EMMC_W8 | sample_shift);
 
 		emmc_test_bus;
 

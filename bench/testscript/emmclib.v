@@ -137,7 +137,7 @@ task	emmc_go_idle;					// CMD0
 begin
 	// Send a command 0
 	u_bfm.writeio(ADDR_SDDATA, 32'h0);
-	u_bfm.writeio(ADDR_SDCARD, EMMC_CMD | EMMC_RNONE | EMMC_ERR);
+	u_bfm.write_f(ADDR_SDCARD, EMMC_CMD | EMMC_RNONE | EMMC_ERR);
 
 	emmc_wait_while_busy;
 
@@ -152,7 +152,7 @@ task	emmc_all_send_cid;				// CMD2
 begin
 	// Send CMD2: ALL_SEND_CID
 	u_bfm.writeio(ADDR_SDDATA, 32'h0);
-	u_bfm.writeio(ADDR_SDCARD, EMMC_ALLCID);	// 0x08242
+	u_bfm.write_f(ADDR_SDCARD, EMMC_ALLCID);	// 0x08242
 
 	emmc_wait_while_busy;
 
@@ -174,7 +174,7 @@ begin
 	end while(RCA < 2);
 
 	u_bfm.writeio(ADDR_SDDATA, { RCA, 16'h0 });
-	u_bfm.writeio(ADDR_SDCARD, EMMC_READREG + 3);
+	u_bfm.write_f(ADDR_SDCARD, EMMC_READREG + 3);
 
 	emmc_wait_while_busy;
 
@@ -190,7 +190,7 @@ task	emmc_select_card(input[15:0] rca);		// CMD 7
 begin
 	// Send CMD7: SELECT_DESECT_CARD
 	u_bfm.writeio(ADDR_SDDATA, { rca, 16'h0 });
-	u_bfm.writeio(ADDR_SDCARD, EMMC_READREG + 7);
+	u_bfm.write_f(ADDR_SDCARD, EMMC_READREG + 7);
 
 	emmc_wait_while_busy;
 
@@ -206,12 +206,29 @@ task	emmc_send_op_cond(inout [31:0] op_cond);	// CMD1
 begin
 	// Send a command 1
 	u_bfm.writeio(ADDR_SDDATA, op_cond);			// 0x4000_0000
-	u_bfm.writeio(ADDR_SDCARD, EMMC_READREG + 32'd1);	// 0x8101
+	u_bfm.write_f(ADDR_SDCARD, EMMC_READREG + 32'd1);	// 0x8101
 
 	emmc_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
 	u_bfm.readio(ADDR_SDDATA, op_cond);
+end endtask
+// }}}
+
+task	emmc_send_status(input[15:0] rca, inout [31:0] status_reg); // CMD13
+	// {{{
+	reg	[31:0]	ctrl_reg;
+begin
+	// Send a command 1
+	u_bfm.writeio(ADDR_SDDATA, { rca, 16'h0 });
+	u_bfm.write_f(ADDR_SDCARD, EMMC_READREG + 32'd13);	// 0x810d
+
+	emmc_wait_while_busy;
+
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+	u_bfm.readio(ADDR_SDDATA, status_reg);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERR-STATUS"); error_flag = 1'b1; end
 end endtask
 // }}}
 
@@ -221,12 +238,13 @@ task	emmc_send_csd(input[15:0] rca);			// CMD9
 begin
 	// Send CMD9: SEND_CSD
 	u_bfm.writeio(ADDR_SDDATA, { rca, 16'h0 });
-	u_bfm.writeio(ADDR_SDCARD, (EMMC_CMD | EMMC_R2 | EMMC_ERR) + 9);
+	u_bfm.write_f(ADDR_SDCARD, (EMMC_CMD | EMMC_R2 | EMMC_ERR) + 9);
 
 	emmc_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]) else $finish;
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERR-CSD"); error_flag = 1'b1; end
 	// u_bfm.readio(ADDR_SDDATA, r6);
 end endtask
 // }}}
@@ -237,12 +255,13 @@ task	emmc_send_cid(input[15:0] rca);			// CMD10
 begin
 	// Send CMD10: SEND_CID
 	u_bfm.writeio(ADDR_SDDATA, { rca, 16'h0 });
-	u_bfm.writeio(ADDR_SDCARD, (EMMC_CMD | EMMC_R2 | EMMC_ERR) + 10);
+	u_bfm.write_f(ADDR_SDCARD, (EMMC_CMD | EMMC_R2 | EMMC_ERR) + 10);
 
 	emmc_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]) else $finish;
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERR-CID"); error_flag = 1'b1; end
 	// u_bfm.readio(ADDR_SDDATA, r6);
 end endtask
 // }}}
@@ -260,7 +279,7 @@ begin
 	end
 
 	u_bfm.writeio(ADDR_SDDATA, 32'h0);
-	u_bfm.writeio(ADDR_SDCARD, (EMMC_READREG|EMMC_MEM) + 32'd8);
+	u_bfm.write_f(ADDR_SDCARD, (EMMC_READREG|EMMC_MEM) + 32'd8);
 
 	emmc_wait_while_busy;
 
@@ -274,7 +293,8 @@ begin
 	end
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]) else $finish;
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERR-EXTCSD"); error_flag = 1'b1; end
 end endtask
 // }}}
 
@@ -284,12 +304,13 @@ task	emmc_switch(input[7:0] addr, input [7:0] val);	// CMD6
 begin
 	// Send an CMD 6
 	u_bfm.writeio(ADDR_SDDATA, { 6'h0, 2'b01, addr, val, 8'h0 });
-	u_bfm.writeio(ADDR_SDCARD, EMMC_READREG + 32'd6);
+	u_bfm.write_f(ADDR_SDCARD, EMMC_READREG + 32'd6);
 
 	emmc_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]) else $finish;
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERR-SWITCH"); error_flag = 1'b1; end
 	ext_csd[addr] = val;
 end endtask
 // }}}
@@ -337,22 +358,24 @@ begin
 		end
 	endcase
 
-	u_bfm.writeio(ADDR_SDCARD, (EMMC_CMD | EMMC_R1 | EMMC_ERR
+	u_bfm.write_f(ADDR_SDCARD, (EMMC_CMD | EMMC_R1 | EMMC_ERR
 						| EMMC_WRITE | EMMC_MEM)+19);
 
 	emmc_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]) else $finish;
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERR-TEST/1"); error_flag = 1'b1; end
 
 
-	u_bfm.writeio(ADDR_SDCARD, (EMMC_CMD | EMMC_R1 | EMMC_ERR
+	u_bfm.write_f(ADDR_SDCARD, (EMMC_CMD | EMMC_R1 | EMMC_ERR
 						| EMMC_WRITE | EMMC_MEM)+14);
 
 	emmc_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]) else $finish;
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERR-TEST/2"); error_flag = 1'b1; end
 end endtask
 // }}}
 
@@ -371,12 +394,17 @@ $display("WRITE-BLOCK TO %08x", sector);
 	u_bfm.writeio(ADDR_SDDATA, sector);
 	for(ik=0; ik<512/4; ik=ik+1)
 		u_bfm.writeio(ADDR_FIFOA, $random);
-	u_bfm.writeio(ADDR_SDCARD, EMMC_WRITEBLK);
+	u_bfm.write_f(ADDR_SDCARD, EMMC_WRITEBLK);
 
 	emmc_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]) else $finish;
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERR-WRITE"); error_flag = 1'b1; end
+
+	// do begin
+	//	emmc_send_status(rca, status_reg);
+	// end while(status_reg);
 end endtask
 // }}}
 
@@ -394,7 +422,7 @@ begin
 
 $display("READ-BLOCK FROM %08x", sector);
 	u_bfm.writeio(ADDR_SDDATA, sector);
-	u_bfm.writeio(ADDR_SDCARD, EMMC_READBLK);
+	u_bfm.write_f(ADDR_SDCARD, EMMC_READBLK);
 
 	emmc_wait_while_busy;
 
@@ -403,11 +431,14 @@ $display("READ-BLOCK FROM %08x", sector);
 
 	if (1'b0 !== ctrl_reg[15])
 	begin
-		$display("CMD FAILED CODE (%d) at %t", ctrl_reg[17:16], $time);
+		$display("READ CMD FAILED: CODE (%d) at %t",
+				ctrl_reg[17:16], $time);
 	end
 
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]) else $finish;
-	assert(32'h0 == (status_reg & 32'hffffe080)) else $finish;
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERR-RDBLOCK/1"); error_flag = 1'b1; end
+	assert(32'h0 == (status_reg & 32'hffffe080))
+		else begin $display("ERR-RDBLOCK/2"); error_flag = 1'b1; end
 
 	for(ik=0; ik<512/4; ik=ik+1)
 		u_bfm.readio(ADDR_FIFOA, ignore);

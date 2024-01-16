@@ -1059,6 +1059,8 @@ module	sdcmd #(
 	// always @(*) if (r_busy && cfg_dbl)
 	//	assume(i_cmd_strb[1] == i_cmd_strb[0]);
 
+	always @(*)
+		assume(!i_cmd_collision);
 
 	// }}}
 `endif	// FORMAL

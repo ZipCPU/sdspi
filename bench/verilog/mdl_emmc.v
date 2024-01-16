@@ -335,15 +335,19 @@ module	mdl_emmc #(
 
 	// EXT-CSD[183]: cfg_ddr, cfg_width, and enhanced_ds_enabled
 	// {{{
+	reg	[7:0]	ext_csd_183;
+	always @(*)
+		ext_csd_183 = ext_csd[183];
+
 	always @(ext_csd[183], boot_mode, ext_csd[177])
 	begin
 		if (boot_mode)
 		begin
 			cfg_ddr = (ext_csd[177][4:3] == 2'h2);
 			case(ext_csd[177][1:0])
-			2'h0: cfg_width = (cfg_ddr) ? 2'b1 : 2'b0;
-			2'h1: cfg_width = 2'b1;
-			2'h2: cfg_width = 2'b2;
+			2'h0: cfg_width = (cfg_ddr) ? 2'h1 : 2'h0;
+			2'h1: cfg_width = 2'h1;
+			2'h2: cfg_width = 2'h2;
 			endcase
 
 			enhanced_ds_enabled = 1'b0;
@@ -576,6 +580,7 @@ module	mdl_emmc #(
 		bustest_w <= 1'b0;
 		bustest_r <= 1'b0;
 		boot_mode <= 1'b1;
+		boot_active <= 1'b0;
 		cfg_ppull <= 1'b0;
 		// }}}
 	end else if (card_state == EMMC_INACTIVE)
@@ -644,7 +649,7 @@ module	mdl_emmc #(
 		begin
 			pending_write <= 1'b0;
 			multi_block   <= 1'b0;
-			card_state == EMMC_IDLE;
+			card_state <= EMMC_IDLE;
 		end else if (!boot_active)
 		begin
 			read_posn <= cmd_arg;
@@ -928,8 +933,10 @@ module	mdl_emmc #(
 			// }}}
 		{ 1'b?, 6'd17 }: begin //! CMD17: READ_SINGLE_BLOCK
 			// {{{
+$display("CMD17 request");
 			if (card_selected && card_state == EMMC_TRANSFER)
 			begin
+$display("CMD17 request, card selected, in proper state");
 				card_state <= EMMC_SEND_DATA;
 				//
 				pending_write <= 1'b1;
@@ -942,6 +949,7 @@ module	mdl_emmc #(
 
 				if (busy_programming)
 				begin
+$display("READ-CMD-ERR: Already busy");
 					reply_data<= { {(120-32){1'b0}},
 						R1 | ERR_ILLEGALCMD };
 					pending_write <= 1'b0;
@@ -954,6 +962,7 @@ module	mdl_emmc #(
 						reply_data<= { {(120-32){1'b0}},
 							R1 | ERR_ADDRRANGE };
 						pending_write <= 1'b0;
+$display("READ-CMD-ERR: Sector out of bounds");
 					end
 				end else if (cmd_arg >= (40'd1 << LGMEMSZ)
 								- block_len)
@@ -961,6 +970,7 @@ module	mdl_emmc #(
 					reply_data<= { {(120-32){1'b0}},
 							R1 | ERR_ADDRRANGE };
 					pending_write <= 1'b0;
+$display("READ-CMD-ERR: Small Sector out of bounds");
 				end
 				rx_addr <= 0;
 			end else if (card_selected)
@@ -1332,6 +1342,10 @@ $display("SETTING MEM[%08x] TO MEM-BUF[0] = %08x", (read_posn/4), mem_buf[0]);
 	end else if (boot_mode && (!boot_active || sd_cmd !== 1'b0
 			|| (tx_valid && tx_last && read_posn >= BOOTSZ)))
 	begin
+$display("Exiting boot mode");
+		boot_active <= 1'b0;
+		boot_mode   <= 1'b0;
+
 		// At the end of boot mode, exit
 		pending_write <= 1'b0;
 		multi_block   <= 1'b0;

@@ -390,7 +390,8 @@ begin
 		phy_reg[27:24] = 4'h9;
 		u_bfm.writeio(ADDR_SDPHY, phy_reg);
 	end
-$display("WRITE-BLOCK TO %08x", sector);
+
+	$display("WRITE-BLOCK TO %08x", sector);
 	u_bfm.writeio(ADDR_SDDATA, sector);
 	for(ik=0; ik<512/4; ik=ik+1)
 		u_bfm.writeio(ADDR_FIFOA, $random);
@@ -420,7 +421,7 @@ begin
 		u_bfm.writeio(ADDR_SDPHY, phy_reg);
 	end
 
-$display("READ-BLOCK FROM %08x", sector);
+	$display("READ-BLOCK FROM %08x", sector);
 	u_bfm.writeio(ADDR_SDDATA, sector);
 	u_bfm.write_f(ADDR_SDCARD, EMMC_READBLK);
 

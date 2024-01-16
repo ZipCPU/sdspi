@@ -1,6 +1,6 @@
 ################################################################################
 ##
-## Filename: 	
+## Filename: 	bench/verilog/Makefile
 ## {{{
 ## Project:	SD-Card controller, using a shared SPI interface
 ##
@@ -11,7 +11,7 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2023, Gisselquist Technology, LLC
+## Copyright (C) 2023-2024, Gisselquist Technology, LLC
 ## {{{
 ## This program is free software (firmware): you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as published

@@ -51,13 +51,13 @@ all: rtl export $(VOBJ)/Vsdspi__ALL.so usage
 
 .PHONY: rtl
 ## {{{
-rtl: $(VOBJ)/Vsdspi.h $(VOBJ)/Vsdio.h $(VOBJ)/sdaxil.h
+rtl: $(VOBJ)/Vsdspi.h $(VOBJ)/Vsdio.h $(VOBJ)/Vsdaxil.h
 $(VOBJ)/Vsdspi.h: sdspi.v llsdspi.v
 	$(VERILATOR) $(VFLAGS) sdspi.v
 $(VOBJ)/Vsdio.h: sdio.v sdwb.v sdcmd.v sdckgen.v sdrxframe.v sdtxframe.v
 	$(VERILATOR) $(VFLAGS) sdio.v
 $(VOBJ)/Vsdaxil.h: sdio.v sdaxil.v sdskid.v sdcmd.v sdckgen.v sdrxframe.v sdtxframe.v
-	$(VERILATOR) -DSDIO_AXIL $(VFLAGS) sdio.v
+	$(VERILATOR) -DSDIO_AXI $(VFLAGS) sdio.v
 ## }}}
 
 $(VOBJ)/Vsdspi__ALL.so: $(VOBJ)/Vsdspi.h

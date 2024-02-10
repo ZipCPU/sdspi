@@ -8,9 +8,6 @@
 //		for use when testing the ZipCPU software when using the
 //	Veri1ator SDIO/eMMC model(s).
 //
-//	Unlike the Verilog-only test bench, this top level model does not
-//	test the sdfrontend.v.
-//
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
 //
@@ -67,13 +64,15 @@ module	tb_cpu #(
 		parameter	CONSOLE_FILE = "console.txt",
 		parameter	LGMEMSZ = ADDRESS_WIDTH-2,
 		//
+		parameter[0:0]	OPT_SERDES = 1'b0,
+		parameter [0:0]	OPT_DDR = 1'b1,
 		parameter [0:0]	DUMP_TO_VCD = 1'b0,
 		parameter	VCD_FILE = "dump.vcd"
 		// Verilator lint_on  WIDTH
 		// }}}
 	) (
 		// {{{
-		input	wire	i_clk, i_reset,
+		input	wire	i_clk, i_reset, i_hsclk,
 		// Sim control input(s)
 		// {{{
 		input	wire	i_sim_cyc, i_sim_stb, i_sim_we,
@@ -95,35 +94,32 @@ module	tb_cpu #(
 		// }}}
 		// The SDIO peripheral
 		// {{{
-		output	wire	[7:0]	sdio_sdclk,
-		output	wire		sdio_ddr,
-		output	wire		sdio_cmd_en, sdio_afifo_reset_n,
-		output	wire	[1:0]	sdio_cmd_data,
-		input	wire	[1:0]	sdio_cmd_strb, sdio_cmd_idata,
-		output	wire		sdio_data_en, sdio_rx_en,
-		output	wire	[31:0]	sdio_tx_data,
-		input	wire		sdio_card_busy,
-		input	wire	[1:0]	sdio_rx_strb,
-		input	wire	[15:0]	sdio_rx_data,
-		input	wire		sdio_ac_valid, sdio_ad_valid,
-		input	wire	[1:0]	sdio_ac_data,
-		input	wire	[31:0]	sdio_ad_data,
+		output	wire			sdio_ck,
+		//
+		output	wire			sdio_cmd_tristate,
+		output	wire			sdio_cmd_data,
+		input	wire			sdio_cmd_idata,
+		//
+		output	wire	[3:0]		sdio_io_tristate,
+		output	wire	[3:0]		sdio_io_data,
+		input	wire	[3:0]		sdio_io_idata,
+		//
+		output	wire	[31:0]		sdio_debug,
 		// }}}
 		// A similar eMMC peripheral
 		// {{{
-		output	wire	[7:0]	emmc_sdclk,
-		output	wire		emmc_ddr,
-		output	wire		emmc_cmd_en, emmc_afifo_reset_n,
-		output	wire	[1:0]	emmc_cmd_data,
-		input	wire	[1:0]	emmc_cmd_strb, emmc_cmd_idata,
-		output	wire		emmc_data_en, emmc_rx_en,
-		output	wire	[31:0]	emmc_tx_data,
-		input	wire		emmc_card_busy,
-		input	wire	[1:0]	emmc_rx_strb,
-		input	wire	[15:0]	emmc_rx_data,
-		input	wire		emmc_ac_valid, emmc_ad_valid,
-		input	wire	[1:0]	emmc_ac_data,
-		input	wire	[31:0]	emmc_ad_data
+		output	wire			emmc_ck,
+		input	wire			emmc_ds,
+		//
+		output	wire			emmc_cmd_tristate,
+		output	wire			emmc_cmd_data,
+		input	wire			emmc_cmd_idata,
+		//
+		output	wire	[7:0]		emmc_io_tristate,
+		output	wire	[7:0]		emmc_io_data,
+		input	wire	[7:0]		emmc_io_idata,
+		//
+		output	wire	[31:0]		emmc_debug
 		// }}}
 		// }}}
 	);
@@ -162,6 +158,22 @@ module	tb_cpu #(
 	wire	[WAW-1:0]	cpu_addr;
 	wire	[BUS_WIDTH-1:0]	cpu_data, cpu_idata;
 	wire [BUS_WIDTH/8-1:0]	cpu_sel;
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// DMA bus declarations
+	// {{{
+	wire			sddma_cyc, sddma_stb, sddma_we,
+					sddma_ack, sddma_stall, sddma_err;
+	wire	[WAW-1:0]	sddma_addr;
+	wire	[BUS_WIDTH-1:0]	sddma_data, sddma_idata;
+	wire [BUS_WIDTH/8-1:0]	sddma_sel;
+
+	wire			emdma_cyc, emdma_stb, emdma_we,
+					emdma_ack, emdma_stall, emdma_err;
+	wire	[WAW-1:0]	emdma_addr;
+	wire	[BUS_WIDTH-1:0]	emdma_data, emdma_idata;
+	wire [BUS_WIDTH/8-1:0]	emdma_sel;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -204,8 +216,7 @@ module	tb_cpu #(
 	wire	[3:0]			sdio_sel;
 
 	wire		sdio_int;
-	wire		ign_sdio_1p8v, ign_sdio_pp_cmd, ign_sdio_pp_data;
-	wire	[4:0]	ign_sdio_shift;
+	wire		ign_sdio_1p8v;
 
 	wire		sdio_detect;
 	assign		sdio_detect = 1;
@@ -225,8 +236,7 @@ module	tb_cpu #(
 	wire	[3:0]			emmc_sel;
 
 	wire		emmc_int;
-	wire		ign_emmc_1p8v, ign_emmc_pp_cmd, ign_emmc_pp_data;
-	wire	[4:0]	ign_emmc_shift;
+	wire		ign_emmc_1p8v;
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -454,12 +464,13 @@ module	tb_cpu #(
 	//
 	//
 
+	// Verilator tracing_off
 	wbxbar #(
 		// {{{
 `ifdef	VERILATOR
-		.NM(1+1),
+		.NM(1+3),
 `else
-		.NM(1),
+		.NM(3),
 `endif
 		.NS(5),
 		.AW(ADDRESS_WIDTH-$clog2(BUS_WIDTH/8)), .DW(BUS_WIDTH),
@@ -482,28 +493,28 @@ module	tb_cpu #(
 		// {{{
 `ifdef	VERILATOR
 		// Two bus masters: the external SIM input, and the CPU
-		.i_mcyc({   simw_cyc,   cpu_cyc }),
-		.i_mstb({   simw_stb,   cpu_stb }),
-		.i_mwe({    simw_we,    cpu_we }),
-		.i_maddr({  simw_addr[ADDRESS_WIDTH-WBLSB-1:0], cpu_addr }),
-		.i_mdata({  simw_data,  cpu_data }),
-		.i_msel({   simw_sel,   cpu_sel }),
-		.o_mstall({ simw_stall, cpu_stall }),
-		.o_mack({   simw_ack,   cpu_ack }),
-		.o_mdata({  simw_idata, cpu_idata }),
-		.o_merr({   simw_err,   cpu_err }),
+		.i_mcyc({   emdma_cyc, sddma_cyc, simw_cyc,   cpu_cyc }),
+		.i_mstb({   emdma_stb, sddma_stb, simw_stb,   cpu_stb }),
+		.i_mwe({    emdma_we,  sddma_we, simw_we,    cpu_we }),
+		.i_maddr({  emdma_addr, sddma_addr, simw_addr[ADDRESS_WIDTH-WBLSB-1:0], cpu_addr }),
+		.i_mdata({  emdma_data, sddma_data, simw_data,  cpu_data }),
+		.i_msel({   emdma_sel, sddma_sel, simw_sel,   cpu_sel }),
+		.o_mstall({ emdma_stall, sddma_stall, simw_stall, cpu_stall }),
+		.o_mack({   emdma_ack, sddma_ack, simw_ack,   cpu_ack }),
+		.o_mdata({  emdma_idata, sddma_idata, simw_idata, cpu_idata }),
+		.o_merr({   emdma_err, sddma_err, simw_err,   cpu_err }),
 `else
 		// With no external CPU input, there is no simulation port
-		.i_mcyc({ cpu_cyc }),
-			.i_mstb({   cpu_stb }),
-			.i_mwe({     cpu_we }),
-			.i_maddr({ cpu_addr }),
-			.i_mdata({ cpu_data }),
-			.i_msel({   cpu_sel }),
-		.o_mstall({ cpu_stall }),
-			.o_mack({     cpu_ack }),
-			.o_mdata({ cpu_idata }),
-			.o_merr({     cpu_err }),
+		.i_mcyc({ emdma_cyc, sddma_cyc, cpu_cyc }),
+			.i_mstb({  emdma_stb,  sddma_stb,  cpu_stb }),
+			.i_mwe({   emdma_we,   sddma_we,   cpu_we }),
+			.i_maddr({ emdma_addr, sddma_addr, cpu_addr }),
+			.i_mdata({ emdma_data, sddma_data, cpu_data }),
+			.i_msel({  emdma_sel,  sddma_sel,  cpu_sel }),
+		.o_mstall({ emdma_stall, sddma_stall, cpu_stall }),
+			.o_mack({  emdma_ack,   sddma_ack,   cpu_ack }),
+			.o_mdata({ emdma_idata, sddma_idata, cpu_idata }),
+			.o_merr({  emdma_err,   sddma_err,   cpu_err }),
 `endif
 		// }}}
 		// Master port ... to control the slaves w/in this design
@@ -522,6 +533,7 @@ module	tb_cpu #(
 		// }}}
 		// }}}
 	);
+	// Verilator tracing_on
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -532,6 +544,7 @@ module	tb_cpu #(
 	//
 	//
 
+	// Verilator tracing_off
 	memdev #(
 		// {{{
 		.LGMEMSZ(LGMEMSZ),
@@ -549,6 +562,7 @@ module	tb_cpu #(
 		.o_wb_data(mem_idata)
 		// }}}
 	);
+	// Verilator tracing_on
 
 	assign	mem_err = 1'b0;
 
@@ -565,6 +579,7 @@ module	tb_cpu #(
 
 	integer	sim_console;
 
+	// Verilator tracing_off
 	wbdown #(
 		// {{{
 		.ADDRESS_WIDTH(ADDRESS_WIDTH-3),
@@ -592,6 +607,7 @@ module	tb_cpu #(
 		// }}}
 		// }}}
 	);
+	// Verilator tracing_on
 
 	assign	con_stall = 1'b0;
 
@@ -632,6 +648,148 @@ module	tb_cpu #(
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
+	// Test Stream generation
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
+
+	reg		sdrx_valid;
+	wire		sdrx_ready;
+	reg	[31:0]	sdrx_data;
+
+	wire		sdtx_valid, sdtx_last;
+	reg		sdtx_ready, sdtx_start;
+	wire	[31:0]	sdtx_data;
+	reg	[31:0]	sdtx_prior;
+
+	reg		emrx_valid;
+	wire		emrx_ready;
+	reg	[31:0]	emrx_data;
+
+	wire		emtx_valid, emtx_last;
+	reg		emtx_ready, emtx_start;
+	wire	[31:0]	emtx_data;
+	reg	[31:0]	emtx_prior;
+
+	// SDRX (Stream data to the SD card)
+	// {{{
+	always @(posedge i_clk)
+	if (i_reset)
+		sdrx_valid <= 1'b0;
+	else
+		sdrx_valid <= 1'b1;
+
+	always @(posedge i_clk)
+	if (i_reset)
+		sdrx_data <= 32'b1;
+	else if (sdrx_valid && sdrx_ready)
+	begin
+		if (sdrx_data == 0)
+			sdrx_data <= 32'h1;
+		else if (sdrx_data[18])
+			sdrx_data <= (sdrx_data << 1) ^ 32'h72d31;
+		else
+			sdrx_data <= (sdrx_data << 1);
+	end
+	// }}}
+
+	// SD-TX (from the SD card)
+	// {{{
+	always @(posedge i_clk)
+	if (i_reset)
+		sdtx_ready <= 1'b1;
+	else if (sdtx_valid && !sdtx_ready)
+		sdtx_ready <= 1'b1;
+	else if (sdtx_valid && sdtx_ready)
+		sdtx_ready <= sdtx_data[30];
+
+	always @(posedge i_clk)
+	if (i_reset)
+		sdtx_start <= 1'b1;
+	else if (sdtx_valid && sdtx_ready)
+	begin
+		sdtx_start <= sdtx_last;
+	end
+
+	always @(posedge i_clk)
+	if (sdtx_valid && sdtx_ready)
+		sdtx_prior <= sdtx_data;
+
+	always @(posedge i_clk)
+	if (sdtx_valid && sdtx_ready && !sdtx_start)
+	begin
+		if (sdtx_prior[18])
+		begin
+			assert(sdtx_data == ({ sdtx_prior[30:0], 1'b0 }
+								^ 32'h72d31));
+		end else begin
+			assert(sdtx_data == { sdtx_prior[30:0], 1'b0 });
+		end
+	end
+	// }}}
+
+	// EMRX (Stream data to the eMMC card)
+	// {{{
+	always @(posedge i_clk)
+	if (i_reset)
+		emrx_valid <= 1'b0;
+	else
+		emrx_valid <= 1'b1;
+
+	always @(posedge i_clk)
+	if (i_reset)
+		emrx_data <= 32'b1;
+	else if (emrx_valid && emrx_ready)
+	begin
+		if (emrx_data == 0)
+			emrx_data <= 32'h1;
+		else if (emrx_data[18])
+			emrx_data <= (emrx_data << 1) ^ 32'h68c79;
+		else
+			emrx_data <= (emrx_data << 1);
+	end
+	// }}}
+
+	// EMTX (from the eMMC card)
+	// {{{
+	always @(posedge i_clk)
+	if (i_reset)
+		emtx_ready <= 1'b1;
+	else if (emtx_valid && !emtx_ready)
+		emtx_ready <= 1'b1;
+	else if (emtx_valid && emtx_ready)
+		emtx_ready <= emtx_data[30];
+
+	always @(posedge i_clk)
+	if (i_reset)
+		emtx_start <= 1'b1;
+	else if (emtx_valid && emtx_ready)
+		emtx_start <= emtx_last;
+
+	always @(posedge i_clk)
+	if (emtx_valid && emtx_ready)
+		emtx_prior <= emtx_data;
+
+	always @(posedge i_clk)
+	if (emtx_valid && emtx_ready && !emtx_start)
+	begin
+		if (emtx_prior[18])
+		begin
+			assert(emtx_data == ({ emtx_prior[30:0], 1'b0 }
+								^ 32'h72d31));
+		end else begin
+			assert(emtx_data == { emtx_prior[30:0], 1'b0 });
+		end
+	end
+	// }}}
+
+	// Verilator lint_off UNUSED
+	wire	unused_stream = &{ 1'b0, emtx_prior[31], sdtx_prior[31] };
+	// Verilator lint_on  UNUSED
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
 	// SDIO controller
 	// {{{
 	////////////////////////////////////////////////////////////////////////
@@ -666,34 +824,69 @@ module	tb_cpu #(
 		// }}}
 	);
 
-	sdio #(
+	sdio_top #(
+		// {{{
+		.LGFIFO(9), .NUMIO(4), .ADDRESS_WIDTH(ADDRESS_WIDTH),
+		.DW(BUS_WIDTH), .SW(32),
+		.OPT_DMA(OPT_DMA),
+		.OPT_LITTLE_ENDIAN(1'b0),
+		.OPT_ISTREAM(1'b1),
+		.OPT_OSTREAM(1'b1),
 		.OPT_EMMC(1'b0),
 		.MW(BUS_WIDTH),
-		.OPT_SERDES(1'b1), .OPT_DDR(1'b1), .OPT_CARD_DETECT(1'b1),
+		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR), .OPT_CARD_DETECT(1'b1),
 		.LGTIMEOUT(18)
+		// }}}
 	) u_sdio (
 		// {{{
-		.i_clk(i_clk), .i_reset(i_reset),
-		//
+		.i_clk(i_clk), .i_reset(i_reset), .i_hsclk(i_hsclk),
+		// Control interface
+		// {{{
 		.i_wb_cyc(sdio_cyc), .i_wb_stb(sdio_stb), .i_wb_we(sdio_we),
 		.i_wb_addr(sdio_addr[2:0]), .i_wb_data(sdio_data),
 			.i_wb_sel(sdio_sel),
 		.o_wb_stall(sdio_stall), .o_wb_ack(sdio_ack),
 			.o_wb_data(sdio_idata),
+		// }}}
+		// DMA interface
+		// {{{
+		.o_dma_cyc(sddma_cyc),
+		.o_dma_stb(sddma_stb),
+		.o_dma_we(sddma_we),
+		.o_dma_addr(sddma_addr),
+		.o_dma_data(sddma_data),
+		.o_dma_sel(sddma_sel),
+		.i_dma_stall(sddma_stall),
+		.i_dma_ack(sddma_ack),
+		.i_dma_data(sddma_idata),
+		.i_dma_err(sddma_err),
+		// }}}
+		// External DMA streaming interface
+		// {{{
+		.s_valid(sdrx_valid),
+		.s_ready(sdrx_ready),
+		.s_data(sdrx_data),
 		//
+		.m_valid(sdtx_valid),
+		.m_ready(sdtx_ready),
+		.m_data(sdtx_data),
+		.m_last(sdtx_last),
+		// }}}
+		// IO interface
+		// {{{
+		.o_ck(sdio_ck), .i_ds(1'b0),
+		//
+		.io_cmd_tristate(sdio_cmd_tristate),
+		.o_cmd(sdio_cmd_data),
+		.i_cmd(sdio_cmd_idata),
+		//
+		.io_dat_tristate(sdio_io_tristate),
+		.o_dat(sdio_io_data),
+		.i_dat(sdio_io_idata),
+		// }}}
 		.i_card_detect(sdio_detect), .o_1p8v(ign_sdio_1p8v),
 			.o_int(sdio_int),
-		.o_cfg_ddr(sdio_ddr), .o_cfg_sample_shift(ign_sdio_shift),
-		.o_sdclk(sdio_sdclk), .o_cmd_en(sdio_cmd_en),
-			.o_pp_cmd(ign_sdio_pp_cmd), .o_cmd_data(sdio_cmd_data),
-		.o_data_en(sdio_data_en), .o_pp_data(ign_sdio_pp_data),
-			.o_rx_en(sdio_rx_en),
-		.o_tx_data(sdio_tx_data), .o_afifo_reset_n(sdio_afifo_reset_n),
-		.i_cmd_strb(sdio_cmd_strb), .i_cmd_data(sdio_cmd_idata),
-		.i_card_busy(sdio_card_busy),
-		.i_rx_strb(sdio_rx_strb), .i_rx_data(sdio_rx_data),
-		.S_AC_VALID(sdio_ac_valid), .S_AC_DATA(sdio_ac_data),
-		.S_AD_VALID(sdio_ad_valid), .S_AD_DATA(sdio_ad_data)
+		.o_debug(sdio_debug)
 		// }}}
 	);
 
@@ -736,34 +929,69 @@ module	tb_cpu #(
 		// }}}
 	);
 
-	sdio #(
+	sdio_top #(
+		// {{{
+		.LGFIFO(9), .NUMIO(8), .ADDRESS_WIDTH(ADDRESS_WIDTH),
+		.DW(BUS_WIDTH), .SW(32),
+		.OPT_DMA(OPT_DMA),
+		.OPT_LITTLE_ENDIAN(1'b0),
+		.OPT_ISTREAM(1'b1),
+		.OPT_OSTREAM(1'b1),
 		.OPT_EMMC(1'b1),
 		.MW(BUS_WIDTH),
-		.OPT_SERDES(1'b1), .OPT_DDR(1'b1), .OPT_CARD_DETECT(1'b0),
+		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR), .OPT_CARD_DETECT(1'b0),
 		.LGTIMEOUT(18)
+		// }}}
 	) u_emmc (
 		// {{{
-		.i_clk(i_clk), .i_reset(i_reset),
-		//
+		.i_clk(i_clk), .i_reset(i_reset), .i_hsclk(i_hsclk),
+		// Control interface
+		// {{{
 		.i_wb_cyc(emmc_cyc), .i_wb_stb(emmc_stb), .i_wb_we(emmc_we),
 		.i_wb_addr(emmc_addr[2:0]), .i_wb_data(emmc_data),
 			.i_wb_sel(emmc_sel),
 		.o_wb_stall(emmc_stall), .o_wb_ack(emmc_ack),
 			.o_wb_data(emmc_idata),
+		// }}}
+		// DMA interface
+		// {{{
+		.o_dma_cyc(emdma_cyc),
+		.o_dma_stb(emdma_stb),
+		.o_dma_we(emdma_we),
+		.o_dma_addr(emdma_addr),
+		.o_dma_data(emdma_data),
+		.o_dma_sel(emdma_sel),
+		.i_dma_stall(emdma_stall),
+		.i_dma_ack(emdma_ack),
+		.i_dma_data(emdma_idata),
+		.i_dma_err(emdma_err),
+		// }}}
+		// External DMA streaming interface
+		// {{{
+		.s_valid(emrx_valid),
+		.s_ready(emrx_ready),
+		.s_data(emrx_data),
 		//
+		.m_valid(emtx_valid),
+		.m_ready(emtx_ready),
+		.m_data(emtx_data),
+		.m_last(emtx_last),
+		// }}}
+		// IO interface
+		// {{{
+		.o_ck(emmc_ck), .i_ds(emmc_ds),
+		//
+		.io_cmd_tristate(emmc_cmd_tristate),
+		.o_cmd(emmc_cmd_data),
+		.i_cmd(emmc_cmd_idata),
+		//
+		.io_dat_tristate(emmc_io_tristate),
+		.o_dat(emmc_io_data),
+		.i_dat(emmc_io_idata),
+		// }}}
 		.i_card_detect(1'b1), .o_1p8v(ign_emmc_1p8v),
 			.o_int(emmc_int),
-		.o_cfg_ddr(emmc_ddr), .o_cfg_sample_shift(ign_emmc_shift),
-		.o_sdclk(emmc_sdclk), .o_cmd_en(emmc_cmd_en),
-			.o_pp_cmd(ign_emmc_pp_cmd), .o_cmd_data(emmc_cmd_data),
-		.o_data_en(emmc_data_en), .o_pp_data(ign_emmc_pp_data),
-			.o_rx_en(emmc_rx_en),
-		.o_tx_data(emmc_tx_data), .o_afifo_reset_n(emmc_afifo_reset_n),
-		.i_cmd_strb(emmc_cmd_strb), .i_cmd_data(emmc_cmd_idata),
-		.i_card_busy(emmc_card_busy),
-		.i_rx_strb(emmc_rx_strb), .i_rx_data(emmc_rx_data),
-		.S_AC_VALID(emmc_ac_valid), .S_AC_DATA(emmc_ac_data),
-		.S_AD_VALID(emmc_ad_valid), .S_AD_DATA(emmc_ad_data)
+		.o_debug(emmc_debug)
 		// }}}
 	);
 
@@ -778,6 +1006,7 @@ module	tb_cpu #(
 	//
 	//
 
+	// Verilator tracing_off
 	generate if (OPT_TRACE_PORT)
 	begin : GEN_WBSCOPE
 		// {{{
@@ -865,6 +1094,7 @@ module	tb_cpu #(
 
 		// }}}
 	end endgenerate
+	// Verilator tracing_on
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -925,9 +1155,6 @@ module	tb_cpu #(
 `endif
 		sdiow_addr, emmcw_addr, 	// Unused bits
 		sdio_addr, emmc_addr,
-		ign_sdio_shift, ign_emmc_shift,
-		ign_sdio_pp_cmd, ign_emmc_pp_cmd,
-		ign_sdio_pp_data, ign_emmc_pp_data,
 		ign_sdio_1p8v, ign_emmc_1p8v,
 		con_addr, mem_addr, dbg_addr,
 		con_cyc, con_data[31:8], con_sel[3:1], scope_int };

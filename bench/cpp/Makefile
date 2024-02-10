@@ -55,10 +55,10 @@ VROOT := $(VERILATOR_ROOT)
 VINCD := $(VERILATOR_ROOT)/include
 INCS   := -I $(VINCD) -I $(VINCD)/vlstd -I $(RTLD)/obj_dir
 CFLAGS  := -O3
-PROGRAMS := autotest_tb
+PROGRAMS := tb_sdspi
 all: $(PROGRAMS)
 
-SOURCES := autotest_tb.cpp sdspisim.cpp
+SOURCES := tb_sdspi.cpp sdspisim.cpp
 HEADERS := sdspisim.h wb_tb.h testb.h
 OBJECTS := $(addprefix $(OBJDIR)/,$(subst .cpp,.o,$(SOURCES)))
 VLSRCS  := verilated.cpp verilated_vcd_c.cpp verilated_threads.cpp
@@ -76,18 +76,20 @@ $(OBJDIR)/%.o: $(VROOT)/include/%.cpp
 	$(CXX) $(CFLAGS) $(INCS) -c $< -o $@
 ## }}}
 
-## autotest_tb
+## tb_sdspi
 ## {{{
-autotest_tb: $(OBJECTS) $(VLIBS) $(VLOBJS)
+tb_sdspi: $(OBJECTS) $(VLIBS) $(VLOBJS)
 	$(CXX) $(CFLAGS) $(OBJECTS) $(VLIBS) $(VLOBJS) -lpthread -o $@
 ## }}}
 
-## test
-## {{{
-test: autotest_tb
+sdcard.img:
 	dd if=/dev/zero of=sdcard.img bs=512 count=131072
 	mkfs.fat -F 16 sdcard.img
-	./autotest_tb
+
+## test
+## {{{
+test: tb_sdspi
+	./tb_sdspi
 ## }}}
 
 define	mk-objdir

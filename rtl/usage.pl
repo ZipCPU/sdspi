@@ -2,9 +2,9 @@
 
 ## Configuration definitions
 ## {{{
-
 my $sdspi  = "";
-my $sdio   = "";
+my $sdio_nodma  = " -chparam OPT_DMA 1\'b0";
+my $sdio_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_ISTREAM 1\'b0 -chparam OPT_OSTREAM 1\'b0";
 ## }}}
 
 ## Files
@@ -15,6 +15,8 @@ my @files = (
 		"sdcmd.v", "sdrxframe.v", "sdtxframe.v",
 	"sdspi.v", "spicmd.v", "spirxdata.v", "spitxdata.v",
 		"llsdspi.v",
+	"sddma.v", "sdfifo.v", "sddma_mm2s.v", "sddma_s2mm.v",
+		"sddma_rxgears.v", "sddma_txgears.v",
 	"sdfrontend.v", "xsdserdes8x.v" );
 ## }}}
 
@@ -34,7 +36,7 @@ sub	calcusage($$$$$) {
 	unlink($scriptf);
 	open(SCRIPT, "> $scriptf");
 	if ($bus =~ "axil") {
-		print SCRIPT "read -define SDIO_AXIL\n";
+		print SCRIPT "read -define SDIO_AXI\n";
 	} foreach $key (@files) {
 		print SCRIPT "read -sv $key\n";
 	}
@@ -74,14 +76,20 @@ sub	topusage() {
 	my $result = "";
 
 	$result = sprintf("SDIO(AXIL):%5d %5d %7d\n",
+			## Synth, top, bus, config, postsynth
 		calcusage($ice40synth, "sdio", "axil", "",""),
 		calcusage($xilinxsynth,"sdio", "axil", "",""),
 		calcusage($asicsynth,  "sdio", "axil", "",$asicpost));
 
-	$result = $result . sprintf("SDIO:      %5d %5d %7d\n",
-		calcusage($ice40synth, "sdio", "wb", "",""),
-		calcusage($xilinxsynth,"sdio", "wb", "",""),
-		calcusage($asicsynth,  "sdio", "wb", "",$asicpost));
+	$result = $result . sprintf("SDIO(WB):  %5d %5d %7d\n",
+		calcusage($ice40synth, "sdio", "wb", $sdio_nodma,""),
+		calcusage($xilinxsynth,"sdio", "wb", $sdio_nodma,""),
+		calcusage($asicsynth,  "sdio", "wb", $sdio_nodma,$asicpost));
+
+	$result = $result . sprintf("SDIO w/DMA:%5d %5d %7d\n",
+		calcusage($ice40synth, "sdio", "wb", $sdio_dma,""),
+		calcusage($xilinxsynth,"sdio", "wb", $sdio_dma,""),
+		calcusage($asicsynth,  "sdio", "wb", $sdio_dma,$asicpost));
 
 	$result = $result . sprintf("SDSPI:     %5d %5d %7d\n",
 		calcusage($ice40synth, "sdspi", "wb", "",""),

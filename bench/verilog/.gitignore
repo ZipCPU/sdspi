@@ -6,3 +6,4 @@ report.txt
 sdiosim
 sdio_report.txt
 test/
+/cpu/

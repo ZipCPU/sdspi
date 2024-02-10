@@ -4,7 +4,7 @@
 ## {{{
 my $sdspi  = "";
 my $sdio_nodma  = " -chparam OPT_DMA 1\'b0";
-my $sdio_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_ISTREAM 1\'b0 -chparam OPT_OSTREAM 1\'b0";
+my $sdio_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_ISTREAM 1\'b0 -chparam OPT_OSTREAM 1\'b0 -chparam DW 64";
 ## }}}
 
 ## Files
@@ -77,9 +77,9 @@ sub	topusage() {
 
 	$result = sprintf("SDIO(AXIL):%5d %5d %7d\n",
 			## Synth, top, bus, config, postsynth
-		calcusage($ice40synth, "sdio", "axil", "",""),
-		calcusage($xilinxsynth,"sdio", "axil", "",""),
-		calcusage($asicsynth,  "sdio", "axil", "",$asicpost));
+		calcusage($ice40synth, "sdio", "axil", $sdio_nodma,""),
+		calcusage($xilinxsynth,"sdio", "axil", $sdio_nodma,""),
+		calcusage($asicsynth,  "sdio", "axil", $sdio_nodma,$asicpost));
 
 	$result = $result . sprintf("SDIO(WB):  %5d %5d %7d\n",
 		calcusage($ice40synth, "sdio", "wb", $sdio_nodma,""),

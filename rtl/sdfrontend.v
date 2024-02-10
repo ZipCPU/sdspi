@@ -397,6 +397,7 @@ module	sdfrontend #(
 			.o_pin(o_ck),
 			.i_pin(ign_clk),
 			// Verilator lint_off PINCONNECTEMPTY
+			.o_mine(),
 			.o_wide()
 			// Verilator lint_on  PINCONNECTEMPTY
 		);
@@ -449,6 +450,9 @@ module	sdfrontend #(
 				.io_pin_tristate(io_dat_tristate[gk]),
 				.o_pin(o_dat[gk]),
 				.i_pin(i_dat[gk]),
+				// Verilator lint_off PINCONNECTEMPTY
+				.o_mine(),
+				// Verilator lint_on  PINCONNECTEMPTY
 				.o_wide({ pre_dat[gk+8], pre_dat[gk] })
 			);
 
@@ -702,7 +706,7 @@ module	sdfrontend #(
 			.o_pin(o_ck),
 			.i_pin(1'b0),
 			// Verilator lint_off PINCONNECTEMPTY
-			.o_raw(), .o_wide()
+			.o_mine(), .o_raw(), .o_wide()
 			// Verilator lint_on  PINCONNECTEMPTY
 		);
 		// }}}
@@ -786,6 +790,9 @@ module	sdfrontend #(
 				.io_tristate(io_dat_tristate[gk]),
 				.o_pin(o_dat[gk]),
 				.i_pin(i_dat[gk]),
+				// Verilator lint_off PINCONNECTEMPTY
+				.o_mine(),
+				// Verilator lint_on  PINCONNECTEMPTY
 				.o_raw(raw_iodat[gk]), .o_wide(in_pin)
 			);
 

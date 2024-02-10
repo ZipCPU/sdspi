@@ -56,8 +56,15 @@ typedef	uint32_t DWORD, LBA_t, UINT;
 // extern	void	txdecimal(int);
 #endif
 
-static	const int	EMMCINFO = 1, EMMCDEBUG=1, EXTDMA = 0,
-			EMMCMULTI = 1;
+static	const int	EMMCINFO = 1, EMMCDEBUG=1;
+#ifdef	OPT_SDIODMA
+static	const	int	EMMCDMA = 1, EXTDMA = 0;
+#else
+static	const	int	EMMCDMA = 0, EXTDMA = 1;
+#endif
+// EMMCMULTI: Controls whether the read multiple block or write multiple block
+// commands will be used.  Set to 1 to use these commands, 0 otherwise.
+static	const	int	EMMCMULTI = 1;
 // }}}
 
 typedef	struct	EMMCDRV_S {
@@ -83,8 +90,8 @@ static	const	uint32_t
 		SDIO_BUSY     = 0x00104800,
 		SDIO_ERR      = 0x00008000,
 		SDIO_CMDERR   = 0x00200000,
-		SDIO_RXERR    = 0x00400000,
-		SDIO_RXCRCERR = 0x00800000,
+		SDIO_RXERR    = 0x00400000,	// RX Error present
+		SDIO_RXCRCERR = 0x00800000,	// RX Error code
 		SDIO_REMOVED  = 0x00040000,
 		SDIO_PRESENTN = 0x00080000,
 		// PHY enumerations
@@ -937,28 +944,40 @@ int	emmc_write_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 24
 	// {{{
 	unsigned	vc, vd;
 
-	if (9 != ((dev->d_dev->sd_phy >> 24)&0x0f)) {
+	if (SECTOR_512B != (dev->d_dev->sd_phy & 0x0f000000)) {
 		uint32_t	phy = dev->d_dev->sd_phy;
 		phy &= 0xf0ffffff;
 		phy |= (9 << 24);
 	}
 
-#ifdef	INCLUDE_DMA_CONTROLLER_NOT
-	if (EXTDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
-		_zip->z_dma.d_len = 512;
-		_zip->z_dma.d_rd  = (char *)buf;
-		_zip->z_dma.d_wr  = &dev->d_dev->sd_fifa;
-		_zip->z_dma.d_ctrl= DMAREQUEST|DMACLEAR|DMA_SRCWIDE
-				|DMA_CONSTDST|DMA_DSTWORD;
-		while(_zip->z_dma.d_ctrl & DMA_BUSY)
-			;
-	} else
-#endif
-		for(int k=0; k<512/sizeof(uint32_t); k++)
-			dev->d_dev->sd_fifa = buf[k];
+	if (EMMCDMA) {
+		// Set up the DMA
+		// {{{
+		dev->d_dev->sd_dma_addr = buf;
+		// Always transfer in units of 512 bytes
+		dev->d_dev->sd_dma_length = 1;
+		// }}}
 
-	dev->d_dev->sd_data = sector;
-	dev->d_dev->sd_cmd = SDIO_WRITEBLK;
+		dev->d_dev->sd_data = sector;
+		dev->d_dev->sd_cmd = SDIO_WRITEBLK | SDIO_DMA;
+	} else {
+#ifdef	INCLUDE_DMA_CONTROLLER_NOT
+		if (EXTDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
+			_zip->z_dma.d_len = 512;
+			_zip->z_dma.d_rd  = (char *)buf;
+			_zip->z_dma.d_wr  = &dev->d_dev->sd_fifa;
+			_zip->z_dma.d_ctrl= DMAREQUEST|DMACLEAR|DMA_SRCWIDE
+					|DMA_CONSTDST|DMA_DSTWORD;
+			while(_zip->z_dma.d_ctrl & DMA_BUSY)
+				;
+		} else
+#endif
+			for(int k=0; k<512/sizeof(uint32_t); k++)
+				dev->d_dev->sd_fifa = buf[k];
+
+		dev->d_dev->sd_data = sector;
+		dev->d_dev->sd_cmd = SDIO_WRITEBLK;
+	}
 
 	emmc_wait_while_busy(dev);
 
@@ -1000,25 +1019,74 @@ int	emmc_read_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 17
 		phy |= (9 << 24);
 	}
 
-	dev->d_dev->sd_data = sector;
-	dev->d_dev->sd_cmd = SDIO_READBLK;
+	if (EMMCDMA) {
+		// {{{
+		// Make sure our device is idle
+		while((cmd = dev->d_dev->sd_cmd) & SDIO_BUSY)
+			;
 
-	emmc_wait_while_busy(dev);
+		// Set up the device address
+		// {{{
+		if (dev->d_OCR & 0x40000000)
+			// High capacity card
+			dev->d_dev->sd_data = sector;
+		else
+			dev->d_dev->sd_data = sector*512;
+		// }}}
+
+		// Set up the DMA
+		// {{{
+		dev->d_dev->sd_dma_addr = buf;
+		// Always transfer in units of 512 bytes
+		dev->d_dev->sd_dma_length = 1;
+		// }}}
+
+		// Command the transfer, setting SDIO_DMA to use the DMA
+		// {{{
+		// SDIO_MEM is irrelevant if SDIO_DMA is selected.
+		dev->d_dev->sd_cmd = (SDIO_CMD | SDIO_R1b | SDIO_DMA | SDIO_ERR
+				| SDIO_MEM) + 18;
+		// }}}
+
+		emmc_wait_while_busy(dev);
+	
+		// Get our status
+		// {{{
+		dev_stat = dev->d_dev->sd_cmd;
+
+		// The DMA will end the transfer with a STOP_TRANSMISSION
+		// command *IF* count > 1.  The R1 value from the STOP_TRANS
+		// command will still be in the data register after the
+		// entire command completes.  We can read it here to get the
+		// status from the transmission.
+		card_stat = dev->d_dev->sd_data;
+		// }}}
+
+		CLEAR_DCACHE;
+		RELEASE_MUTEX;
+		// }}}
+	} else {
+
+		dev->d_dev->sd_data = sector;
+		dev->d_dev->sd_cmd = SDIO_READBLK;
+
+		emmc_wait_while_busy(dev);
 
 #ifdef	INCLUDE_DMA_CONTROLLER_NOT
-	if (SDUSEDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
-		_zip->z_dma.d_len = 512;
-		_zip->z_dma.d_rd  = (char *)&sdcard->sd_fifo[0];
-		_zip->z_dma.d_wr  = buf;
-		_zip->z_dma.d_ctrl= DMAREQUEST|DMACLEAR|DMA_DSTWIDE
+		if (EXTDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
+			_zip->z_dma.d_len = 512;
+			_zip->z_dma.d_rd  = (char *)&sdcard->sd_fifo[0];
+			_zip->z_dma.d_wr  = buf;
+			_zip->z_dma.d_ctrl= DMAREQUEST|DMACLEAR|DMA_DSTWIDE
 					| DMA_CONSTSRC|DMA_SRCWORD;
-		while(_zip->z_dma.d_ctrl & DMA_BUSY)
-			;
-		CLEAR_DCACHE;
-	} else
+			while(_zip->z_dma.d_ctrl & DMA_BUSY)
+				;
+			CLEAR_DCACHE;
+		} else
 #endif
-		for(int k=0; k<512/sizeof(uint32_t); k++)
-			buf[k] = dev->d_dev->sd_fifa;
+			for(int k=0; k<512/sizeof(uint32_t); k++)
+				buf[k] = dev->d_dev->sd_fifa;
+#endif
 
 	if (EMMCDEBUG && EMMCINFO)
 		emmc_dump_sector(buf);
@@ -1406,6 +1474,11 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 			const unsigned count, const char *buf) {
 	// {{{
 	unsigned	st;
+	unsigned	card_stat, phy, cmd;
+
+	phy = dev->d_dev->sd_phy;
+	phy &= 0xf0ffffff;
+	dev->d_dev->sd_phy = phy | SECTOR_512B;
 
 	if (count == 1 || !EMMCMULTI) {
 		for(unsigned k=0; k<count; k++) {
@@ -1415,15 +1488,65 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 				return RES_ERROR;
 			}
 		} return RES_OK;
+	} else if (EMMCDMA) {
+			// {{{
+			// Make sure our device is idle
+			while((cmd = dev->d_dev->sd_cmd) & SDIO_BUSY)
+				;
+
+			// Set up the device address
+		// {{{
+		if (dev->d_OCR & 0x40000000)
+			// High capacity card
+			dev->d_dev->sd_data = sector;
+		else
+			dev->d_dev->sd_data = sector*512;
+		// }}}
+
+			// Set up the DMA
+			// {{{
+			dev->d_dev->sd_dma_addr = buf;
+			// Always transfer in units of 512 bytes
+			dev->d_dev->sd_dma_length = count;
+			// }}}
+
+			// Command the transfer, setting SDIO_DMA to use the DMA
+		// {{{
+		// SDIO_MEM is irrelevant if SDIO_DMA is selected.
+		dev->d_dev->sd_cmd = (SDIO_CMD | SDIO_R1 | SDIO_DMA | SDIO_ERR
+				| SDIO_WRITE | SDIO_MEM) + 25;
+		// }}}
+
+			emmc_wait_while_busy(dev);
+
+			// Get our status
+		// {{{
+		dev_stat = dev->d_dev->sd_cmd;
+
+		// The DMA will end the transfer with a STOP_TRANSMISSION
+		// command *IF* count > 1.  The R1 value from the STOP_TRANS
+		// command will still be in the data register after the
+		// entire command completes.  We can read it here to get the
+		// status from the transmission.
+		card_stat = dev->d_dev->sd_data;
+		// }}}
+
+			CLEAR_DCACHE;
+			RELEASE_MUTEX;
+
+			// Return an error code if necessary
+		// {{{
+		if (dev_stat & (SDIO_ERR|SDIO_REMOVED|SDIO_RXERR))
+			return RES_ERROR;
+		else if (card_stat & SDIO_R1ERR)
+			return	RES_ERROR;
+		// }}}
+
+			return RES_OK;
+			// }}}
 	} else {
-		unsigned	card_stat, phy, cmd;
-
-		phy = dev->d_dev->sd_phy;
-		phy &= 0xf0ffffff;
-		dev->d_dev->sd_phy = phy | SECTOR_512B;
-
 		for(unsigned s=0; s<count; s++) {
-			// Load the first/next block of data into the FIFO
+			// Load the first/next block of data to FIFO
 			// {{{
 #ifdef	INCLUDE_DMA_CONTROLLER
 			if (EXTDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
@@ -1472,9 +1595,9 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 				if (card_stat & SDIO_R1ERR)
 					return RES_ERROR;
 
-				// Don't wait.  Go around again and load the
-				// next block of data before checking if the
-				// write has completed.
+				// Don't wait.  Go around again and load
+				// the next block of data before
+				// checking if the write has completed.
 				// }}}
 			} else { // Send the next block
 				// {{{
@@ -1511,6 +1634,7 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 				const unsigned count, char *buf) {
 	// {{{
 	unsigned	st = 0;
+	unsigned	err, card_stat, phy;
 
 	if (1 == count || !EMMCMULTI) {
 		for(unsigned k=0; k<count; k++) {
@@ -1520,9 +1644,63 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 				return RES_ERROR;
 			}
 		} return RES_OK;
-	} else {
-		unsigned	err, card_stat, phy;
+	} else if (EMMCDMA) {
+		// {{{
+		// Make sure our device is idle
+		while((cmd = dev->d_dev->sd_cmd) & SDIO_BUSY)
+			;
 
+		// Set up the device address
+		// {{{
+		if (dev->d_OCR & 0x40000000)
+			// High capacity card
+			dev->d_dev->sd_data = sector;
+		else
+			dev->d_dev->sd_data = sector*512;
+		// }}}
+
+		// Set up the DMA
+		// {{{
+		dev->d_dev->sd_dma_addr = buf;
+		// Always transfer in units of 512 bytes
+		dev->d_dev->sd_dma_length = count;
+		// }}}
+
+		// Command the transfer, setting SDIO_DMA to use the DMA
+		// {{{
+		// SDIO_MEM is irrelevant if SDIO_DMA is selected.
+		dev->d_dev->sd_cmd = (SDIO_CMD | SDIO_R1b | SDIO_DMA | SDIO_ERR
+					| SDIO_MEM) + 18;
+		// }}}
+
+		emmc_wait_while_busy(dev);
+
+		// Get our status
+		// {{{
+		dev_stat = dev->d_dev->sd_cmd;
+
+		// The DMA will end the transfer with a STOP_TRANSMISSION
+		// command *IF* count > 1.  The R1 value from the STOP_TRANS
+		// command will still be in the data register after the
+		// entire command completes.  We can read it here to get the
+		// status from the transmission.
+		card_stat = dev->d_dev->sd_data;
+		// }}}
+
+		CLEAR_DCACHE;
+		RELEASE_MUTEX;
+
+		// Return an error code if necessary
+		// {{{
+		if (dev_stat & (SDIO_ERR|SDIO_REMOVED|SDIO_RXERR))
+			return RES_ERROR;
+			else if (card_stat & SDIO_R1ERR)
+		return	RES_ERROR;
+		// }}}
+
+		return RES_OK;
+		// }}}
+	} else {
 		phy = dev->d_dev->sd_phy;
 		if ((0 == (phy & SDIOCK_SHUTDN)) || (9 != ((phy >> 24)&0x0f))) {
 			// Read multiple *requires* the clock be shut down
@@ -1573,23 +1751,22 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 				_zip->z_dma.d_rd  = (s&1) ? &dev->d_dev->sd_fifb : &dev->d_dev->sd_fifa;
 				_zip->z_dma.d_wr  = (char *)buf;
 				_zip->z_dma.d_ctrl= DMAREQUEST|DMACLEAR|DMA_DSTWIDE
-							| DMA_CONSTSRC|DMA_SRCWORD;
+						| DMA_CONSTSRC|DMA_SRCWORD;
 				while(_zip->z_dma.d_ctrl & DMA_BUSY)
 					;
 			} else
 #endif
 				{
-					unsigned *dst;
-					dst = (unsigned *)&buf[s*512];
+				unsigned *dst;
+				dst = (unsigned *)&buf[s*512];
 
-					if (s&1) {
-						for(int w=0; w<512/sizeof(uint32_t); w++)
-							dst[w] = dev->d_dev->sd_fifb;
-					} else {
-						for(int w=0; w<512/sizeof(uint32_t); w++)
-							dst[w] = dev->d_dev->sd_fifa;
-					}
-				}
+				if (s&1) {
+					for(int w=0; w<512/sizeof(uint32_t); w++)
+						dst[w] = dev->d_dev->sd_fifb;
+				} else {
+					for(int w=0; w<512/sizeof(uint32_t); w++)
+						dst[w] = dev->d_dev->sd_fifa;
+				} }
 			// }}}
 		}
 		// }}}
@@ -1599,8 +1776,8 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 			;
 
 		if (err) {
-			// If we had any read failures along the way, return
-			// an error status
+			// If we had any read failures along the way,
+			// return an error status
 			return RES_ERROR;
 		}
 	} return RES_OK;

@@ -44,6 +44,21 @@
 module sdio_top #(
 		// {{{
 		parameter	LGFIFO = 12, NUMIO=4, MW=32,
+		parameter	ADDRESS_WIDTH=48,
+		parameter	DW=64, SW=32,
+		parameter [0:0]	OPT_DMA = 1'b0,
+`ifdef	SDIO_AXI
+		parameter	AXI_IW= 1,
+		parameter [AXI_IW-1:0]	AXI_WRITE_ID= 1'b0,
+		parameter [AXI_IW-1:0]	AXI_READ_ID = 1'b0,
+		parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b1,
+		localparam	AW = ADDRESS_WIDTH,
+`else
+		parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,
+		localparam	AW = ADDRESS_WIDTH-$clog2(DW/8),
+`endif
+		parameter [0:0]	OPT_ISTREAM=1'b0,
+		parameter [0:0]	OPT_OSTREAM=1'b0,
 		parameter [0:0]	OPT_EMMC=1,
 		parameter [0:0]	OPT_SERDES=0,
 		parameter [0:0]	OPT_DDR=1,
@@ -57,7 +72,7 @@ module sdio_top #(
 		input	wire			i_clk, i_reset, i_hsclk,
 		// Control interface
 		// {{{
-`ifdef	SDIO_AXIL
+`ifdef	SDIO_AXI
 		// (Optional) AXI-Lite interface
 		// {{{
 		input	wire		S_AXIL_AWVALID,
@@ -94,6 +109,75 @@ module sdio_top #(
 		output	wire		o_wb_stall, o_wb_ack,
 		output	wire [MW-1:0]	o_wb_data,
 `endif
+		// }}}
+		// DMA interface
+		// {{{
+`ifdef	SDIO_AXI
+		// (Optional) AXI-Lite interface
+		// {{{
+		output	wire		M_AXI_AWVALID,
+		input	wire		M_AXI_AWREADY,
+		output	wire [AXI_IW-1:0]	M_AXI_AWID,
+		output	wire [AW-1:0]	M_AXI_AWADDR,
+		output	wire [7:0]	M_AXI_AWLEN,
+		output	wire [2:0]	M_AXI_AWSIZE,
+		output	wire [1:0]	M_AXI_AWBURST,
+		output	wire 		M_AXI_AWLOCK,
+		output	wire [3:0]	M_AXI_AWCACHE,
+		output	wire	[2:0]	M_AXI_AWPROT,
+		output	wire [3:0]	M_AXI_AWQOS,
+		//
+		output	wire		M_AXI_WVALID,
+		input	wire		M_AXI_WREADY,
+		output	wire [DW-1:0]	M_AXI_WDATA,
+		output	wire [DW/8-1:0]	M_AXI_WSTRB,
+		output	wire		M_AXI_WLAST,
+		//
+		input	wire		M_AXI_BVALID,
+		output	wire		M_AXI_BREADY,
+		input	wire [AXI_IW-1:0]	M_AXI_BID,
+		input	wire	[1:0]	M_AXI_BRESP,
+		//
+		output	wire		M_AXI_ARVALID,
+		input	wire		M_AXI_ARREADY,
+		output	wire [AXI_IW-1:0]	M_AXI_ARID,
+		output	wire [AW-1:0]	M_AXI_ARADDR,
+		output	wire [7:0]	M_AXI_ARLEN,
+		output	wire [2:0]	M_AXI_ARSIZE,
+		output	wire [1:0]	M_AXI_ARBURST,
+		output	wire 		M_AXI_ARLOCK,
+		output	wire [3:0]	M_AXI_ARCACHE,
+		output	wire	[2:0]	M_AXI_ARPROT,
+		output	wire [3:0]	M_AXI_ARQOS,
+		//
+		input	wire		M_AXI_RVALID,
+		output	wire		M_AXI_RREADY,
+		input	wire [AXI_IW-1:0]	M_AXI_RID,
+		input	wire [DW-1:0]	M_AXI_RDATA,
+		input	wire		M_AXI_RLAST,
+		input	wire	[1:0]	M_AXI_RRESP,
+		// }}}
+`else
+		output	wire		o_dma_cyc, o_dma_stb, o_dma_we,
+		output	wire	[AW-1:0]	o_dma_addr,
+		output	wire	[DW-1:0]	o_dma_data,
+		output	wire	[DW/8-1:0]	o_dma_sel,
+		input	wire			i_dma_stall,
+		input	wire			i_dma_ack,
+		input	wire	[DW-1:0]	i_dma_data,
+		input	wire			i_dma_err,
+`endif
+		// }}}
+		// External DMA streaming interface
+		// {{{
+		input	wire			s_valid,
+		output	wire			s_ready,
+		input	wire	[SW-1:0]	s_data,
+		//
+		output	wire			m_valid,
+		input	wire			m_ready,
+		output	wire	[SW-1:0]	m_data,
+		output	wire			m_last,
 		// }}}
 		// IO interface
 		// {{{
@@ -145,6 +229,16 @@ module sdio_top #(
 	sdio #(
 		// {{{
 		.LGFIFO(LGFIFO), .NUMIO(NUMIO), .MW(MW),
+		.ADDRESS_WIDTH(ADDRESS_WIDTH),
+		.DMA_DW(DW), .SW(SW),
+		.OPT_DMA(OPT_DMA),
+		.OPT_ISTREAM(OPT_ISTREAM), .OPT_OSTREAM(OPT_OSTREAM),
+`ifdef	SDIO_AXI
+		.AXI_IW(AXI_IW),
+		.AXI_WRITE_ID(AXI_WRITE_ID),
+		.AXI_READ_ID(AXI_READ_ID),
+`endif
+		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN),
 		.OPT_DDR(OPT_DDR), .OPT_SERDES(OPT_SERDES),
 		.OPT_DS(OPT_DS),
 		.OPT_CARD_DETECT(OPT_CARD_DETECT),
@@ -157,7 +251,7 @@ module sdio_top #(
 		.i_clk(i_clk), .i_reset(i_reset),
 		// Control interface
 		// {{{
-`ifdef	SDIO_AXIL
+`ifdef	SDIO_AXI
 		// AXI-Lite
 		// {{{
 		.S_AXIL_AWVALID(S_AXIL_AWVALID),
@@ -194,6 +288,78 @@ module sdio_top #(
 		.o_wb_data(o_wb_data),
 		// }}}
 `endif
+		// }}}
+		// DMA interface
+		// {{{
+`ifdef	SDIO_AXI
+		// (Optional) AXI-Lite interface
+		// {{{
+		.M_AXI_AWVALID(M_AXI_AWVALID),
+		.M_AXI_AWREADY(M_AXI_AWREADY),
+		.M_AXI_AWID(M_AXI_AWID),
+		.M_AXI_AWADDR(M_AXI_AWADDR),
+		.M_AXI_AWLEN(M_AXI_AWLEN),
+		.M_AXI_AWSIZE(M_AXI_AWSIZE),
+		.M_AXI_AWBURST(M_AXI_AWBURST),
+		.M_AXI_AWLOCK(M_AXI_AWLOCK),
+		.M_AXI_AWCACHE(M_AXI_AWCACHE),
+		.M_AXI_AWPROT(M_AXI_AWPROT),
+		.M_AXI_AWQOS(M_AXI_AWQOS),
+		//
+		.M_AXI_WVALID(M_AXI_WVALID),
+		.M_AXI_WREADY(M_AXI_WREADY),
+		.M_AXI_WDATA(M_AXI_WDATA),
+		.M_AXI_WSTRB(M_AXI_WSTRB),
+		.M_AXI_WLAST(M_AXI_WLAST),
+		//
+		//
+		.M_AXI_BVALID(M_AXI_BVALID),
+		.M_AXI_BREADY(M_AXI_BREADY),
+		.M_AXI_BID(M_AXI_BID),
+		.M_AXI_BRESP(M_AXI_BRESP),
+		//
+		.M_AXI_ARVALID(M_AXI_ARVALID),
+		.M_AXI_ARREADY(M_AXI_ARREADY),
+		.M_AXI_ARID(M_AXI_ARID),
+		.M_AXI_ARADDR(M_AXI_ARADDR),
+		.M_AXI_ARLEN(M_AXI_ARLEN),
+		.M_AXI_ARSIZE(M_AXI_ARSIZE),
+		.M_AXI_ARBURST(M_AXI_ARBURST),
+		.M_AXI_ARLOCK(M_AXI_ARLOCK),
+		.M_AXI_ARCACHE(M_AXI_ARCACHE),
+		.M_AXI_ARPROT(M_AXI_ARPROT),
+		.M_AXI_ARQOS(M_AXI_ARQOS),
+		//
+		.M_AXI_RVALID(M_AXI_RVALID),
+		.M_AXI_RREADY(M_AXI_RREADY),
+		.M_AXI_RID(M_AXI_RID),
+		.M_AXI_RDATA(M_AXI_RDATA),
+		.M_AXI_RLAST(M_AXI_RLAST),
+		.M_AXI_RRESP(M_AXI_RRESP),
+		// }}}
+`else
+		.o_dma_cyc(o_dma_cyc),
+		.o_dma_stb(o_dma_stb),
+		.o_dma_we(o_dma_we),
+		.o_dma_addr(o_dma_addr),
+		.o_dma_data(o_dma_data),
+		.o_dma_sel(o_dma_sel),
+		.i_dma_stall(i_dma_stall),
+		.i_dma_ack(i_dma_ack),
+		.i_dma_data(i_dma_data),
+		.i_dma_err(i_dma_err),
+`endif
+		// }}}
+		// External DMA streaming interface
+		// {{{
+		.s_valid(s_valid),
+		.s_ready(s_ready),
+		.s_data(s_data),
+		//
+		.m_valid(m_valid),
+		.m_ready(m_ready),
+		.m_data(m_data),
+		.m_last(m_last),
 		// }}}
 		.i_card_detect(i_card_detect),
 		.o_1p8v(o_1p8v),

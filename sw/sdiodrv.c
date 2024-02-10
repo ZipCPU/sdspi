@@ -90,7 +90,12 @@ typedef	uint32_t DWORD, LBA_t, UINT;
 // extern	void	txdecimal(int);
 #endif
 
-static	const int	SDINFO = 1, SDDEBUG=1, SDEXTDMA=0;
+static	const int	SDINFO = 1, SDDEBUG=1;
+#ifdef	OPT_SDIODMA
+static	const	int	SDDMA = 1, SDEXTDMA=0;
+#else
+static	const	int	SDDMA = 0, SDEXTDMA=1;
+#endif
 
 // SDMULTI: Controls whether the read multiple block or write multiple block
 // commands will be used.  Set to 1 to use these commands, 0 otherwise.
@@ -132,8 +137,8 @@ static	const	uint32_t
 		SDIO_CARDBUSY = 0x00100000,
 		SDIO_BUSY     = 0x00104800,
 		SDIO_CMDERR   = 0x00200000,
-		SDIO_RXERR    = 0x00400000,
-		SDIO_RXECODE  = 0x00800000,
+		SDIO_RXERR    = 0x00400000,	// RX Error present
+		SDIO_RXECODE  = 0x00800000,	// RX Error code
 		// PHY enumerations
 		SDIO_DDR      = 0x00004100,	// Requires CK90
 		SDIO_DS       = 0x00004300,	// Requires DDR & CK90
@@ -1153,6 +1158,78 @@ SDIODRV *sdio_init(SDIO *dev) {
 int	sdio_write(SDIODRV *dev, const unsigned sector,
 			const unsigned count, const char *buf) {
 	// {{{
+#ifdef	OPT_SDIODMA
+	// {{{
+	unsigned	dev_stat, card_stat;
+	GRAB_MUTEX;
+
+	phy = dev->d_dev->sd_phy;
+	if (9 != ((phy >> 24)&0x0f)) {
+		// Here, we don't care if the clock is shut down as
+		// well, since we control the write speed.
+		phy &= 0xf0ffffff;
+		phy |= SECTOR_512B;
+	}
+
+	// Make sure our device is idle
+	while(dev->d_dev->sd_cmd & SDIO_BUSY)
+		;
+
+	// Issue a write-multiple command
+
+	// Set up the device address
+	// {{{
+	if (dev->d_OCR & 0x40000000)
+		// High capacity card
+		dev->d_dev->sd_data = sector;
+	else
+		dev->d_dev->sd_data = sector*512;
+	// }}}
+
+	// Set up the DMA
+	// {{{
+	dev->d_dev->sd_dma_addr = buf;
+	// Always transfer in units of 512 Bytes.
+	//	We don't multiply the count by 512 bytes, though, lest we
+	//	lost the ability to send TBs at a time.
+	dev->d_dev->sd_dma_length = count;
+	// }}}
+
+	// Command the transfer, setting SDIO_DMA to use the DMA
+	// {{{
+	// SDIO_MEM is irrelevant if SDIO_DMA is selected.
+	dev->d_dev->sd_cmd = (SDIO_CMD | SDIO_R1 | SDIO_DMA |SDIO_ERR
+				|SDIO_WRITE | SDIO_MEM) + 25;
+	// }}}
+
+	sdio_wait_while_busy(dev);
+
+	// Get our status
+	// {{{
+	dev_stat  = dev->d_dev->sd_cmd;
+
+	// The DMA will end the transfer with a STOP_TRANSMISSION command--*IF*
+	// count > 1.  The R1 value from the STOP_TRANSMISSION command will
+	// still be in the data register after the entire command completes.
+	// We can read it here to get the status from the transmission.
+	card_stat = dev->d_dev->sd_data;
+	// }}}
+
+	CLEAR_DCACHE;
+	RELEASE_MUTEX;
+
+	// Return an error code if necessary
+	// {{{
+	if (dev_stat & (SDIO_ERR|SDIO_REMOVED|SDIO_RXERR))
+		return	RES_ERROR;
+	else if (card_stat & SDIO_R1ERR)
+		return	RES_ERROR;
+
+	return RES_OK;
+	// }}}
+	// }}}
+#else
+	// {{{
 	unsigned	st, s;
 
 	if (1 == count || !SDMULTI) {
@@ -1271,6 +1348,8 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 
 		return RES_OK;
 	}
+	// }}}
+#endif
 }
 // }}}
 

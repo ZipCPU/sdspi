@@ -1,7 +1,7 @@
 #!/bin/perl
 ################################################################################
 ##
-## Filename: 	sim_run.pl
+## Filename:	bench/verilog/sim_run.pl
 ## {{{
 ## Project:	SDIO SD-Card controller
 ##
@@ -13,7 +13,7 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2023, Gisselquist Technology, LLC
+## Copyright (C) 2023-2024, Gisselquist Technology, LLC
 ## {{{
 ## This program is free software (firmware): you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as published
@@ -34,7 +34,6 @@
 ## {{{
 ##		http://www.gnu.org/licenses/gpl.html
 ##
-##
 ################################################################################
 ##
 ## }}}
@@ -46,8 +45,8 @@ $testlist = "dev_testcases.txt";
 $exefile  = "./devsim";
 $linestr  = "----------------------------------------";
 $report   = "report.txt";
-$sdtoplvl = "tb_sdio";
-$emmctop  = "tb_emmc";
+$wbtoplvl = "tb_wb";
+$axtoplvl = "tb_axi";
 $cputop   = "tb_cpu";
 $testd    = "test/";
 $vivado   = 0;
@@ -123,20 +122,21 @@ sub simline($) {
 	while ($line =~ /^(.*)#.*/) {
 		$line = $1;
 	} if ($line =~ /^\s*(\S+)\s+(\S+)\s+(\S+)\s+(.*)$/) {
-		$tstcfg  = $1;
-		$tstname = $2;
+		$tstname = $1;
+		$tstcfg  = $2;
 		$tstscript = $3;
 		$args = $4;
 	}
 
-	if ($tstcfg =~ /CPU/i) {
-		$toplevel = $cputop;
-		$filelist = "cpu_files.txt";
-	} elsif ($tstcfg =~ /SDIO/i) {
-		$toplevel = $sdtoplvl;
+	# if ($tstcfg =~ /CPU/i) {
+	#	$toplevel = $cputop;
+	#	$filelist = "cpu_files.txt";
+	#} els
+	if ($tstcfg =~ /WB/i) {
+		$toplevel = $wbtoplvl;
 		$filelist = "dev_files.txt";
-	} elsif ($tstcfg =~ /EMMC/i) {
-		$toplevel = $emmctop;
+	} elsif ($tstcfg =~ /AXI/i) {
+		$toplevel = $axtoplvl;
 		$filelist = "dev_files.txt";
 	} else {
 		return();
@@ -283,17 +283,20 @@ sub gettest($) {
 	my ($key)=@_;
 	my	$tstname;
 
+print "Looking up $key\n";
+
 	open(GTL, $testlist);
 	while($line = <GTL>) {
 		next if ($line =~ /^\s*#/);
 		if ($line =~ /^\s*(\S+)\s+(\S+)\s/) {
-			$tstname = $2;
+			$tstname = $1;
 			last if ($tstname eq $key);
 		}
 	} close GTL;
 	if ($tstname eq $key) {
 		$line;
 	} else {
+		print "ERR: Test not found: $key\n";
 		"# FAIL";
 	}
 }

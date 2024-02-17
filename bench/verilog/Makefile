@@ -1,8 +1,8 @@
 ################################################################################
 ##
-## Filename: 	bench/verilog/Makefile
+## Filename:	bench/verilog/Makefile
 ## {{{
-## Project:	SD-Card controller, using a shared SPI interface
+## Project:	SDIO SD-Card controller
 ##
 ## Purpose:	
 ##
@@ -31,7 +31,6 @@
 ## License:	GPL, v3, as defined and found on www.gnu.org,
 ## {{{
 ##		http://www.gnu.org/licenses/gpl.html
-##
 ##
 ################################################################################
 ##

@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdiosim.cpp
+// Filename:	bench/cpp/sdiosim.cpp
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SDIO SD-Card controller
 //
 // Purpose:	
 //

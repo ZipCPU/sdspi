@@ -322,13 +322,13 @@ module	sdwb #(
 	else if (new_data_request || r_tx_request || r_rx_request)
 		r_mem_busy <= 1'b1;
 	else begin
+		if (cmd_busy && i_cmd_done && !o_rx_en && !o_tx_en)
+			r_mem_busy <= 1'b0;
 		if (o_tx_en && r_tx_sent && !i_tx_busy)
 			r_mem_busy <= 1'b0;
 		if (o_rx_en && i_rx_done)
 			r_mem_busy <= 1'b0;
 		// if (!mem_busy) r_mem_busy <= 1'b0;
-		if (cmd_busy && i_cmd_done)
-			r_mem_busy <= 1'b0;
 	end
 `ifdef	FORMAL
 	wire	f_mem_busy;

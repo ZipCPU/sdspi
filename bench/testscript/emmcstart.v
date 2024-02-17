@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	emmcstart.v
+// Filename:	bench/testscript/emmcstart.v
 // {{{
 // Project:	SDIO SD-Card controller
 //
@@ -77,8 +77,10 @@ begin
 	max_spd = read_data[7:0];
 	if (3'h0 == read_data[18:16])
 		sample_shift = { 11'h0, 5'h08, 16'h0 };
+	else if (2'b00 == read_data[17:16])
+		sample_shift = { 11'h0, 5'h0c, 16'h0 };
 	else
-		sample_shift = { 11'h0, 5'h00, 16'h0 };
+		sample_shift = { 11'h0, 5'h08, 16'h0 };
 	// }}}
 
 	// Now set up for the capabilities we will be using
@@ -118,7 +120,7 @@ begin
 	u_bfm.readio(ADDR_FIFOA, CID[ 31: 0]);
 	$display("READ-CID: %08x:%08x:%08x:%08x",
 		CID[127:96], CID[95:64], CID[63:32], CID[31:0]);
-	assert(CID[127:8] == u_emmc.CID);
+	assert(CID[127:8] == u_mcchip.CID);
 
 	// CMD3	SEND_RELATIVE_ADDR
 	emmc_set_relative_addr(rca);
@@ -134,7 +136,7 @@ begin
 	u_bfm.readio(ADDR_FIFOA, CID[ 31: 0]);
 	$display("READ-CID: %08x:%08x:%08x:%08x",
 		CID[127:96], CID[95:64], CID[63:32], CID[31:0]);
-	assert(CID[127:8] == u_emmc.CID);
+	assert(CID[127:8] == u_mcchip.CID);
 	// }}}
 
 	// Read the CSD register
@@ -146,7 +148,7 @@ begin
 	u_bfm.readio(ADDR_FIFOA, CSD[ 31: 0]);
 	$display("READ-CSD: %08x:%08x:%08x:%08x",
 		CSD[127:96], CSD[95:64], CSD[63:32], CSD[31:0]);
-	assert(CSD[127:8] == u_emmc.CSD);
+	assert(CSD[127:8] == u_mcchip.CSD);
 	// }}}
 
 	// CMD7 SELECT/DESELCT Card

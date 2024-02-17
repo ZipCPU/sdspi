@@ -1,8 +1,8 @@
 ################################################################################
 ##
-## Filename: 	dev_testcases.txt
+## Filename:	bench/verilog/dev_testcases.txt
 ## {{{
-## Project:	SD-Card controller, using a shared SPI interface
+## Project:	SDIO SD-Card controller
 ##
 ## Purpose:	Defines a set of tests to be applied to the SDIO (not the eMMC)
 ##		controller and simulation model.
@@ -33,18 +33,18 @@
 ## {{{
 ##		http://www.gnu.org/licenses/gpl.html
 ##
-##
 ################################################################################
-##
+## }}}
 ## Format:
-##  Test configuration | Test name | Test script (or S/W load) | (PARAM=X)*
+##  Test name | Test configuration | Test script (or S/W load) | (PARAM=X)*
+## {{{
 ##
 ## Test configurations are one of:
-##	SDIO	Uses tb_sdio.v as the top level.
+##	WB	Uses tb_wb.v as the top level.
 ##		This is an all-Verilog TB.  The test script is a Verilog file
 ##		containing instructions for the Wishbone bus-functional model
 ##		(BFM).
-##	EMMC	Uses tb_emmc.v as the top level.
+##	EMMC	Uses tb_axi.v as the top level.
 ##		Also an all-Verilog TB, with a Verilog test script just like
 ##		the SDIO configuration.
 ##	SPI	Also an all-Verilog TB.  This time the top level is tb_sdspi.v.
@@ -53,18 +53,24 @@
 ##		This top level contains a ZipCPU, and it's test script is a
 ##		hex file specifying the software load for the test.
 ## }}}
-SDIO sdioio	sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=0
-SDIO sdioddr	sdiostart	OPT_SERDES=0 OPT_DDR=1
-SDIO sdio8x	sdiostart	OPT_SERDES=1 OPT_DDR=1
-SDIO axsdioio	sdiostart	OPT_SERDES=0 OPT_DDR=0 -DSDIO_AXIL
-SDIO axsdioddr	sdiostart	OPT_SERDES=0 OPT_DDR=1 -DSDIO_AXIL
-SDIO axsdio8x	sdiostart	OPT_SERDES=1 OPT_DDR=1 -DSDIO_AXIL
-EMMC emmcio	emmcstart	OPT_SERDES=0 OPT_DDR=0	OPT_VCD=0
-EMMC emmcddr	emmcstart	OPT_SERDES=0 OPT_DDR=1	OPT_VCD=0
-EMMC emmc8x	emmcstart	OPT_SERDES=1 OPT_DDR=1	OPT_VCD=0
-EMMC axemmcio	emmcstart	OPT_SERDES=0 OPT_DDR=0	OPT_VCD=0 -DSDIO_AXIL
-EMMC axemmcddr	emmcstart	OPT_SERDES=0 OPT_DDR=1	OPT_VCD=0 -DSDIO_AXIL
-EMMC axemmc8x	emmcstart	OPT_SERDES=1 OPT_DDR=1	OPT_VCD=0 -DSDIO_AXIL
+sdioio		WB  sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=1
+sdioddr		WB  sdiostart	OPT_SERDES=0 OPT_DDR=1
+sdio8x		WB  sdiostart	OPT_SERDES=1 OPT_DDR=1
+axsdioio	AXI sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=0 -DSDIO_AXI
+axsdioddr	AXI sdiostart	OPT_SERDES=0 OPT_DDR=1 OPT_VCD=0 -DSDIO_AXI
+axsdio8x	AXI sdiostart	OPT_SERDES=1 OPT_DDR=1 OPT_VCD=0 -DSDIO_AXI
+emmcio		WB  emmcstart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=0
+emmcddr		WB  emmcstart	OPT_SERDES=0 OPT_DDR=1 OPT_VCD=0
+emmc8x		WB  emmcstart	OPT_SERDES=1 OPT_DDR=1 OPT_VCD=0
+axemmcio	AXI emmcstart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=0 -DSDIO_AXI
+axemmcddr	AXI emmcstart	OPT_SERDES=0 OPT_DDR=1 OPT_VCD=0 -DSDIO_AXI
+axemmc8x	AXI emmcstart	OPT_SERDES=1 OPT_DDR=1 OPT_VCD=0 -DSDIO_AXI
+#
+# The SDSPI tests aren't yet fully implemented in all Verilog yet
+#	They currently exist as part of an integrated C++/Verilog test bench,
+#	run under Verilator.
+#
+# The CPU tests aren't yet fully implemented ...
 # CPU  cpusdio	sdcheck.hex	OPT_SERDES=0 OPT_DDR=0
 # CPU  cpusdddr	sdcheck.hex	OPT_SERDES=0 OPT_DDR=1
 # CPU  cpusd8x	sdcheck.hex	OPT_SERDES=1 OPT_DDR=1

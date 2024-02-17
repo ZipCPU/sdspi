@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdiostart.v
+// Filename:	bench/testscript/sdiostart.v
 // {{{
 // Project:	SDIO SD-Card controller
 //
@@ -63,9 +63,9 @@ begin
 	begin
 		// No response from card
 		do begin
-			op_cond = 32'h0;
+			op_cond = 32'h0ff_8000;
 			sdcard_send_op_cond(op_cond);
-		end while(op_cond[31]);
+		end while(1'b0 === op_cond[31]);
 	end else begin
 		assert(if_cond[7:0] == 8'ha5);
 

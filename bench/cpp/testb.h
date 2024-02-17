@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	testb.h
+// Filename:	bench/cpp/testb.h
 // {{{
-// Project:	SPI-based SD-Card controller
+// Project:	SDIO SD-Card controller
 //
 // Purpose:	A wrapper for a common interface to a clocked FPGA core
 //		begin exercised in Verilator.

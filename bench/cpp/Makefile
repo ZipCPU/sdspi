@@ -1,8 +1,8 @@
 ################################################################################
 ##
-## Filename: 	Makefile
+## Filename:	bench/cpp/Makefile
 ## {{{
-## Project:	SD-Card controller
+## Project:	SDIO SD-Card controller
 ##
 ## Purpose:	Nothing currently.  Eventually, if I create a proper bench
 ##		test, rather than just running this on real hardware as part of
@@ -27,14 +27,13 @@
 ## for more details.
 ##
 ## You should have received a copy of the GNU General Public License along
-## with this program.  (It's in the $(ROOT)/doc directory, run make with no
+## with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 ## target there if the PDF file isn't present.)  If not, see
 ## <http://www.gnu.org/licenses/> for a copy.
 ## }}}
 ## License:	GPL, v3, as defined and found on www.gnu.org,
 ## {{{
 ##		http://www.gnu.org/licenses/gpl.html
-##
 ##
 ################################################################################
 ##

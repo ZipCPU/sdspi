@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdiolib.v
+// Filename:	bench/testscript/sdiolib.v
 // {{{
 // Project:	SDIO SD-Card controller
 //
@@ -36,11 +36,12 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 // }}}
-localparam	[AW+$clog2(DW/8)-1:0]	ADDR_SDCARD =  0,
-					ADDR_SDDATA =  4,
-					ADDR_FIFOA  =  8,
-					ADDR_FIFOB  = 12,
-					ADDR_SDPHY  = 16;
+localparam	[ADDRESS_WIDTH-1:0]
+				ADDR_SDCARD = SDIO_ADDR + 0,
+				ADDR_SDDATA = SDIO_ADDR + 4,
+				ADDR_FIFOA  = SDIO_ADDR + 8,
+				ADDR_FIFOB  = SDIO_ADDR +12,
+				ADDR_SDPHY  = SDIO_ADDR +16;
 
 localparam [31:0]	SDIO_RNONE = 32'h0,
 			SDIO_R1    = 32'h0100,
@@ -100,7 +101,7 @@ initial	r_interrupted = 1'b0;
 always @(posedge clk)
 if (reset)
 	r_interrupted <= 1'b0;
-else if (interrupt)
+else if (sdio_interrupt)
 	r_interrupted <= 1'b1;
 
 task	sdio_wait_while_busy;

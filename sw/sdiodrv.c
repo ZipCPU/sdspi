@@ -1020,7 +1020,7 @@ SDIODRV *sdio_init(SDIO *dev) {
 		do {
 			op_cond = 0;
 			op_cond = sdio_send_op_cond(dv, op_cond);
-		} while(op_cond & 0x80000000);
+		} while(0 == (op_cond & 0x80000000));
 	} else {
 		if (0xa5 != (ifcond & 0x0ff)) {
 			RELEASE_MUTEX;

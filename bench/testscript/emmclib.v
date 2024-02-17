@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	emmclib.v
+// Filename:	bench/testscript/emmclib.v
 // {{{
 // Project:	SDIO SD-Card controller
 //
@@ -36,11 +36,11 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
 // }}}
-localparam	[AW+$clog2(DW/8)-1:0]	ADDR_SDCARD =  0,
-					ADDR_SDDATA =  4,
-					ADDR_FIFOA  =  8,
-					ADDR_FIFOB  = 12,
-					ADDR_SDPHY  = 16;
+localparam	[AW+$clog2(DW/8)-1:0]	ADDR_SDCARD = EMMC_ADDR +  0,
+					ADDR_SDDATA = EMMC_ADDR +  4,
+					ADDR_FIFOA  = EMMC_ADDR +  8,
+					ADDR_FIFOB  = EMMC_ADDR + 12,
+					ADDR_SDPHY  = EMMC_ADDR + 16;
 
 localparam [31:0]	EMMC_RNONE = 32'h000000,
 			EMMC_R1    = 32'h000100,
@@ -106,7 +106,7 @@ initial	r_interrupted = 1'b0;
 always @(posedge clk)
 if (reset)
 	r_interrupted <= 1'b0;
-else if (interrupt)
+else if (emmc_interrupt)
 	r_interrupted <= 1'b1;
 
 task	emmc_wait_while_busy;

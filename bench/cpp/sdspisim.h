@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdspisim.h
+// Filename:	bench/cpp/sdspisim.h
 // {{{
-// Project:	SPI-based SD-Card Controller
+// Project:	SDIO SD-Card controller
 //
 // Purpose:	This library simulates the operation of a SPI commanded SD-Card,
 //		such as might be found on a XuLA2-LX25 board made by xess.com.

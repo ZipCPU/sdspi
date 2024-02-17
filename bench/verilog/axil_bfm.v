@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	axil_bfm.v
+// Filename:	bench/verilog/axil_bfm.v
 // {{{
 // Project:	SDIO SD-Card controller
 //
@@ -46,7 +46,7 @@ module	axil_bfm #(
 		localparam	ADDR_WIDTH=AW,
 		parameter DW = 32,
 		parameter LGFIFO = 4,
-		parameter [0:0]	OPT_DEBUG = 1'b1
+		parameter [0:0]	OPT_DEBUG = 1'b0
 		// }}}
 	) (
 		// {{{

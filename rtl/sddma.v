@@ -372,7 +372,7 @@ module	sddma #(
 		.i_soft_reset(i_soft_reset),
 		//
 		.S_VALID(!s2sd_busy ? i_sd2s_valid
-			: !mm2s_busy ? s_valid : mm2s_valid),
+			: (OPT_ISTREAM && !mm2s_busy) ? s_valid : mm2s_valid),
 		.S_READY(rxgears_ready),
 		.S_DATA(wide_rx_data),
 		.S_BYTES(wide_rx_bytes),

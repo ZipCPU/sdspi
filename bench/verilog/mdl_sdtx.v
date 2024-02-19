@@ -239,8 +239,8 @@ module mdl_sdtx #(
 
 	assign	sd_ds = ds;
 
-	assign	o_ready = !r_active || (sd_clk && r_count == 1)
-						|| (!sd_clk && r_ready);
+	assign	o_ready = !r_active || (!r_crc && ((sd_clk && r_count == 1)
+						|| (!sd_clk && r_ready)));
 
 	// CRC generation
 	// {{{

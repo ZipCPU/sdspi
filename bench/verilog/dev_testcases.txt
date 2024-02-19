@@ -56,6 +56,7 @@
 sdioio		WB  sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=1
 sdioddr		WB  sdiostart	OPT_SERDES=0 OPT_DDR=1
 sdio8x		WB  sdiostart	OPT_SERDES=1 OPT_DDR=1
+sddmachk	WB  sddmachk	OPT_SERDES=1 OPT_DDR=1 OPT_DMA=1 OPT_VCD=1
 axsdioio	AXI sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=0 -DSDIO_AXI
 axsdioddr	AXI sdiostart	OPT_SERDES=0 OPT_DDR=1 OPT_VCD=0 -DSDIO_AXI
 axsdio8x	AXI sdiostart	OPT_SERDES=1 OPT_DDR=1 OPT_VCD=0 -DSDIO_AXI

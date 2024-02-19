@@ -130,30 +130,34 @@ $(SDCMD)_cvr/PASS: $(RTL)/$(SDCMD).v $(SDCMD).sby
 
 .PHONY: $(SDWB)
 ## {{{
-$(SDWB): $(SDWB)_prf/PASS # $(SDCMD)_cvr/PASS
-$(SDWB): $(SDWB)_prfds/PASS $(SDWB)_prfdr/PASS
+$(SDWB): $(SDWB)_prf/PASS $(SDCMD)_cvr/PASS
+$(SDWB): $(SDWB)_prfds/PASS $(SDWB)_prfdr/PASS $(SDWB)_prfdma/PASS
 $(SDWB)_prf/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prf
+$(SDWB)_prfdma/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
+	sby -f $(SDWB).sby prfdma
 $(SDWB)_prfds/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prfds
 $(SDWB)_prfdr/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prfdr
-# $(SDWB)_cvr/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
-#	sby -f $(SDWB).sby cvr
+$(SDWB)_cvr/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
+	sby -f $(SDWB).sby cvr
 ## }}}
 
 .PHONY: $(SDAXIL)
 ## {{{
-$(SDAXIL): $(SDAXIL)_prf/PASS # $(SDCMD)_cvr/PASS
-$(SDAXIL): $(SDAXIL)_prfds/PASS $(SDAXIL)_prfdr/PASS
+$(SDAXIL): $(SDAXIL)_prf/PASS $(SDCMD)_cvr/PASS
+$(SDAXIL): $(SDAXIL)_prfds/PASS $(SDAXIL)_prfdr/PASS $(SDAXIL)_prfdma/PASS
 $(SDAXIL)_prf/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
 	sby -f $(SDAXIL).sby prf
+$(SDAXIL)_prfdma/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
+	sby -f $(SDAXIL).sby prfdma
 $(SDAXIL)_prfds/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
 	sby -f $(SDAXIL).sby prfds
 $(SDAXIL)_prfdr/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
 	sby -f $(SDAXIL).sby prfdr
-# $(SDAXIL)_cvr/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
-#	sby -f $(SDAXIL).sby cvr
+$(SDAXIL)_cvr/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
+	sby -f $(SDAXIL).sby cvr
 ## }}}
 
 .PHONY: $(SDCK)

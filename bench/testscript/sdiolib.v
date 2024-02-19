@@ -41,7 +41,9 @@ localparam	[ADDRESS_WIDTH-1:0]
 				ADDR_SDDATA = SDIO_ADDR + 4,
 				ADDR_FIFOA  = SDIO_ADDR + 8,
 				ADDR_FIFOB  = SDIO_ADDR +12,
-				ADDR_SDPHY  = SDIO_ADDR +16;
+				ADDR_SDPHY  = SDIO_ADDR +16,
+				ADDR_DMABUS = SDIO_ADDR +20,
+				ADDR_DMALEN = SDIO_ADDR +28;
 
 localparam [31:0]	SDIO_RNONE = 32'h0,
 			SDIO_R1    = 32'h0100,
@@ -51,7 +53,7 @@ localparam [31:0]	SDIO_RNONE = 32'h0,
 			SDIO_MEM   = 32'h0800,
 			SDIO_FIFO  = 32'h1000,
 			SDIO_DMA   = 32'h2000,
-			SDIO_BUSY  = 32'h4800,
+			SDIO_BUSY  = 32'h6800,
 			SDIO_ERR   = 32'h8000;
 
 localparam [31:0]	SDIO_DS    = 32'h00100,
@@ -90,11 +92,15 @@ localparam [31:0]	SECTOR_16B  = 32'h0400_0000,
 
 localparam [31:0]	SDIO_CMD     = 32'h0000_0040,
 			SDIO_READREG  = SDIO_CMD | SDIO_R1 | SDIO_ERR,
+			SDIO_READCID = (SDIO_CMD | SDIO_R2 | SDIO_ERR)+2,
 			SDIO_WRITEBLK = (SDIO_CMD | SDIO_R1 | SDIO_ERR
 						| SDIO_WRITE | SDIO_MEM)+24,
+			SDIO_WRITEDMA = (SDIO_CMD | SDIO_R1 | SDIO_ERR| SDIO_DMA
+					| SDIO_WRITE | SDIO_MEM)+25,
 			SDIO_READBLK = (SDIO_CMD | SDIO_R1 | SDIO_ERR
 						| SDIO_MEM)+17,
-			SDIO_READCID = (SDIO_CMD | SDIO_R2 | SDIO_ERR)+2;
+			SDIO_READDMA  = (SDIO_CMD | SDIO_R1 | SDIO_ERR| SDIO_DMA
+						| SDIO_MEM)+18;
 
 reg	r_interrupted;
 initial	r_interrupted = 1'b0;
@@ -334,6 +340,41 @@ begin
 end endtask
 // }}}
 
+task	sdcard_write_dma(input [31:0] nblocks, input[31:0] sector,	// CMD25
+				input[31:0] wbaddr);
+	// {{{
+	reg	[31:0]	ctrl_reg, phy_reg, dummy_data;
+	integer		ik;
+begin
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	if (phy_reg[27:24] != 4'h9)
+	begin
+		phy_reg[27:24] = 4'h9;
+		u_bfm.writeio(ADDR_SDPHY, phy_reg);
+	end
+
+$display("Pre-Writing data to memory");
+	for(ik=0; ik<(nblocks<<9); ik=ik+4)
+	begin
+		dummy_data = $random;
+		u_bfm.writeio(wbaddr + ik, dummy_data);
+	end
+
+	u_bfm.writeio(ADDR_SDDATA, sector);
+	u_bfm.writeio(ADDR_DMABUS, wbaddr);
+	u_bfm.writeio(ADDR_DMALEN, nblocks);
+$display("Commanding DMA transaction");
+	u_bfm.write_f(ADDR_SDCARD, SDIO_WRITEDMA);
+
+$display("Waiting for completion");
+	sdio_wait_while_busy;
+
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: H, Write DMA error"); error_flag = 1'b1; end
+end endtask
+// }}}
+
 task	sdcard_read_block(input[31:0] sector);	// CMD17
 	// {{{
 	reg	[31:0]	ctrl_reg, phy_reg;
@@ -359,9 +400,41 @@ begin
 	end
 
 	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: H, Read block ERR"); error_flag = 1'b1; end
+		else begin $display("ERROR: I, Read block ERR"); error_flag = 1'b1; end
 
 	for(ik=0; ik<512/4; ik=ik+1)
 		u_bfm.writeio(ADDR_FIFOA, $random);
+end endtask
+// }}}
+
+task	sdcard_read_dma(input [31:0] nblocks, input[31:0] sector,
+				input[31:0] wbaddr);
+	// {{{
+	reg	[31:0]	ctrl_reg, phy_reg;
+	integer		ik;
+begin
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	if (phy_reg[27:24] != 4'h9)
+	begin
+		phy_reg[27:24] = 4'h9;
+		u_bfm.writeio(ADDR_SDPHY, phy_reg);
+	end
+
+	u_bfm.writeio(ADDR_SDDATA, sector);
+	u_bfm.writeio(ADDR_DMABUS, wbaddr);
+	u_bfm.writeio(ADDR_DMALEN, nblocks);
+	u_bfm.write_f(ADDR_SDCARD, SDIO_READDMA);
+
+	sdio_wait_while_busy;
+
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+
+	if (1'b0 !== ctrl_reg[15])
+	begin
+		$display("CMD FAILED CODE (%d) at %t", ctrl_reg[17:16], $time);
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: J, Read DMA ERR"); error_flag = 1'b1; end
 end endtask
 // }}}

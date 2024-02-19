@@ -52,6 +52,16 @@ module	mdl_sdio #(
 
 	// Local declarations
 	// {{{
+	// Maximum allowable busy time is 250ms.
+	// localparam realtime	WRITE_TIME = 250_000_000.0;
+	// A 250ms timeout is unreasonable for simulations, however, so we'll
+	// drop it to 1250ns or so.  This should at least force a busy of a
+	// single clock cycle in 1MHz mode.
+	localparam realtime	WRITE_TIME = 1250.0;
+	// I have no idea what sort of read time is appropriate.  Therefore,
+	// the following is nothing more than a guess.
+	localparam realtime	READ_TIME = 400.0;
+
 	reg		cfg_ddr;
 	reg	[1:0]	cfg_width;
 	wire	[3:0]	ign_dat;
@@ -74,7 +84,8 @@ module	mdl_sdio #(
 	reg		drive_cmd, card_selected;
 	wire		cmd_collision;
 
-	reg		read_en, pending_read;
+	reg		read_en, pending_read, multi_block,
+			stop_transmission;
 	wire		rx_valid, rx_last, rx_good, rx_err;
 	wire	[31:0]	rx_data;
 
@@ -91,6 +102,7 @@ module	mdl_sdio #(
 	reg	[LGMEMSZ-1:0]	read_posn;
 	integer		write_ik;
 
+	reg		card_busy, internal_card_busy;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -174,6 +186,8 @@ module	mdl_sdio #(
 	initial	cfg_width = 2'b0;	// 1b width
 	initial	cfg_ddr = 1'b0;		// SDR
 	initial	read_en = 1'b0;
+	initial	stop_transmission = 1'b0;
+	initial	multi_block = 1'b0;
 
 	initial	begin
 		reply_valid = 1'b0;
@@ -327,18 +341,55 @@ module	mdl_sdio #(
 				cmd_alt <= 1'b1;
 			end end
 			// }}}
+		{ 1'b?, 6'd12 }: begin // CMD12: STOP_TRANSMISSION
+			// {{{
+			if (card_selected)
+			begin
+				reply_valid <= #7 1'b1;
+				reply <= 6'd12;
+				reply_data <= { {(120-32){1'b0}}, R1 };
+				stop_transmission <= 1'b1;
+				multi_block <= 1'b0;
+				pending_read <= 1'b0;
+				pending_write <= 1'b0;
+			end end
+			// }}}
 		{ 1'b?, 6'd17 }: begin // CMD19: Read block
 			// {{{
 			if (card_selected)
 			begin
-				pending_write <= 1'b1;
+				pending_write <= #READ_TIME 1'b1;
+				multi_block <= 1'b0;
 				// write_en <= 1'b1;
 				reply_valid <= #7 1'b1;
 				reply <= 6'd19;
 				reply_data <= { {(120-32){1'b0}}, R1};
 
-				read_posn <= cmd_arg;
+				if (host_supports_hcs)
+					read_posn <= cmd_arg << 7;
+				else
+					read_posn <= cmd_arg >> 2;
 				rx_addr <= 0;
+				stop_transmission <= 1'b0;
+			end end
+			// }}}
+		{ 1'b?, 6'd18 }: begin // CMD20: Read multiple
+			// {{{
+			if (card_selected)
+			begin
+				pending_write <= #READ_TIME 1'b1;
+				multi_block <= 1'b1;
+				// write_en <= 1'b1;
+				reply_valid <= #7 1'b1;
+				reply <= 6'd19;
+				reply_data <= { {(120-32){1'b0}}, R1};
+
+				if (host_supports_hcs)
+					read_posn <= cmd_arg << 7;
+				else
+					read_posn <= cmd_arg >> 2;
+				rx_addr <= 0;
+				stop_transmission <= 1'b0;
 			end end
 			// }}}
 		{ 1'b?, 6'd24 }: begin // CMD24: Write block
@@ -350,7 +401,30 @@ module	mdl_sdio #(
 				reply_data <= { {(120-32){1'b0}}, R1};
 
 				pending_read <= 1'b1;
-				read_posn <= cmd_arg;
+				multi_block <= 1'b0;
+				stop_transmission <= 1'b0;
+				if (host_supports_hcs)
+					read_posn <= cmd_arg << 7;
+				else
+					read_posn <= cmd_arg >> 2;
+				rx_addr <= 0;
+			end end
+			// }}}
+		{ 1'b?, 6'd25 }: begin // CMD24: Write multiple
+			// {{{
+			if (card_selected)
+			begin
+				reply_valid <= #7 1'b1;
+				reply <= 6'd25;
+				reply_data <= { {(120-32){1'b0}}, R1};
+
+				pending_read <= 1'b1;
+				multi_block <= 1'b1;
+				stop_transmission <= 1'b0;
+				if (host_supports_hcs)
+					read_posn <= cmd_arg << 7;
+				else
+					read_posn <= cmd_arg >> 2;
 				rx_addr <= 0;
 			end end
 			// }}}
@@ -372,11 +446,21 @@ module	mdl_sdio #(
 	always @(posedge sd_clk)
 	if (!reply_busy && pending_read)
 	begin
-		pending_read <= 0;
-		read_en <= 1'b1;
+		if (!internal_card_busy)
+		begin
+			pending_read <= 0;
+			read_en <= !stop_transmission;
+		end
 	end else if (read_en && (rx_good || rx_err))
+	begin
 		read_en <= 0;
-		// read_posn <= cmd_arg;
+		if (multi_block && !stop_transmission)
+		begin
+			internal_card_busy <= 1'b1;
+			pending_read <= 1'b1;
+			internal_card_busy <= #READ_TIME 1'b0;
+		end
+	end
 
 	always @(posedge sd_clk)
 	if (read_en && rx_valid)
@@ -387,6 +471,7 @@ module	mdl_sdio #(
 	begin
 		for(write_ik=0; write_ik<512/4; write_ik=write_ik+1)
 			mem[write_ik+read_posn] = mem_buf[write_ik];
+		read_posn = read_posn + 512/4;
 	end
 
 	initial	begin
@@ -396,33 +481,46 @@ module	mdl_sdio #(
 		tx_data  = 0;
 		tx_last  = 1'b0;
 	end
-		
+
+	initial	internal_card_busy = 1'b0;
 	always @(posedge sd_clk)
 	if (pending_write && !reply_valid && !reply_busy)
 	begin
 		// We can place a delay here, to simulate read access time
 		// if desired ...
-		// #50; @(posedge sd_clk) begin
+		if (!internal_card_busy && !stop_transmission)
+		begin
 			pending_write <= 1'b0;
-			write_en <= 1'b1;
+			write_en <= 1;
 			for(read_ik=0; read_ik<512/4; read_ik=read_ik+1)
 				mem_buf[read_ik] = mem[read_ik+read_posn];
+			read_posn = read_posn + 512/4;
 			tx_valid <= 1'b1;
 			tx_data <= mem_buf[0];
 			tx_addr <= 1;
 			tx_last <= 0;
-		// end
+		end
 	end else if (write_en && tx_valid && tx_ready)
 	begin
 		tx_data <= mem_buf[tx_addr];
 		if (tx_last)
 		begin
 			tx_valid <= 1'b0;
-			write_en <= 1'b0;
 			tx_addr  <= 0;
+			// write_en <= 1'b0;
 		end else
 			tx_addr <= tx_addr + 1;
 		tx_last <= tx_last || (&tx_addr[6:0]);
+	end else if (write_en && !tx_valid)
+	begin
+		if (tx_ready)
+		begin
+			write_en <= 1'b0;
+			internal_card_busy <= 1'b1;
+			internal_card_busy <= #READ_TIME 1'b0;
+			if (multi_block)
+				pending_write <= 1'b1;
+		end
 	end else if (!write_en)
 	begin
 		tx_valid <= 0;
@@ -432,6 +530,14 @@ module	mdl_sdio #(
 
 	// }}}
 
+	// Card busy can only change on a clock, so let's make sure we only
+	// change it on a clock.
+	initial	card_busy <= 1'b0;
+	always @(posedge sd_clk)
+		card_busy <= internal_card_busy;
+
 	// assign	sd_ds = #DS_DELAY (ds_enabled
 	//			&& (tx_ds || (enhanced_ds_enabled && cmd_ds));
+
+	assign	sd_dat[0] = (card_busy && card_selected && !pending_write) ? 1'b0 : 1'bz;
 endmodule

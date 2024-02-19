@@ -342,14 +342,14 @@ module	sdio #(
 		.o_sd2s_last(sd2s_last),
 		//
 		.o_dma_s2sd(dma_s2sd),
-		.i_s2sd_valid(s2sd_valid),
+		.i_s2sd_valid(OPT_DMA && s2sd_valid),
 		.o_s2sd_ready(s2sd_ready),
 		.i_s2sd_data(s2sd_data),
 		//
 		.o_dma_addr(dma_addr),
 		.o_dma_len(dma_len),
-		.i_dma_busy(dma_busy),
-		.i_dma_err(dma_err),
+		.i_dma_busy(OPT_DMA && dma_busy),
+		.i_dma_err(OPT_DMA && dma_err),
 		.o_dma_abort(dma_abort),
 		// }}}
 		// CMD control interface

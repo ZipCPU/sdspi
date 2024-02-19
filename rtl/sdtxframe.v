@@ -7,6 +7,13 @@
 // Purpose:	Given a frame of data from memory, formats it for sending to
 //		the front end.
 //
+// Comments:
+//	This implementation really needs a means of stopping the SD clock if
+//	the incoming data isn't yet ready.  Although the command controller
+//	doesn't (yet) use such a feature, it could be quite valuable in the
+//	future when working with a stream-based DMA.  (Perhaps it needs to be
+//	made as a parameter?)
+//
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
 //

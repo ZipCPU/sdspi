@@ -336,7 +336,7 @@ module	sddma #(
 				wide_rx_data[DW-1:0] = mm2s_data;
 		end else begin
 			if (!s2sd_busy)
-				wide_rx_data[31:0] = i_sd2s_data;
+				wide_rx_data[RXWIDTH-1:RXWIDTH-32] = i_sd2s_data;
 			else if (!mm2s_busy && OPT_ISTREAM)
 				wide_rx_data[RXWIDTH-1:RXWIDTH-SW] = s_data;
 			else

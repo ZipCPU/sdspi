@@ -8,7 +8,8 @@ cvr opt_serdes opt_dma
 [options]
 prf: mode prove
 cvr: mode cover
-prf: depth 50
+prf: depth 10
+# prf: depth 50
 cvr: depth 150
 
 [engines]

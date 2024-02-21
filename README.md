@@ -115,13 +115,14 @@ Several key steps remain before it will be a viable product:
   design components together for this purpose.
 
 - **OPT_DMA**: An optional DMA is now passing simulation tests.  The
-  controller has not (yet) been (fully) formally verified, nor has the DMA been
-  tested in hardware.  At present, I expect this new DMA to work in "good"
-  scenarios, but it is likely to lock up following something unexpected, such
-  as an error or an abort.
+  controller has not (yet) been (fully) formally verified, nor has the DMA
+  been tested in hardware.  At present, I expect this new DMA to work in
+  "good" scenarios, but it is likely to lock up following something
+  unexpected, such as an error or an abort.  (i.e., the DMA controller is not
+  ASIC certified ...)
 
-  Only the Wishbone DMA controller exists at present.  Although some components
-  exist to support an AXI DMA, they have not (yet) been integrated.
+  Only the Wishbone DMA controller exists at present.  Although some
+  components exist to support an AXI DMA, they have not (yet) been integrated.
 
 - **STREAM DMA**: At customer request, hooks now exist for an (optional)
   stream DMA interface.  This interface will accept an AXI stream input,

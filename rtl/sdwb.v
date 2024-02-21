@@ -2092,7 +2092,7 @@ module	sdwb #(
 					&& !o_dma_sd2s
 					&& r_dma_loaded[dma_fifo]
 					&& (!o_sd2s_valid || i_sd2s_ready));
-		assign	o_s2sd_ready = dma_busy && r_tx && (!o_tx_mem_valid || i_tx_mem_ready);
+		assign	o_s2sd_ready = dma_busy && r_tx && (!r_dma_loaded[dma_fifo]);
 		assign	o_sd2s_last  = r_dma_last && !r_tx;
 
 		// Keep Verilator happy

@@ -277,7 +277,8 @@ module	sdwb #(
 
 	// DMA signals
 	wire		dma_busy, dma_fifo, dma_write, dma_read_fifo,
-			dma_error, dma_last, dma_zero_len, dma_int, dma_stopped;
+			dma_error, dma_last, dma_zero_len, dma_int, dma_stopped,
+			dma_read_active;
 	wire	[31:0]	dma_command;
 	wire	[31:0]		dma_len_return;
 	reg	[63:0]		dma_addr_return;
@@ -339,7 +340,10 @@ module	sdwb #(
 		// if (!mem_busy) r_mem_busy <= 1'b0;
 	end
 `ifdef	FORMAL
-	wire	f_mem_busy;
+	wire		f_mem_busy;
+	wire [13:0]	f_blocksz;
+
+	assign	f_blocksz = (14'h1 << (lgblk-2));
 
 	assign	f_mem_busy = (o_tx_en || r_tx_request || o_rx_en
 			|| r_rx_request) ||(cmd_busy && o_cmd_type == R2_REPLY);
@@ -724,9 +728,7 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		r_fifo <= 1'b0;
-	else if (!cmd_busy && !o_tx_en && !o_rx_en
-			&& !r_tx_request && !r_rx_request
-			&& bus_cmd_stb && bus_wstrb[FIFO_ID_BIT/8])
+	else if (!r_mem_busy && bus_cmd_stb && bus_wstrb[FIFO_ID_BIT/8])
 		r_fifo <= bus_wdata[FIFO_ID_BIT];
 	// }}}
 
@@ -836,7 +838,6 @@ module	sdwb #(
 	// PHY control register
 	// {{{
 	assign	bus_phy_stb = bus_write && bus_wraddr == ADDR_PHY;
-				//  && !mem_busy && !cmd_busy && !dma_busy;//??
 
 	// o_length, lgblk
 	// {{{
@@ -951,7 +952,7 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (!i_reset)
 	begin
-		if (!$past(r_clk_shutdown) && !$past(dma_busy))
+		if (!r_clk_shutdown && !$past(dma_busy))
 			assert(!o_cfg_shutdown);
 		if ((cmd_busy && !o_cmd_request) || o_tx_en
 						|| (w_card_busy && !cmd_busy))
@@ -1275,10 +1276,10 @@ module	sdwb #(
 		fif_rdaddr <= 0;
 	else if (dma_busy)
 	begin
-		if (o_dma_sd2s || o_dma_s2sd)
+		if (!dma_read_active)
 			fif_rdaddr <= 0;
 		else if (dma_read_fifo)
-			fif_rdaddr <= (dma_last) ? 0 : (fif_rdaddr + 1);
+			fif_rdaddr <= fif_rdaddr + 1;
 	end else if (bus_cmd_stb && new_data_request)
 	begin
 		fif_rdaddr <= 0;
@@ -1651,9 +1652,14 @@ module	sdwb #(
 				assert(!r_dma_loaded[dma_fifo]);
 			if (r_tx_request || o_tx_en)
 			begin
-				assert(r_dma_fifo != r_fifo
+				if (!r_tx_sent)
+				begin
+					assert(r_dma_fifo != r_fifo
 					|| (!o_dma_s2sd && !i_dma_busy));
-				assert(r_dma_loaded[r_fifo]);	// !!!
+
+					assert(r_dma_loaded[r_fifo]);
+				end else
+					assert(!r_dma_loaded[r_fifo]);
 			end
 			if (r_rx_request || o_rx_en)
 				assert(!r_dma_loaded[r_fifo]);
@@ -1753,14 +1759,15 @@ module	sdwb #(
 		always @(posedge i_clk)
 		if (i_reset || o_soft_reset || !dma_busy)
 		begin
-			r_subblock <= (1<<(lgblk-2))-1;
+			r_subblock <= blk_words;
 			r_dma_last <= (lgblk <= 2);
 			r_dma_len  <= 1<<lgblk;
-		end else if (dma_read_fifo || (i_s2sd_valid && o_s2sd_ready))
+		end else if ((i_s2sd_valid && o_s2sd_ready)
+				|| (o_sd2s_valid && i_sd2s_ready))
 		begin
 			if (r_dma_last)
 			begin
-				r_subblock <= (1<<(lgblk-2))-1;
+				r_subblock <= blk_words;
 				r_dma_last <= (lgblk <= 2);
 			end else begin
 				r_subblock <=  r_subblock - 1;
@@ -1771,16 +1778,19 @@ module	sdwb #(
 		assign	o_dma_len = r_dma_len;
 		assign	dma_last = r_dma_last;
 `ifdef	FORMAL
+		// {{{
 		wire	[LGFIFOW-1:0]	f_dma_rdaddr;
 
 		always @(*)
 		if (!i_reset && dma_busy)
 		begin
 			assert(r_dma_last == (r_subblock == 0));
-			assert(r_subblock <= (1<<(lgblk-2))-1);
+			assert(r_subblock <= f_blocksz-1);
+			if (!r_tx && !r_read_active)
+				assert(r_subblock == f_blocksz-1);
 		end
 
-		assign	f_dma_rdaddr = (1<<(lgblk-2))-1 + (pre_dma_valid ? 1:0)
+		assign	f_dma_rdaddr = f_blocksz-1 + (pre_dma_valid ? 1:0)
 					+ (r_sd2s_valid ? 1:0) - r_subblock;
 		always @(*)
 		if (!i_reset && dma_busy)
@@ -1789,19 +1799,23 @@ module	sdwb #(
 			begin
 				assert(!o_sd2s_valid);
 				assert(!dma_read_fifo);
-				assert(fif_wraddr == (1<<(lgblk-2))
-							- r_subblock - 1);
+				assert(fif_wraddr ==(f_blocksz- r_subblock-1));
 			end else begin
 				if (!r_sd2s_valid)
 				begin
-					assert(r_subblock == (1<<(lgblk-2))-1);
-					assert(!dma_last);
+					assert(r_subblock == f_blocksz-1);
+					assert(!dma_last || lgblk == 2);
 				end
-				assert(fif_rdaddr == f_dma_rdaddr);	// !!!
+
+				if (r_read_active)
+					assert(fif_rdaddr == f_dma_rdaddr);
+				else if (!dma_last)
+					assert(r_subblock == f_blocksz - 1);
 				if (r_sd2s_valid && !dma_last)
 					assert(pre_dma_valid);
 			end
 		end
+		// }}}
 `endif
 		// }}}
 
@@ -1812,19 +1826,14 @@ module	sdwb #(
 			r_dma_fifo <= 1'b0;
 		else if (!dma_busy)
 		begin
-			r_dma_fifo <= 1'b0;
-			/*
-			if (new_data_request && bus_wstrb[FIFO_ID_BIT/8]
-					&& bus_wdata[USE_DMA_BIT])
-			begin
-				r_dma_fifo <= bus_wdata[FIFO_ID_BIT];
-			end
-			*/
+			r_dma_fifo <= bus_wdata[FIFO_ID_BIT];
 		end else if ((i_s2sd_valid && o_s2sd_ready && r_dma_last)
 				||(o_sd2s_valid && i_sd2s_ready && r_dma_last))
 			r_dma_fifo <= !r_dma_fifo;
 
 		assign	dma_fifo = r_dma_fifo;
+`ifdef	FORMAL
+`endif
 		// }}}
 
 		// r_dma_loaded
@@ -1840,7 +1849,7 @@ module	sdwb #(
 			// Read into the FIFO, write FIFO to flash
 			if (i_s2sd_valid && o_s2sd_ready && r_dma_last)
 				r_dma_loaded[r_dma_fifo] <= 1'b1;
-			if (o_tx_mem_valid && o_tx_mem_last)
+			if (o_tx_mem_valid && i_tx_mem_ready && o_tx_mem_last)
 				r_dma_loaded[r_fifo] <= 1'b0;
 		end else begin
 			if (o_sd2s_valid && i_sd2s_ready && o_sd2s_last)
@@ -1895,7 +1904,7 @@ module	sdwb #(
 		begin
 			if (dma_last_beat)
 			begin
-				if (!r_last_block)
+				if (!r_dma_zero_len)
 					r_block_count <= r_block_count - 1;
 				r_last_block <= (r_block_count <= 2);
 				r_dma_zero_len <= (r_block_count <= 1);
@@ -1919,14 +1928,25 @@ module	sdwb #(
 `endif
 		// }}}
 
+		// dma_cmd_fifo
+		// {{{
 		always @(posedge i_clk)
 		if (i_reset || o_soft_reset)
 			dma_cmd_fifo <= 1'b0;
 		else if (new_dma_request)
-			dma_cmd_fifo <= bus_wdata[FIFO_ID_BIT]
-						^ (!bus_wdata[FIFO_WRITE_BIT]);
-		else if (dma_write)
+		begin
+			if (bus_wdata[FIFO_WRITE_BIT])
+				// We have to come back later to issue a
+				// request to this ID
+				dma_cmd_fifo <= bus_wdata[FIFO_ID_BIT];
+			else
+				// Request is being issued now, next one is
+				// opposite.  dma_cmd_fifo is the *next* FIFO
+				// ID, so ... swap.
+				dma_cmd_fifo <= !bus_wdata[FIFO_ID_BIT];
+		end else if (dma_write)
 			dma_cmd_fifo <= !dma_cmd_fifo;
+		// }}}
 
 		// dma_write, dma_command, dma_stopped
 		// {{{
@@ -2064,9 +2084,12 @@ module	sdwb #(
 			r_read_active <= 1'b1;
 		else if (o_sd2s_valid && i_sd2s_ready && o_sd2s_last)
 			r_read_active <= 1'b0;
+
+		assign	dma_read_active = r_read_active;
 		// }}}
 
 		assign	dma_read_fifo = (!r_tx && r_read_active
+					&& !o_dma_sd2s
 					&& r_dma_loaded[dma_fifo]
 					&& (!o_sd2s_valid || i_sd2s_ready));
 		assign	o_s2sd_ready = dma_busy && r_tx && (!o_tx_mem_valid || i_tx_mem_ready);
@@ -2085,26 +2108,42 @@ module	sdwb #(
 		reg[DMA_AW-1:0]	f_cfg_addr;
 		reg	[31:0]	f_cfg_len;
 
-		always @(posedge i_clk)
-		if ($past(i_reset) || $past(o_soft_reset))
-			assume(!i_dma_busy);
-
+		// assume i_dma_busy
+		// {{{
 		always @(posedge i_clk)
 		if (!$past(o_dma_s2sd) && !$past(o_dma_sd2s))
 			assume(!$rose(i_dma_busy));
 
 		always @(posedge i_clk)
-		if (!r_dma_last && r_subblock != ((1<<(lgblk-2))-1))
+		if ($past(i_reset) || $past(o_soft_reset))
+			assume(!i_dma_busy);
+		else if ($past(i_s2sd_valid && o_s2sd_ready && dma_last))
+			assume($fell(i_dma_busy));
+		else if ($past(o_sd2s_valid && i_sd2s_ready && dma_last))
+			assume($fell(i_dma_busy));
+		else if ($past(o_dma_s2sd) || $past(o_dma_sd2s))
 			assume(i_dma_busy);
+		else
+			assume($stable(i_dma_busy));
+
+	//	always @(posedge i_clk)
+	//	if (!r_dma_last && r_subblock != ((1<<(lgblk-2))-1))
+	//		assume(i_dma_busy);
 
 		always @(posedge i_clk)
-		if (i_s2sd_valid)
-			assume(i_dma_busy);
+		if (!i_dma_busy) assume(!i_s2sd_valid);
+		// }}}
 
 		always @(*)
 		if (!dma_busy)
 			assume(!i_dma_err);
 
+		always @(posedge i_clk)
+		if (!i_reset && !o_soft_reset && !dma_busy)
+			assert(!i_dma_err);
+
+		// f_cfg_* configuration copy
+		// {{{
 		always @(posedge i_clk)
 		if (!dma_busy)
 		begin
@@ -2113,6 +2152,7 @@ module	sdwb #(
 			f_cfg_addr <= o_dma_addr;
 			f_cfg_len  <= r_block_count;
 		end
+		// }}}
 
 		// f_rx_blocks
 		// {{{
@@ -2160,6 +2200,35 @@ module	sdwb #(
 			assert($stable(o_sd2s_last));
 		end
 		// }}}
+
+		always @(*)
+		if (!i_reset && dma_busy)
+		begin
+			if (r_tx)
+			begin
+				assert(dma_fifo==(f_rx_blocks[0] ^ f_cfg_fifo));
+				if ((r_tx_request || o_tx_en) && (o_tx_mem_valid || !o_tx_mem_last))
+				begin
+					assert(dma_cmd_fifo==(f_tx_blocks[0]
+						^ f_cfg_fifo ^ 1));
+				end else begin
+					assert(dma_cmd_fifo==(f_tx_blocks[0]
+						^ f_cfg_fifo));
+				end
+
+				if (f_tx_blocks == 0 && (!o_tx_en && !r_tx_request))
+				begin
+					assert(dma_cmd_fifo == r_fifo);
+				end else begin
+					assert(dma_cmd_fifo != r_fifo);
+				end
+				// r_fifo
+				// dma_cmd_fifo
+			end else begin
+				assert(dma_fifo==(f_tx_blocks[0] ^ f_cfg_fifo));
+				assert(dma_cmd_fifo != r_fifo);
+			end
+		end
 
 		always @(*)
 		if (!i_reset && dma_busy)
@@ -2219,7 +2288,16 @@ module	sdwb #(
 			cover(dma_busy && r_dma &&  r_tx && dma_last_beat);
 			cover(dma_busy && r_dma && !r_tx && dma_last_beat);
 			if (!$past(r_dma_err) && !$past(r_abort) && $past(dma_busy))
-				cover(!dma_busy);
+			begin
+				cover(!dma_busy &&  r_tx);	// Step 23
+				cover(!dma_busy && !r_tx);	// Step 23
+				cover(!dma_busy &&  r_tx && f_cfg_len > 1); //30
+				cover(!dma_busy && !r_tx && f_cfg_len > 1); //29
+				cover(!dma_busy &&  r_tx && f_cfg_len > 2); //37
+				cover(!dma_busy && !r_tx && f_cfg_len > 2); //35
+				cover(!dma_busy &&  r_tx && f_cfg_len > 1 && lgblk == 3);
+				cover(!dma_busy && !r_tx && f_cfg_len > 1 && lgblk == 3);
+			end
 		end
 		// }}}
 		////////////////////////////////////////////////////////////////
@@ -2248,6 +2326,7 @@ module	sdwb #(
 		assign	dma_zero_len  = 1'b1;
 		assign	dma_int       = 1'b0;
 		assign	dma_stopped   = 1'b1;
+		assign	dma_read_active = 1'b0;
 		//
 		// Common control signals
 		assign	o_dma_addr   = 0;
@@ -2302,6 +2381,12 @@ module	sdwb #(
 	//
 	// Wishbone Return handling
 	// {{{
+	always @(*)
+	begin
+		dma_addr_return = 0;
+		dma_addr_return[DMA_AW-1:0] = o_dma_addr;
+	end
+
 	always @(posedge i_clk)
 	begin
 		pre_data <= 0;
@@ -2422,8 +2507,14 @@ module	sdwb #(
 	if (f_past_valid && $past(i_reset || (i_cmd_done && !w_selfreply_request)))
 		assert(!cmd_busy);
 
+	// always @(posedge i_clk)
+	// if (f_past_valid && cmd_busy && !o_cmd_request)
+	//	assume(i_cmd_busy);		// ???
+
 	always @(posedge i_clk)
-	if (f_past_valid && cmd_busy && !o_cmd_request)
+	if (!f_past_valid || $past(i_reset) || $past(o_soft_reset))
+	begin end
+	else if ($past(o_cmd_request && !i_cmd_busy))
 		assume(i_cmd_busy);
 
 	always @(posedge i_clk)
@@ -2432,7 +2523,7 @@ module	sdwb #(
 					&& !i_cmd_response);
 
 	always @(*)
-	if (!cmd_busy || o_cmd_request || o_cmd_type != R2_REPLY)
+	if (!cmd_busy || o_cmd_request || o_cmd_type != R2_REPLY || !i_cmd_busy)
 		assume(!i_cmd_mem_valid);
 
 	always @(posedge i_clk)
@@ -2580,6 +2671,7 @@ module	sdwb #(
 			assert(r_tx_request);
 		end
 	end
+
 	always @(posedge i_clk)
 	if (f_past_valid && !$past(dma_busy) && $past(bus_cmd_stb)
 		&&(($past(bus_wstrb[1:0])==2'b11 && $past(bus_wdata == 16'h080))
@@ -2742,9 +2834,9 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (!i_reset && o_tx_mem_valid)
 	begin
-		assert(f_txaddr[LGFIFO32-1:0] < (1<<(lgblk-2)));
-		assert(tx_mem_addr[LGFIFO32-1:0] < (1<<(lgblk-2))+2);
-		assert(o_tx_mem_last == (f_txaddr[LGFIFO32-1:0] == (1<<(lgblk-2))-1));
+		assert(f_txaddr[LGFIFO32-1:0] < f_blocksz);
+		assert(tx_mem_addr[LGFIFO32-1:0] < f_blocksz+2);
+		assert(o_tx_mem_last == (f_txaddr[LGFIFO32-1:0] == f_blocksz-1));
 	end
 
 	// Need to relate f_txaddr to tx_mem_addr
@@ -2752,8 +2844,12 @@ module	sdwb #(
 	if (!i_reset && o_tx_en && !r_tx_sent)
 	begin
 		assert(r_fifo == f_txaddr[LGFIFO32]);
-		assert(tx_mem_addr[LGFIFO32-1:0] == f_txaddr[LGFIFO32-1:0]
-			+ (o_tx_mem_valid ? 1:0) + (tx_pipe_valid ? 1:0));//!!
+		if (!o_tx_mem_valid || !o_tx_mem_last)
+		begin
+			assert(tx_mem_addr[LGFIFO32-1:0]==f_txaddr[LGFIFO32-1:0]
+				+ (o_tx_mem_valid ? 1:0)
+				+ (tx_pipe_valid ? 1:0));
+		end
 		if (o_tx_mem_valid)
 		begin
 			assert(tx_pipe_valid);
@@ -2767,7 +2863,7 @@ module	sdwb #(
 
 		if (o_tx_mem_valid && tx_pipe_valid)
 		begin
-			assert(tx_fifo_last == (f_txaddr[LGFIFO32-1:0]+1 >= (1<<(lgblk-2))-1));
+			assert(tx_fifo_last == (f_txaddr[LGFIFO32-1:0]+1 >= f_blocksz-1));
 		end
 
 		if (!tx_pipe_valid)
@@ -2850,6 +2946,7 @@ module	sdwb #(
 	//
 	// Careless assumptions
 	// {{{
+
 	always @(*)
 	if (o_rx_en || o_tx_en)
 		assume(lgblk < 15);	// Assume no overflow ... for now

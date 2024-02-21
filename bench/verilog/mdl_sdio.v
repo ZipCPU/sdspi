@@ -449,7 +449,8 @@ module	mdl_sdio #(
 		if (!internal_card_busy)
 		begin
 			pending_read <= 0;
-			read_en <= !stop_transmission;
+			read_en <= !stop_transmission && (cmd[5:0] == 6'd24
+					|| cmd[5:0] == 6'd25);
 		end
 	end else if (read_en && (rx_good || rx_err))
 	begin
@@ -491,14 +492,18 @@ module	mdl_sdio #(
 		if (!internal_card_busy && !stop_transmission)
 		begin
 			pending_write <= 1'b0;
-			write_en <= 1;
-			for(read_ik=0; read_ik<512/4; read_ik=read_ik+1)
-				mem_buf[read_ik] = mem[read_ik+read_posn];
-			read_posn = read_posn + 512/4;
-			tx_valid <= 1'b1;
-			tx_data <= mem_buf[0];
-			tx_addr <= 1;
-			tx_last <= 0;
+			if (!stop_transmission && (cmd[5:0] == 6'd17
+					|| cmd[5:0] == 6'd18))
+			begin
+				write_en <= 1'b1;
+				for(read_ik=0; read_ik<512/4; read_ik=read_ik+1)
+					mem_buf[read_ik] = mem[read_ik+read_posn];
+				read_posn = read_posn + 512/4;
+				tx_valid <= 1'b1;
+				tx_data <= mem_buf[0];
+				tx_addr <= 1;
+				tx_last <= 0;
+			end
 		end
 	end else if (write_en && tx_valid && tx_ready)
 	begin

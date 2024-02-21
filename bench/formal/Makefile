@@ -130,7 +130,7 @@ $(SDCMD)_cvr/PASS: $(RTL)/$(SDCMD).v $(SDCMD).sby
 
 .PHONY: $(SDWB)
 ## {{{
-$(SDWB): $(SDWB)_prf/PASS $(SDCMD)_cvr/PASS
+$(SDWB): $(SDWB)_prf/PASS $(SDWB)_cvr/PASS
 $(SDWB): $(SDWB)_prfds/PASS $(SDWB)_prfdr/PASS $(SDWB)_prfdma/PASS
 $(SDWB)_prf/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prf
@@ -146,7 +146,7 @@ $(SDWB)_cvr/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
 
 .PHONY: $(SDAXIL)
 ## {{{
-$(SDAXIL): $(SDAXIL)_prf/PASS $(SDCMD)_cvr/PASS
+$(SDAXIL): $(SDAXIL)_prf/PASS $(SDAXIL)_cvr/PASS
 $(SDAXIL): $(SDAXIL)_prfds/PASS $(SDAXIL)_prfdr/PASS $(SDAXIL)_prfdma/PASS
 $(SDAXIL)_prf/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
 	sby -f $(SDAXIL).sby prf

@@ -74,6 +74,8 @@ Both open-drain and push-pull IOs are supported, and the front end can switch
 between the two as necessary based upon options within a PHY configuration
 register.
 
+Both Wishbone and AXI-Lite interfaces are supported.
+
 *Status*: The SDIO controller has now been **silicon proven**.  It is currently
   working successfully in [its first FPGA
   project](https://github.com/ZipCPU/eth10g), where it is being used to control

@@ -53,16 +53,17 @@
 ## @SCOPE.DATA=@$(PREFIX)_debug
 @INT.SDCARD.WIRE= @$(PREFIX)_int
 @INT.SDCARD.PIC= syspic
+@IOPREFIX=@$(PREFIX)
 @TOP.PORTLIST=
 		// SD Card
-		o_@$(PREFIX)_sck, io_@$(PREFIX)_cmd, io_@$(PREFIX), i_@$(PREFIX)_cd
+		o_@$(IOPREFIX)_sck, io_@$(IOPREFIX)_cmd, io_@$(IOPREFIX), i_@$(IOPREFIX)_cd
 @TOP.IODECL=
 	// SD Card
 	// {{{
-	output	wire		o_@$(PREFIX)_sck;
-	inout	wire		io_@$(PREFIX)_cmd;
-	inout	wire	[3:0]	io_@$(PREFIX);
-	input	wire		i_@$(PREFIX)_cd;
+	output	wire		o_@$(IOPREFIX)_sck;
+	inout	wire		io_@$(IOPREFIX)_cmd;
+	inout	wire	[3:0]	io_@$(IOPREFIX);
+	input	wire		i_@$(IOPREFIX)_cd;
 	// }}}
 @TOP.DEFNS=
 	// SD Card definitions
@@ -70,13 +71,13 @@
 	wire		w_@$(PREFIX)_cmd;
 	wire	[3:0]	w_@$(PREFIX)_data;
 
-	wire		i_@$(PREFIX)_cmd;
-	wire	[3:0]	i_@$(PREFIX);
+	wire		i_@$(IOPREFIX)_cmd;
+	wire	[3:0]	i_@$(IOPREFIX);
 	// }}}
 @TOP.MAIN=
 		// SD Card
-		o_@$(PREFIX)_sck, w_@$(PREFIX)_cmd, w_@$(PREFIX)_data,
-		io_@$(PREFIX)_cmd, io_@$(PREFIX), i_@$(PREFIX)_cd
+		o_@$(IOPREFIX)_sck, w_@$(IOPREFIX)_cmd, w_@$(IOPREFIX)_data,
+		io_@$(IOPREFIX)_cmd, io_@$(IOPREFIX), i_@$(IOPREFIX)_cd
 @TOP.INSERT=
 	//////////////////////////////////////////////////////////////////////
 	//
@@ -95,13 +96,13 @@
 	// assign io_@$(PREFIX)[2] = w_@$(PREFIX)_data[2]? 1'bz:1'b0;
 	// assign io_@$(PREFIX)[3] = w_@$(PREFIX)_data[3]? 1'bz:1'b0;	// CS_n
 	// }}}
-	IOBUF @$(PREFIX)_cmd_bf(.T(1'b0),.O(i_@$(PREFIX)_cmd),.I(w_@$(PREFIX)_cmd),.IO(io_@$(PREFIX)_cmd));// MISO
-	IOBUF @$(PREFIX)_dat0_bf(.T(1'b1),.O(i_@$(PREFIX)[0]),.I(1'b1),.IO(io_@$(PREFIX)[0]));// MISO
-	IOBUF @$(PREFIX)_dat1_bf(.T(1'b1),.O(i_@$(PREFIX)[1]),.I(1'b1),.IO(io_@$(PREFIX)[1]));
-	IOBUF @$(PREFIX)_dat2_bf(.T(1'b1),.O(i_@$(PREFIX)[2]),.I(1'b1),.IO(io_@$(PREFIX)[2]));
+	IOBUF @$(PREFIX)_cmd_bf(.T(1'b0),.O(i_@$(IOPREFIX)_cmd),.I(w_@$(PREFIX)_cmd),.IO(io_@$(IOPREFIX)_cmd));// MISO
+	IOBUF @$(PREFIX)_dat0_bf(.T(1'b1),.O(i_@$(IOPREFIX)[0]),.I(1'b1),.IO(io_@$(IOPREFIX)[0]));// MISO
+	IOBUF @$(PREFIX)_dat1_bf(.T(1'b1),.O(i_@$(IOPREFIX)[1]),.I(1'b1),.IO(io_@$(IOPREFIX)[1]));
+	IOBUF @$(PREFIX)_dat2_bf(.T(1'b1),.O(i_@$(IOPREFIX)[2]),.I(1'b1),.IO(io_@$(IOPREFIX)[2]));
 
 	// Implement an open-drain output
-	IOBUF @$(PREFIX)_dat3_bf(.T(w_@$(PREFIX)_data[3]),.O(i_@$(PREFIX)[3]),.I(1'b0),.IO(io_@$(PREFIX)[3]));
+	IOBUF @$(PREFIX)_dat3_bf(.T(w_@$(PREFIX)_data[3]),.O(i_@$(IOPREFIX)[3]),.I(1'b0),.IO(io_@$(IOPREFIX)[3]));
 	// }}}
 @MAIN.PORTLIST=
 		// The SD-Card wires

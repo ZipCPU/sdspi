@@ -43,7 +43,16 @@
 // }}}
 module sdio_top #(
 		// {{{
-		parameter	LGFIFO = 12, NUMIO=4, MW=32,
+		parameter	LGFIFO = 12,
+		// NUMIO : Controls the number of data pins available on the
+		// {{{
+		// interface.  eMMC cards can have up to 8 data pins.  SDIO
+		// is limited to 4 data pins.  Both have modes that can support
+		// a single data pin alone.  Set appropriately based upon your
+		// ultimate hardware.
+		parameter	NUMIO=4,
+		// }}}
+		localparam	MW=32,	// Bus width
 		parameter	ADDRESS_WIDTH=48,
 		parameter	DW=64, SW=32,
 		parameter [0:0]	OPT_DMA = 1'b0,
@@ -60,12 +69,71 @@ module sdio_top #(
 		parameter [0:0]	OPT_ISTREAM=1'b0,
 		parameter [0:0]	OPT_OSTREAM=1'b0,
 		parameter [0:0]	OPT_EMMC=1,
+		// OPT_SERDES && OPT_DDR
+		// {{{
+		// Three front-end options are available:
+		// OPT_DDR == OPT_SERDES == 0: Slowest front end, but requires
+		//	no specialized hardware.  May only go up to the system
+		//	clock frequency (nominally 100MHz) divided by four.
+		// OPT_SERDES == 0, OPT_DDR = 1: A bit faster.  Transitions on
+		//	both system clock edges.  May go up to the system
+		//	clock frequency divided by two, or nominally 50 MHz.
+		//	Will supports DDR data at this rate--assuming the device
+		//	does.
+		// OPT_SERDES == 1: Fastest clock frequency.  Depends upon
+		//	I/OSERDES support.  Support may not be available in all
+		//	FPGA vendors.  In this mode, the outgoing clock may
+		//	get as high as twice the system clock rate, or nominally
+		//	200MHz.  DDR data is supported at this rate.
 		parameter [0:0]	OPT_SERDES=0,
 		parameter [0:0]	OPT_DDR=1,
+		// }}}
+		// OPT_DS: Data strobe support
+		// {{{
+		// eMMC chips include a data strobe pin, which can be used to
+		// clock return values.  Set this parameter true to support
+		// sampling based upon this data strobe.  Beware that you may
+		// need additional timing constraints to make this work.
 		parameter [0:0]	OPT_DS=OPT_SERDES && OPT_EMMC,
+		// }}}
 		parameter [0:0]	OPT_CARD_DETECT=!OPT_EMMC,
+		// OPT_1P8V
+		// {{{
+		// Some protocols require switching voltages during the
+		// handshaking process in order to switch to higher speeds.
+		// OPT_1P8V enables a GPIO output which can be used to
+		// request that the voltage switch to 1.8V from 3.3V.  No
+		// feedback is provided, it simply controls a GPIO pin that is
+		// assumed to command a 1.8V output.
 		parameter [0:0]	OPT_1P8V=1,
+		// }}}
+		// OPT_COLLISION
+		// {{{
+		// eMMC is (supposed to) support IRQ (interrupts).  An
+		// interrupt command is supposed to end with the device sending
+		// a command reply.  However, the host may pre-empt this.  If
+		// both attempt to send a reply at the same time, there might be
+		// a collision.  OPT_COLLISION adds logic to detect such
+		// collisions and to get off the bus should any such happen.
+		// Detecting collisions requires a solid knowledge internal to
+		// the front end about the delay through the system, to avoid
+		// false alarms.
+		parameter [0:0]	OPT_COLLISION=OPT_EMMC,
+		// }}}
+		// LGTIMEOUT
+		// {{{
+		// Controls how long to wait for a request from the device
+		// before giving up with a timeout error.  LGTIMEOUT=23 will
+		// wait for (approximately) 2^23 or 8-Million clock cycles.
+		// If the device doesn't respond in this time, an internal
+		// timeout will be generated, and the command will
+		// fail--allowing software the opportunity to attempt to
+		// resurrect the interface or give up on it at software's
+		// choice.  Examples of what might cause such a timeout failure
+		// include an unplugged card, a malfunctioning card, or a
+		// bad board connection.
 		parameter	LGTIMEOUT = 23
+		// }}}
 		// }}}
 	) (
 		// {{{
@@ -390,7 +458,7 @@ module sdio_top #(
 
 	sdfrontend #(
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR), .NUMIO(NUMIO),
-		.OPT_DS(OPT_DS)
+		.OPT_DS(OPT_DS), .OPT_COLLISION(OPT_COLLISION)
 	) u_sdfrontend (
 		// {{{
 		.i_clk(i_clk), .i_hsclk(i_hsclk), .i_reset(i_reset),

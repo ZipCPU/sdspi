@@ -54,6 +54,7 @@ module	sdfrontend #(
 		parameter [0:0]	OPT_SERDES = 1'b0,
 		parameter [0:0]	OPT_DDR = 1'b0,
 		parameter [0:0]	OPT_DS = OPT_SERDES,
+		parameter [0:0]	OPT_COLLISION = 1'b0,
 		parameter	NUMIO = 8
 		// }}}
 	) (
@@ -84,7 +85,7 @@ module	sdfrontend #(
 		// {{{
 		output	wire	[1:0]	o_cmd_strb,
 		output	wire	[1:0]	o_cmd_data,
-		output	reg		o_cmd_collision,
+		output	wire		o_cmd_collision,
 		//
 		output	wire	[1:0]	o_rx_strb,
 		output	wire	[15:0]	o_rx_data,
@@ -155,7 +156,7 @@ module	sdfrontend #(
 
 		assign	o_ck = i_sdclk[7];
 
-		assign	io_cmd_tristate = o_cmd_collision
+		assign	io_cmd_tristate = (OPT_COLLISION && o_cmd_collision)
 				|| !(i_cmd_en && (i_pp_cmd || !i_cmd_data[1]));
 		assign	o_cmd = i_cmd_data[1];
 		assign	raw_cmd = i_cmd;
@@ -178,15 +179,24 @@ module	sdfrontend #(
 		assign	next_dedge = next_pedge || (i_cfg_ddr
 					&& last_ck && !o_ck);
 
-		assign	w_cmd_collision = io_cmd_tristate && i_cmd_en && !i_cmd
-				&& next_pedge;
+		assign	w_cmd_collision = OPT_COLLISION && io_cmd_tristate
+				&& i_cmd_en && !i_cmd && next_pedge;
 					// && !i_pp_cmd;
 
-		always @(posedge i_clk)
-		if (i_reset || !i_cmd_en)
-			o_cmd_collision <= 1'b0;
-		else if (w_cmd_collision)
-			o_cmd_collision <= 1'b1;
+		if (OPT_COLLISION)
+		begin : GEN_COLLISION
+			reg	r_collision;
+
+			always @(posedge i_clk)
+			if (i_reset || !i_cmd_en)
+				r_collision <= 1'b0;
+			else if (w_cmd_collision)
+				r_collision <= 1'b1;
+
+			assign	o_cmd_collision = r_collision;
+		end else begin : NO_COLLISION
+			assign	o_cmd_collision = 1'b0;
+		end
 
 		initial	last_ck = 1'b0;
 		always @(posedge i_clk)
@@ -424,14 +434,23 @@ module	sdfrontend #(
 
 		assign	raw_cmd = i_cmd;
 
-		assign	w_cmd_collision = i_cmd_en && !i_pp_cmd
-					&& |(my_cmd_data & ~w_cmd);
+		assign	w_cmd_collision = OPT_COLLISION && i_cmd_en && !i_pp_cmd
+				&& |(my_cmd_data & ~w_cmd);
 
-		always @(posedge i_clk)
-		if (i_reset || !i_cmd_en || i_pp_cmd)
-			o_cmd_collision <= 1'b0;
-		else if (w_cmd_collision)
-			o_cmd_collision <= 1'b1;
+		if (OPT_COLLISION)
+		begin : GEN_COLLISION
+			reg	r_collision;
+
+			always @(posedge i_clk)
+			if (i_reset || !i_cmd_en || i_pp_cmd)
+				r_collision <= 1'b0;
+			else if (w_cmd_collision)
+				r_collision <= 1'b1;
+
+			assign	o_cmd_collision = r_collision;
+		end else begin : NO_COLLISION
+			assign	o_cmd_collision = 1'b0;
+		end
 		// }}}
 
 		// DATA
@@ -972,15 +991,24 @@ module	sdfrontend #(
 			.o_raw(raw_cmd), .o_wide(wide_cmd_data)
 		);
 
-		assign	w_cmd_collision = i_cmd_en && !i_pp_cmd && !i_cfg_dscmd
+		assign	w_cmd_collision = OPT_COLLISION && i_cmd_en
+					&& !i_pp_cmd && !i_cfg_dscmd
 					&& |(my_cmd_data & ~wide_cmd_data);
 
-		always @(posedge i_clk)
-		if (i_reset || !i_cmd_en || i_pp_cmd || i_cfg_dscmd)
+		if (OPT_COLLISION)
+		begin : GEN_COLLISION
+			reg	r_collision;
 
-			o_cmd_collision <= 1'b0;
-		else if (w_cmd_collision)
-			o_cmd_collision <= 1'b1;
+			always @(posedge i_clk)
+			if (i_reset || !i_cmd_en || i_pp_cmd || i_cfg_dscmd)
+				r_collision <= 1'b0;
+			else if (w_cmd_collision)
+				r_collision <= 1'b1;
+
+			assign	o_cmd_collision = r_collision;
+		end else begin : NO_COLLISION
+			assign	o_cmd_collision = 1'b0;
+		end
 
 		// resp_started
 		// {{{

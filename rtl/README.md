@@ -59,6 +59,10 @@ This particular design is somewhat optimized for low area.
 
     - [SDWB](sdwb.v) is the Wishbone command and control module.
 
+    - [SDAXIL](sdaxil.v) is an alternative command and control module, for use when using the AXI-Lite slave interface.
+
+      - [SDSKID](sdskid.v) is a basic skidbuffer, required by AXI-Lite interface to maintain solid throughput.
+
     - [SDCKGEN](sdckgen.v) is the clock divider driving IO actions throughout.
 
     - [SDCMD](sdcmd.v) controls interaction via the command pin.
@@ -77,13 +81,30 @@ This particular design is somewhat optimized for low area.
       per clock, for supporting 200MHz/SDR or 100MHz/DDR, and 3) four data
       words per clock, for 200MHz DDR.
 
-The SDIO controller has been optimized for speed, rather than area.
+    - [SDDMA](sddma.v) is top level of the DMA memory handling module.  It depends heavily on the command/control interface to activate.  This module primarily converts memory to an AXI stream to be fed to the command/control module, and again AXI stream to memory.  An option exists for skipping memory and writing directly from an AXI stream, or likewise reading directly from one.
+
+      - [SDDMA_MM2S](sddma_mm2s.v) reads data from memory, to feed the gearboxes and then write to the SD card.  This forms the beginning of the S2SD (write) path.
+
+      - [SDDMA_RXGEARS](sddma_rxgears.v) massages incoming data to the size of a full bus word, in preparation for (bus-word sized) the FIFO.
+
+      - [SDFIFO](sdfifo.v), a basic synchronous data FIFO.
+
+      - [SDDMA_TXGEARS](sddma_txgears.v) takes data from the FIFO and massages it to either the size of a full bus word for writing to memory, or to 32b for writing to the SD controller.
+
+      - [SDDMA_S2MM](sddma_s2mm.v) writes data from SD card, having gone through the gearboxes, finally to memory.  This forms the conclusion of the SD2S (read) path.
+
+
+The [SDIO controller](sdio_top.v) has been optimized for speed, rather than
+either area or lowpower.  The [DMA component](sddma.v), in particular, may
+double the size of the core while achieving even greater throughput.  As with
+many of my IP's, there is an `OPT_LOWPOWER` parameter which can be used to
+adjust this optimization for lowpower at the (potential) expense of area.
 
 ## Logic Usage
 
 A [perl script](usage.pl) is also available to measure the logic usage of these
-two IP components via Yosys.  The result of these measurements are kept
-[here](usage.txt).  As of this writing, the [SDSPI](sdspi.v) controller takes
-only 546 Xilinx 6-LUTs, whereas the [SDIO](sdio.v) controller requires
-1411 Xilinx 6-LUTs.
+two IP components via Yosys.  Measurement results are kept [here](usage.txt).
+As of this writing, the [SDSPI](sdspi.v) controller requires only 543 Xilinx
+6-LUTs, whereas the [SDIO](sdio.v) controller requires 1465 Xilinx 6-LUTs
+without the DMA, and 2775 6-LUTs with the DMA.
 

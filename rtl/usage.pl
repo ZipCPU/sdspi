@@ -4,7 +4,7 @@
 ## {{{
 my $sdspi  = "";
 my $sdio_nodma  = " -chparam OPT_DMA 1\'b0";
-my $sdio_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_ISTREAM 1\'b0 -chparam OPT_OSTREAM 1\'b0 -chparam DW 64";
+my $sdio_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_ISTREAM 1\'b0 -chparam OPT_OSTREAM 1\'b0 -chparam DMA_DW 64";
 ## }}}
 
 ## Files

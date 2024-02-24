@@ -43,7 +43,12 @@
 // }}}
 module sdio_top #(
 		// {{{
+		// LGFIFO controls the size of the internal FIFOs (in bytes).
+		// {{{
+		// This also control the maximum amount of data that can be
+		// sent or received in any one burst.
 		parameter	LGFIFO = 12,
+		// }}}
 		// NUMIO : Controls the number of data pins available on the
 		// {{{
 		// interface.  eMMC cards can have up to 8 data pins.  SDIO
@@ -52,11 +57,29 @@ module sdio_top #(
 		// ultimate hardware.
 		parameter	NUMIO=4,
 		// }}}
-		localparam	MW=32,	// Bus width
+		localparam	MW=32,	// Bus width.  Do not change.
+		// ADDRESS_WIDTH: Number of bits to the DMA's address lines,
+		// {{{
+		// as required to access octets of memory.  This is not the word
+		// address width, but the octet/byte address width.
 		parameter	ADDRESS_WIDTH=48,
-		parameter	DW=64, SW=32,
+		// }}}
+		// Bus data width, DW: Bit-width of the bus, number of bits that
+		// {{{
+		// can be transferred across the bus (by the DMA) in any one
+		// clock cycle.
+		parameter	DW=64,
+		// }}}
+		// Stream data width, SW: Bit-width of the AXI stream inputs and
+		// {{{
+		// outputs of the IP (when used).  Only some bitwidths are
+		// fully supported.  Set to 32 or DW for full support.
+		parameter	SW=32,
+		// }}}
+		// OPT_DMA: Set to 1 to include the DMA in the design
 		parameter [0:0]	OPT_DMA = 1'b0,
 `ifdef	SDIO_AXI
+		// AXI_IW: ID width of the AXI interface
 		parameter	AXI_IW= 1,
 		parameter [AXI_IW-1:0]	AXI_WRITE_ID= 1'b0,
 		parameter [AXI_IW-1:0]	AXI_READ_ID = 1'b0,
@@ -66,9 +89,27 @@ module sdio_top #(
 		parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,
 		localparam	AW = ADDRESS_WIDTH-$clog2(DW/8),
 `endif
+		// OPT_ISTREAM: Enable an incoming AXI stream to specify data
+		// {{{
+		// to the DMA, separate from any data that may be read from
+		// memory.  This allows streaming applications to bypass the
+		// memory interface and go directly to the SD card/EMMC chip
+		// if desired.
 		parameter [0:0]	OPT_ISTREAM=1'b0,
+		// }}}
+		// OPT_OSTREAM: Same as OPT_ISTREAM, but for outputs from the
+		// {{{
+		// SD card/eMMC chip.
 		parameter [0:0]	OPT_OSTREAM=1'b0,
+		// }}}
+		// OPT_EMMC: Enables eMMC support.  There are subtle differences
+		// {{{
+		// between the eMMC protocol and the SDIO protocol.  This
+		// enables the extra features required by eMMC.  These extra
+		// features include self-replies to IRQ (interrupt) commands,
+		// and data strobe support.
 		parameter [0:0]	OPT_EMMC=1,
+		// }}}
 		// OPT_SERDES && OPT_DDR
 		// {{{
 		// Three front-end options are available:
@@ -102,22 +143,26 @@ module sdio_top #(
 		// Some protocols require switching voltages during the
 		// handshaking process in order to switch to higher speeds.
 		// OPT_1P8V enables a GPIO output which can be used to
-		// request that the voltage switch to 1.8V from 3.3V.  No
-		// feedback is provided, it simply controls a GPIO pin that is
-		// assumed to command a 1.8V output.
+		// request that external hardware (not part of this package)
+		// switch the IO voltage to 1.8V from 3.3V.  No feedback is
+		// provided, it simply controls a GPIO pin that is assumed to
+		// command a 1.8V output.
 		parameter [0:0]	OPT_1P8V=1,
 		// }}}
 		// OPT_COLLISION
 		// {{{
-		// eMMC is (supposed to) support IRQ (interrupts).  An
-		// interrupt command is supposed to end with the device sending
-		// a command reply.  However, the host may pre-empt this.  If
-		// both attempt to send a reply at the same time, there might be
-		// a collision.  OPT_COLLISION adds logic to detect such
-		// collisions and to get off the bus should any such happen.
-		// Detecting collisions requires a solid knowledge internal to
-		// the front end about the delay through the system, to avoid
-		// false alarms.
+		// eMMC is (supposed to) support IRQ (interrupts).  A specific
+		// command tells the eMMC chip to wait for an internal interrupt
+		// before responding to the command.  Hence, this interrupt
+		// command is supposed to end with the device sending a command
+		// reply.  However, according to protocol the host may pre-empt
+		// this wait by replying to its own command.  If, however,
+		// both attempt to send a command reply at the same time, there
+		// is a possibility for a collision.  OPT_COLLISION adds logic
+		// to detect such collisions and to get off the bus should any
+		// such happen.  Detecting collisions requires a solid
+		// knowledge internal to the front end about the delay through
+		// the system, to avoid false alarms.
 		parameter [0:0]	OPT_COLLISION=OPT_EMMC,
 		// }}}
 		// LGTIMEOUT

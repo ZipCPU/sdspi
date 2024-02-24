@@ -88,6 +88,7 @@ with this program.  If not, see \texttt{http://www.gnu.org/licenses/} for a copy
 \begin{revisionhistory}
 % Any changes here need to also be made to the \revision{} in the prologue
 1.0 & 8/15/2023 & Gisselquist & First release \\\hline
+1.9 & 2/24/2024 & Gisselquist & Pre-release updates, with DMA Added\\\hline
 \end{revisionhistory}
 % Revision History
 % Table of Contents, named Contents
@@ -104,10 +105,11 @@ Since the companion SDSPI IP already existed and was sufficiently low logic,
 this IP took on a different set of goals.  First and foremost, it was to
 support the full SDIO interface--all of it.  Every timing mode was to be
 supported, as were all commands.  This includes the multiple block read and
-write commands, not supported by the SDSPI driver.  This was also built
-to support eMMC devices--to include both the data strobe and the eMMC
-device interrupt.  Unlike the SDSPI controller, low logic was no longer
-one of my goals.
+write commands not supported by the SDSPI driver.  It does not include any
+of the low power UHS-II modes used by the newest cards of today.  This
+controller was also built to support eMMC devices--to include both the data
+strobe and the eMMC device interrupt.  Unlike the SDSPI controller, low logic
+was no longer one of my goals.
 \end{preface}
 
 \chapter{Introduction}
@@ -135,27 +137,27 @@ the SDSPI register set worked so well, there didn't seem to be a need to
 generate something new.
 
 As a result, most of the registers from the SDSPI controller have been
-replicated here.
+replicated here, save that they support SDIO control instead of SPI control.
 Like the SDSPI controller, this IP has CMD, DATA/ARG, and two FIFO registers.
 Unlike the SDSPI controller, a fifth register has been added for PHY
 configuration.  This directly exposes what once was the internal configuration
-register of the SDSPI controller.  Finally, even though this IP doesn't yet
-support an internal DMA, three additional registers have been reserved for a
-DMA address and length for later DMA integration.  Chapt~\ref{ch:ops} discusses
-how these registers can be used to accomplish the basic operations of the card,
-while Chapt.~\ref{ch:regs} goes through the definition of each register in
-detail.
+register of the SDSPI controller.  Finally, this IP now supports an optional
+internal DMA capability, and so three additional registers are now assigned
+to support both the DMA address and transfer length.  Chapt~\ref{ch:ops}
+discusses how these registers can be used to accomplish the basic operations
+of the card, while Chapt.~\ref{ch:regs} goes through the definition of each
+register in detail.
 
-Finally, this is an Open Source project.  The project is was initially
+Finally, this is an Open Source project.  The project was initially
 developed using a combination of external funding and internal research and
 development dollars.  My intention is twofold.  First, I intend to use this
 project to both teach others, as well as for blogging material.  From this
 standpoint, the project exists as part of a portfolio of projects available for
-others to examine and judge my skills and abilities by.  My second goal is to
-use this as a background when providing services to my customers.  My typical
-contract is for an hourly rate only, and comes with full access to any IP I
-have developed.  As such, additional work on this IP may be done on a pay-per
-hour basis.  Where this project supports another project of mine, I will bill
+others to examine and learn from.  My second goal is to use this as a
+background when providing services to my customers.  My typical contract is
+for an hourly rate only, yet it comes with full access to any IP I have
+developed.  As such, additional work on this IP may be done on a pay-per-hour
+basis.  Where this project supports another project of mine, I will bill
 that project for any required maintenance.  Likewise, if you find this IP
 almost meets your needs, then feel free to contract with me for any
 maintenance adjustments or upgrades you might need.
@@ -193,7 +195,7 @@ specific requirements:
 \item Both RX and Command timeout support.  Timeouts may be adjusted at build
 	time.
 
-\item Card detection support
+\item (Optional) Card detection support
 
 \item Integer clock division support starts at 2x the system clock rate,
 	and can divide the clock all the way down to 1/1,000th of the system
@@ -202,16 +204,21 @@ specific requirements:
 	8.3~MHz, etc.,  all the way down to 100~kHz.
 
 \item The SDIO clock may be stopped upon request, once all operations have
-	come to a stop.
+	come to a stop.  This is useful when working with the multiblock read
+	command, as the clock may be stopped while data is transferred out
+	of the FIFOs.  The feature can also be used to minimize emissions
+	and power usage when the clock isn't in use.
 
 \item Special support for eMMC's {\em GO\_IRQ\_STATE} command.  Receive timeout
 	detection is suspended for this command.  Further, it is possible to
 	self-send a reply to this command to exit interrupt mode if the device
 	doesn't generate an interrupt fast enough.
 
-\item Includes software driver support for use with FATFS
+\item Includes software driver support for use with 
+	\zhref{http://elm-chan.org/fsw/ff/}{FATFS}
 
-\item Both Verilator C++ and all Verilog device verification models are provided
+\item Both Verilator C++ and all Verilog device verification models are
+	provided
 
 \item While the IP is built for big-endian buses, optional little endian
 	support exists
@@ -221,11 +228,13 @@ specific requirements:
 
 \item 32-bit Wishbone interface.
 
-	{\em An AXI--Lite interface may be purchased upon request.} If you have
-	no interest in purchasing such support, feel free to use the
-	\zhref{https://github.com/ZipCPU/wb2axip/blob/master/rtl/axim2wbsp.v}{AXI
-	to Wishbone bus bridge} found in my
-	\zhref{https://github.com/ZipCPU/wb2axip}{wb2axip repository}.
+	An optional AXI--Lite interface also exists.
+
+\item An optional DMA interface exists.  This DMA interface can be used to
+	transfer many blocks of data at once.
+
+	At present, the DMA interface supports the Wishbone bus only.
+
 \end{itemize}
 
 Many, although not all, of these features have been tested as part of the 10Gb
@@ -247,10 +256,10 @@ development.
 	been tested either formally or in simulation or both.
 
 	This is due to both the voltage requirements of these extra features,
-	as well as current circuit board design I am testing against.  High
-	speed support requires 1.8V not 3.3V, and (worse) requires a voltage
-	switch from 3.3V to 1.8V.  Second, the voltage translator we are
-	using limits speeds to 60MHz in order to maintain the ability to
+	as well as the design of the circuit board I am currently testing with.
+	High speed support requires 1.8V not 3.3V, and (worse) requires a
+	voltage switch from 3.3V to 1.8V.  Second, the voltage translator we
+	are using limits speeds to 60MHz in order to maintain the ability to
 	support open--drain IO.  Similarly, wiring the clock pin to Xilinx's
 	CCLK pin has limited the clock in the devices under test to a maximum
 	of 50~MHz.  Finally, success with the data strobe pin really requires
@@ -259,19 +268,9 @@ development.
 	better PCB design, but for the time being this statement outlines
 	hardware testing success to date.
 
-	Please check the hwteststat.png file in the doc/ directory for the
-	current status, and any updates on this issue.
-
-\item The verification model only supports SDIO devices at present.  No model
-	yet exists for eMMC devices.
-
-	Most of the smarts in the verification IP exists in the model's FSM,
-	whereas the challenging components of the interface are encapsulated
-	in supporting modules.  As a result, fixing the FSM should be a fairly
-	easy task.
-
-	Given that the two interfaces are so similar, this hasn't (yet) been
-	a drawback.
+	Please check the \zhref{doc/hwteststat.png}{hwteststat.png} file in
+	the \zhref{doc/}{doc/} directory for the current status of any hardware
+	testing and any updates on this issue.
 
 \item The verification model depends upon an internal memory buffer which can
 	become quite large.  Further, it doesn't integrate nicely with the
@@ -286,13 +285,6 @@ development.
 	A plan exists for integrating the ZipCPU into the verification
 	environment for the purpose of verifying the software driver in
 	simulation.
-
-\item DMA support (currently) requires an external DMA, and transfers are
-	limited to 32-bits per clock.
-
-	Initial plans are in place for integrated DMA support.  Such an
-	integrated controller would use the full bus width for all transfers.
-	Unfortunately, I have no requirement for such support at this time.
 
 \item There's no eMMC boot support at present.
 
@@ -315,15 +307,18 @@ development.
 %% }}}
 \chapter{Architecture}\label{ch:arch}
 %% {{{
-Three basic architectures are discussed in this chapter.  The first is the
+Four basic architectures are discussed in this chapter.  The first is the
 hardware architecture.  This will outline the various hardware components
-composing the design, and discuss their purpoes.  The second is the verification
-architecture, used to test and verify the various components of the design.
-Finally, this chapter will conclude with a quick review of the software driver
-architecture that allows a single FATFS library to be able to interact with
-all three of the design components here: SDSPI, SDIO, and eMMC.
+composing the design, and discuss each of their purposes.  This is followed by
+a discussion of the optional DMA architecture component of the overall
+hardware architecture.  The third is the verification architecture, used to
+test and verify the various components of the design.  Finally, this chapter
+will conclude with a quick review of the software driver architecture that
+allows a single \zhref{http://elm-chan.org/fsw/ff/}{FATFS} library to be able
+to interact with all three of the design components here: SDSPI, SDIO, and eMMC.
 
 \section{Controller Architecture}\label{sec:arch-controller}
+%% {{{
 
 The basic SDIO/eMMC RTL architecture is shown in Fig.~\ref{fig:sdioblocks}.
 \begin{figure}\begin{center}
@@ -331,29 +326,40 @@ The basic SDIO/eMMC RTL architecture is shown in Fig.~\ref{fig:sdioblocks}.
 \caption{SDIO/eMMC Controller RTL Architecture}\label{fig:sdioblocks}
 \end{center}\end{figure}
 The design is broken up into two parts at the top level: a hardware independent,
-all digital logic component whose top level is {\tt sdio.v}, and a hardware
-dependent front end component whose top level is found in {\tt sdfrontend.v}.
+all digital logic component whose top level is \zhref{rtl/sdio.v}{\tt sdio.v},
+and a hardware dependent front end component whose top level is found in
+\zhref{rtl/sdfrontend.v}{\tt sdfrontend.v}.
 
-The core controller, found in {\tt sdio.v}, itself is composed of five separate
-components.  The first, {\tt sdwb.v}, is the controller.  This component is
+The core controller, found in \zhref{rtl/sdio.v}{\tt sdio.v}, itself is
+composed of five separate components.  The first,
+\zhref{rtl/sdwb.v}{\tt sdwb.v}, is the controller.  This component is
 a wishbone slave.  All user interaction goes through this controller.
 Requests for transfers are made here.  Data to be transferred is stored here
 in one of two FIFOs for transmission to the front end.  Data to be received
 is stored here after reception, to be read out as it becomes available to the
-CPU.
+CPU.  Even when using the DMA, data will first be stored in the FIFO's within
+the controller before going to the card, or after coming from the card.
 
-The controller maintains a register for configuring the front end.  This
-register also controls the clock generator, {\tt sdckgen.v}.  This clock
+A second, alternative, controller implementation exists in
+\zhref{rtl/sdaxil.v}{\tt sdaxil.v}.  This controller is nearly line for line
+identical to the \zhref{rtl/sdwb.v}{\tt sdwb.v} controller, save that
+interaction with this controller takes place over AXI-Lite instead of Wishbone.
+
+The controller maintains a PHY register for configuring the front end.  This
+register also controls the clock generator, \zhref{rtl/sdckgen.v}{\tt sdckgen.v}.  This clock
 generator is responsible for generating the clock used throughout the
-system.  That clock is an 8-bit vector, allowing it to specify zero, one, or up
-to two clock periods, each either aligned with or 90 degrees offset from the
-data, per 8-bits.  This clock may also be divided to slower speeds as requested
-by the user.  Finally, a user setting allows the clock to turn off when it isn't
-being used, to save on interface power.  (Note that this only turns off the
-IO clock, not any of the system clocks used throughout the design to clock
-the logic within the design.)
+interface.  That clock is internally represented as an 8-bit vector, allowing
+it to specify zero, one, or up to two clock periods, each either aligned with
+or 90 degrees offset from the data, per 8-bits.  This clock may also be divided
+to slower speeds as requested by the user.  Finally, a user setting allows the
+clock to turn off when it isn't being used, to save on interface power and
+to potentially reduce emissions.  (Note that this only turns off the IO clock,
+not any of the system clocks used throughout the design to clock the logic
+within the design.)  Turning off the clock may be required when working with
+the multiblock read command, to ensure that the FIFO is properly cleared before
+subsequent blocks are read.
 
-Commands issued to the controller will be forwarded to the {\tt sdcmd.v}
+Commands issued to the controller will be forwarded to the \zhref{rtl/sdcmd.v}{\tt sdcmd.v}
 module.  This module is responsible for all interactions taking place over
 the CMD wire.  The module can generate 48-bit commands, beginning with a
 start bit and ending with a CRC and a stop bit.  It can then recognize
@@ -369,28 +375,28 @@ Fig.~\ref{fig:sdcmdflow}
 \caption{SDIO/eMMC CMD pin data flow}\label{fig:sdcmdflow}
 \end{center}\end{figure}
 shows both the basic command flow, and the two possible response flows.
-For commands, a data register within {\tt sdwb.v} is first set, then the
-command is issued.  The {\tt sdcmd.v} module organizes both into a 48-bit
-word to be transmitted.  The {\tt sdcmd.v} module then looks for one of
+For commands, a data register within \zhref{rtl/sdwb.v}{\tt sdwb.v} is first set, then the
+command is issued.  The \zhref{rtl/sdcmd.v}{\tt sdcmd.v} module organizes both into a 48-bit
+word to be transmitted.  The \zhref{rtl/sdcmd.v}{\tt sdcmd.v} module then looks for one of
 two responses, either a 48--bit response which would place the 32-bit
 argument back in a data register, or a 136--bit response which would be
-placed into one of the two FIFOs in {\tt sdwb.v}.
+placed into one of the two FIFOs in \zhref{rtl/sdwb.v}{\tt sdwb.v}.
 
 One type of controller command is a memory command.  These commands send a
 48-bit command to the device, followed by sending data to or receiving data
 from the device.
 
-The {\tt sdrxframe.v} component is activated when data is expected from the
+The \zhref{rtl/sdrxframe.v}{\tt sdrxframe.v} component is activated when data is expected from the
 device on the data wires.  It's purpose is to collect the data returned from
-the front end controller, and reform that data into commands to write to
-one of the FIFOs in {\tt sdwb.v}.  If a full frame, as defined by the
+the front end controller, and re-form that data into commands to write to
+one of the FIFOs in \zhref{rtl/sdwb.v}{\tt sdwb.v}.  If a full frame, as defined by the
 controller, is not received prior to a timeout, or if a CRC error is detected
 within that frame, the receive component will report an error and give up
 in order to wait for its next command.
 
-Similarly, the {\tt sdtxframe.v} command is activated when data is to be
+Similarly, the \zhref{rtl/sdtxframe.v}{\tt sdtxframe.v} command is activated when data is to be
 sent over the data wires to the device.  In this case, data flows from one
-of the FIFOs in {\tt sdwb.v} to {\tt sdtxframe.v}, get formatted for the
+of the FIFOs in \zhref{rtl/sdwb.v}{\tt sdwb.v} to \zhref{rtl/sdtxframe.v}{\tt sdtxframe.v}, gets formatted for the
 front end to output, a start bit, CRC, and stop bit are added, and all get
 sent to the front end.  This basic flow is shown in Fig.~\ref{fig:sdiotxflow}.
 \begin{figure}\begin{center}
@@ -416,7 +422,7 @@ controlled digital delay, allowing sample alignment with clock precision
 of one eighth of a system clock.  Hence, even without the full speed HS200
 support, this subsample re-alignment may still be quite valuable when supporting
 higher speeds.  All Xilinx specific SERDES interactions are captured in an
-{\tt xsdserdes8x.v} module.
+\zhref{rtl/xsdserdes8x.v}{\tt xsdserdes8x.v} module.
 
 Logic resources throughout the design may be reduced, however, by switching
 to a simpler front end architecture.  Two other architectures are available:
@@ -429,7 +435,7 @@ architecture, save the DDR IO elements are used to generate both clock and
 data instead of the SERDES elements.  This should make it possible to drive
 the IO pins at the full clock speed using SDR, or at half the clock speed
 using DDR.  In this case, all Xilinx specific IDDR and ODDR interactions are
-captured in an {\tt xsdddr.v} module.
+captured in an \zhref{rtl/xsdddr.v}{\tt xsdddr.v} module.
 
 The no macro architecture was built in order to support an architecture
 where the {\tt SD\_CK} pin was routed through the Xilinx {\tt CCK} pin,
@@ -440,77 +446,167 @@ system clock rate.
 
 These constitute the basic components of the controller, both hardware
 independent and hardware dependent.
+%% }}}
+\section{DMA Architecture}\label{sec:arch-dma}
+%% {{{
+The DMA is built from several parts.  The first key component to the DMA is
+found in the control module, \zhref{rtl/sdwb.v}{\tt sdwb.v}.  The controller
+is responsible for sectioning transfers into per-block requests, and forwarding
+data to and from the DMA module itself.  The rest of the DMA logic is found
+in the DMA module, \zhref{rtl/sddma.v}{\tt sddma.v}.  This module is shown
+in Fig.~\ref{fig:dmablocks}.
+\begin{figure}\begin{center}
+\includegraphics[height=2.5in]{gfx/dmablocks.eps}
+\caption{DMA Block Diagram}\label{fig:dmablocks}
+\end{center}\end{figure}
 
+When using the DMA, data continues to go through the FIFOs in the controller
+module.  The difference is that these FIFOs will be automatically sourced
+from, or emptied into, an external DMA module which will then handle copies
+from, or to, memory.  Hence, for a write operation, the user will request
+the write operation and then the controller will tell the DMA to supply data
+for one of its FIFOs.  Once the FIFO is filled, the controller will send it
+to the external device.  Then, while the data is being transmitted to the
+device, the controller will continue to request source data capture to supply
+any subsequent data transfer requirements.  Likewise, for a read operation,
+the user will request the operation first, followed by a block getting
+transferred to the controller's FIFO.  The read will then continue filling
+the second FIFO will the first one is drained by the DMA.  If both FIFO's
+fill faster than the DMA can empty them, then the IO clock will be stopped
+to wait for the next FIFO to be drained.
+
+That's a high level overview, from the perspective of a DMA enabled control
+module.  Let's now turn our attention to how the DMA supplies and deals
+with the data streams given to it.
+
+Data arrives in the DMA module from one of three sources.  First, if
+both {\tt OPT\_ISTREAM} and the MSB of the DMA address are set, data may
+arrive from an AXI stream.  If used, this most-significant bit is one wider
+than the address width of the devices bus.  Alternatively, data may be read
+from memory using the \zhref{rtl/sddma\_zipmms.v}{\tt sddma\_zipmms.v}
+component.  Finally, when reading from the card, data will arrive first in the
+controller module, and then be forwaded from it once the respective buffer
+is full.
+
+These sources may have different data widths.  Data arriving from memory will
+arrive packed in bits that may be up to the full bus width in size.  Data
+arriving from the controller will be 32b wide.  Data arriving from the
+stream port may be either one of these widths.  The receiving gearbox,
+\zhref{rtl/sddma\_rxgears.v}{\tt sddma\_rxgears.v}, will therefore take this
+data stream and pack it into beats at the widest of these widths.
+
+From here, data enters into a FIFO.  This guarantees that the memory source
+never needs to stall, or otherwise provide backpressure on the bus--something
+not supported by the Wishbone interface.  The FIFO also allows data to arrive
+at wide widths, only to be read at slower (32b) rates if necessary.
+
+From the FIFO, the data width is adjusted in the transmit, or outgoing,
+gearbox, \zhref{rtl/sddma\_txgears.v}{\tt sddma\_txgears.v}.  This component
+optionally adjusts the data width back down to 32b if required.  Either the
+stream output, or the controller interface may require this width.  If going
+back to memory, the width will be left at the full size of the bus.
+
+The final step in the DMA process is to forward the data stream to one of
+three ultimate destinations.  When writing to the card, the ultimate
+destination will send the data to the controller.  When reading from the card,
+data may either be written to memory or to the AXI stream interface.  The AXI
+stream interface will be used when/if both {\tt OPT\_OSTREAM} is set and
+the most significant address bit are set.
+
+A small amount of logic exists in the \zhref{rtl/sddma.v}{\tt sddma.v}
+module to control the switching between sources and outputs, as well as to
+make sure block boundaries are respected.
+%% }}}
 \section{Verification Architecture}\label{sec:arch-vip}
-
+%% {{{
 The verification architecutre is built around a model of the
 downstream device.  One such model is shown in Fig.~\ref{fig:mdlsdio}.
 \begin{figure}\begin{center}
 \includegraphics[height=2.5in]{gfx/mdlsdio.eps}
 \caption{SDIO Verification IP}\label{fig:mdlsdio}
 \end{center}\end{figure}
-This Verification IP contains full featured submodules for handling the
-command wire, receiving data, and transmitting data.  These three submodules
-are designed to correspond to their host controller counterparts.  Further,
-these three submodules have been built to be independent of whether the
-controller is modeling an SDIO or an eMMC interface.
+A second, similar, Verilog model exists for modeling the eMMC interface.
+These Verification IP modules contains full featured submodules for handling
+the command wire, receiving data, and transmitting data.  These three
+submodules are designed to correspond to their host controller counterparts.
+Further, these three submodules have been built to be independent of whether
+the controller is modeling an SDIO or an eMMC interface.
 
 The smarts of this Verfication IP (VIP) are found in the finite state machine
-(FSM) at the top level of {\tt mdl\_sdio.v}.  This machine respnds to commands,
-and generates responses to them.  A data transfer buffer exists for sending
-or receiving data across the interface.  A second memory within the VIP,
-shown as {\tt MEM} in Fig.~\ref{fig:mdlsdio}, captures the persistent memory
-found in the SDIO or eMMC device.
+(FSM) at the top level of \zhref{bench/verilog/mdl\_sdio.v}{\tt mdl\_sdio.v}.
+This state machine responds to commands, and generates responses to them.  A
+data transfer buffer exists for sending or receiving data across the interface.
+A second memory within the VIP, shown as {\tt MEM} in Fig.~\ref{fig:mdlsdio},
+captures the persistent memory found in the SDIO (or eMMC) device.
 
 The entire Verilog test bench infrastructure is diagrammed in
 Fig.~\ref{fig:vlogtb}.
 \begin{figure}\begin{center}
 \includegraphics[width=5.0in]{gfx/vlogtb.eps}
-\caption{All Verilog top-level model}\label{fig:vlogtb}
+\caption{Test-bench infrastructure block diagram}\label{fig:vlogtb}
 \end{center}\end{figure}
 In this setup, a test script drives a Wishbone Bus Functional Model (BFM).
-The BFM then drives the controller to interact with the VIP model.
-What tests get accomplished at this point is dependent upon the test script.
-A test library is available, for the purpose of defining common constants
-and supporting common test script tasks.
+The BFM issues 32b bus requests, which are then resized to the full width
+of the bus.  From here, requests go into a crossbar, and get routed to either
+an SDIO (via a width downsizer), an eMMC controller (via a width downsizer),
+or a block RAM model (at the full bus width).  This then allows the test
+script to interact with the IP, which then drives interactions with one of the
+two backend VIP device models.  If the DMA's are present, they can also be used
+to transfer data to or from the RAM via the bus interconnect.  What tests get
+accomplished at this point is then dependent upon the test script.  Two test
+libraries are also available, one for SD cards and one for eMMC cards.  These
+libraries help define common constants and supporting common test script tasks
+which can be called by the test script itself.
 
-A second test bench infrastructure, shown in Fig.~\ref{fig:cputb},
+Two versions of this top-level interface exist.  The first supports
+all Wishbone interactions.  It can be found in
+\zhref{bench/verilog/tb\_wb.v}{\tt tb\_wb.v}.  A second top level exists for
+testing AXI interactions.  This is found in
+\zhref{bench/verilog/tb\_axi.v}{\tt tb\_axi.v}.
+
+A third test bench infrastructure, shown in Fig.~\ref{fig:cputb},
 \begin{figure}\begin{center}
 \includegraphics[width=5.0in]{gfx/cputb.eps}
 \caption{All Verilog top-level model}\label{fig:cputb}
 \end{center}\end{figure}
-is also planned.  This infrastructure contains a soft--core ZipCPU,
-serial console, and memory.  In this test architecture, the test script
-exists as a software program supported by both the FATFS library and the
-software driver.  The purpoes of this second infrastructure is to specifically
-test and verify the software driver in its native (software) form, compiled
-for and then running on a soft--core CPU.  In this case, that softcore CPU
-will be the ZipCPU.
+is also envisioned.  This infrastructure will contain a soft--core ZipCPU,
+a serial console, and memory.  In this test architecture, the test script
+exists as a software program supported by both the
+\zhref{http://elm-chan.org/fsw/ff/}{FATFS} library and the
+software driver.  Once complete, the purpose of this testbench infrastructure
+will be to specifically test and verify the software driver in its native
+(software) form, compiled for and then running on a soft--core CPU.  In this
+case, that softcore CPU will be the ZipCPU.
 
+%% }}}
 \section{Software Driver Architecture}\label{sec:arch-swdrvr}
+%% {{{
 
 At present, there exist three software drivers and one glue layer for each.
-The three drivers are found in the {\tt sw/} directory.  These drivers are:
+The three drivers are found in the \zhref{sw/}{\tt sw/} directory.  These
+respective drivers are:
 \begin{itemize}
-\item {\tt sdspidrv.c}: A software driver for the SPI version of this
-	controller.  The SPI version of this controller is described in the
-	SDSPI user guide.
-\item {\tt sdiodrv.c}: A software driver for the SDIO controller, described
-	in this user guide.  This controller is designed to interact with
-	an SD Card.
-\item {\tt emmcdrv.c}: A software driver for the eMMC controller.  This is
-	designed to interact with the same SDIO/eMMC controller discussed in
-	this user guide.  However, the SDIO and eMMC protocols require different
-	commands to interact with their respective devices.  As a result, the
-	eMMC software driver differs significantly from the SDIO software
-	driver.
-\item {\tt diskiodrvr.h} provides a common definition of a device ``driver'',
-	which can be used across all of the device drivers listed above.
+\item \zhref{sw/sdspidrv.c}{\tt sdspidrv.c}: A software driver for the SPI
+	version of this controller.  The SPI version of this controller is
+	described in the SDSPI user guide.
+\item \zhref{sw/sdspidrv.c}{\tt sdiodrv.c}: A software driver for the SDIO
+	controller, described in this user guide.  This controller is designed
+	to interact with an SD Card.
+\item \zhref{sw/emmcdrv.c}{\tt emmcdrv.c}: A software driver for the eMMC
+	controller.  This is designed to interact with the same SDIO/eMMC
+	controller discussed in this user guide.  However, the SDIO and eMMC
+	protocols require different commands to interact with their respective
+	devices.  As a result, in spite of any similarities, the eMMC software
+	driver differs significantly from the SDIO software driver.
+\item \zhref{sw/diskiodrvr.c}{\tt diskiodrvr.h} provides a common definition
+	of a device ``driver'', which can be used across all of the device
+	drivers listed above.
 
 	More on this in a moment.
-\item {\tt diskio.c} is a shared/common dispatch glue layer.  Commands
-	from the FATFS subsystem naturally land here, where they are then
-	dispatched to the appropriate controller.
+\item \zhref{sw/diskio.c}{\tt diskio.c} is a shared/common dispatch glue layer.
+	Commands from the \zhref{http://elm-chan.org/fsw/ff/}{FATFS} subsystem
+	naturally land here, where they are then dispatched to the appropriate
+	controller.
 \end{itemize}
 
 Put together, this IO subsystem has the various layers shown in
@@ -519,7 +615,8 @@ Fig.~\ref{fig:swlayers}.
 \includegraphics[height=2.5in]{gfx/swlayers.eps}
 \caption{Software Stack}\label{fig:swlayers}
 \end{center}\end{figure}
-User software interacts with the FATFS layer.  FATFS then interacts with the
+User software interacts with the \zhref{http://elm-chan.org/fsw/ff/}{FATFS}
+layer.  \zhref{http://elm-chan.org/fsw/ff/}{FATFS} then interacts with the
 device dispatch layer.  The device dispatch layer then instantiates and
 interacts with one (or more) of the device drivers beneath it.
 
@@ -528,6 +625,7 @@ terminology.  The first method is used to initialize the driver and set up
 its data structures.  After that, there are methods for reading and writing.
 Finally, there's an IOCTL method which can be used for other tasks such as
 querying the size of the device or the size of a data block.
+%% }}}
 
 %% }}}
 \chapter{Operation}\label{ch:ops}
@@ -568,8 +666,8 @@ with the device.
 %% }}}
 \section{GO IDLE: Commands that don't get responses}
 %% {{{
-Sending a command to the device is as easy as setting the commands 32'bit
-data, and then writing the appropriate command to the command register.
+Sending a command to the device is as easy as setting the command's 32'bit
+argument, and then writing the appropriate command to the command register.
 All command writes set bits [7:6] to 2'b01.  Non-command writes will set these
 bits to something different.  At the same time you write a command to the
 controller, you'll also want to tell the controller what type of
@@ -601,7 +699,7 @@ Put together, this would look like:
 The next step is to wait for the command to complete.  This can be done either
 by polling the controller,
 \begin{zCpp}
-	const	SDIO_REMOVED = 0x00104800;
+	const	SDIO_BUSY    = 0x00106800;
 
 	unsigned	st;
 
@@ -617,8 +715,8 @@ or by waiting for a controller interrupt.
 
 	st = _sdio->sd_cmd;
 	while(st & SDIO_BUSY) {
-		CLEAR_INT(SDIO_INT);
-		WAIT_INT(SDIO_INT);
+		CLEAR_INT(SDIO_INT);	// Clear the interrupt signal
+		WAIT_INT(SDIO_INT);	// Wait for the given interrupt
 	}
 \end{zCpp}
 
@@ -649,8 +747,8 @@ read from the {\tt sd\_cmd} register.  If the protocol has been followed and
 the device has returned a value, then bits [7:6] of this register will now
 be zero.  The next 32-bits may be read from the {\tt sd\_data} register, to
 know how the device has responded.  The last 8-bits, both CRC and stop bit,
-are not returned.  Instead, the error bit and error code may be checked
-to know if the CRC is correct and the stop bit valid.
+are not returned by the controller.  Instead, the error bit and error code may
+be checked to know if the CRC is correct and the stop bit valid.
 
 %% }}}
 \section{ALL SEND CID: R2 commands}
@@ -707,8 +805,18 @@ speed to 25MHz, and the IOs from open--drain to push--pull.
 		SPEED_512B   = 0x09000000;
 
 	_sdio->sd_phy = SECTOR_512B | SDIOCK_25MHZ | SDIO_PUSHPULL;
+\end{zCpp}
+
+Once we request a clock change, we may then need to wait a while.  Specifically,
+the clock will only change in between clock periods.  Hence, if the clock is
+set for 100~kHz operation, we may need to wait up to 10~$\mu$s for the clock
+to switch.  We can tell when the switch is complete by reading back the lower
+8-bits from the PHY register to know the currently set clock speed.
+
+\begin{zCpp}
+	// Wait for the clock change
 	while(SDIOCK_25MHz != (_sdio->sd_phy & 0x0ff))
-		; // Wait for the clock change
+		;
 \end{zCpp}
 
 A later PHY adjustment might even include switching to 4--bit data mode.
@@ -745,7 +853,7 @@ FIFO bit to select which FIFO we are interested in.
 	const	SDIO_MEM     = 0x00000800,
 		SDIO_READBLK = (SDIO_CMD|SDIO_R1|SDIO_MEM)+17;
 
-	_sdio->sd_data = sector;
+	_sdio->sd_data = sector;	// Assumes a high capacity card
 	_sdio->sd_cmd = SDIO_READBLK;
 
 	wait_while_busy();
@@ -765,8 +873,13 @@ Note that the FIFO's are always 32-bit aligned.  Whether or not the buffer
 is aligned, or whether or not the CPU supports unaigned accesses in the
 case where it isn't, aren't controller issues.
 
+If no DMA is used, it will likely cost the CPU 128 memory load cycles, followed
+by another 128 memory store cycles to read this data out.
+
 The ZipCPU's DMA may also be used to read from this controller if desired
-for higher speed.
+for higher speed.  In this case, the read will cost 128 clock cycles (plus
+latency) to read the memory out of the controller, and another cycles
+equivalent to 512 divided by the bus width to write the result to memory.
 %% }}}
 \section{Writing a sector}
 %% {{{
@@ -782,7 +895,7 @@ The second key difference is that the controller doesn't know when to write
 to the device or when to read from it.  In general, the controller doesn't
 know the meanings of any of the commands.  Therefore, if a command needs to
 use the FIFOs, the controller needs to be told.  Likewise, if the data is
-suppoesd to flow from the FIFO to the device instead of from the device to
+supposed to flow from the FIFO to the device instead of from the device to
 the FIFO, the controller also needs to be told.  For this reason, a separate
 bit needs to be set in addition to the previous ones--one to indicate that
 this is a write and not a read.
@@ -792,7 +905,7 @@ this is a write and not a read.
 		SDIO_WRITEBLK = (SDIO_CMD | SDIO_R1 | SDIO_ERR
 				| SDIO_WRITE | SDIO_MEM) + 24;
 
-	_sdio->sd_data = sector;
+	_sdio->sd_data = sector;	// Assumes a high density card
 	_sdio->sd_cmd  = SDIO_WRITEBLK;
 
 	wait_while_busy();
@@ -808,7 +921,19 @@ to ending transmission.
 
 Let's walk through these changes one by one.
 
-The first change is that we don't initially wait for the write to complete.
+As before, we still have to read our data into the FIFO before we can issue
+the write command.
+
+\begin{zCpp}
+	s = 0;
+
+	unsigned *src = &buf[s*512];
+
+	for(int w=0; w<512/sizeof(uint32_t); w++)
+		_sdio->sd_fifa = src[w];
+\end{zCpp}
+
+We then issue a command 25 to write multiple blocks to the device.
 
 \begin{zCpp}
 	const	SDIO_FIFO  = 0x00001000;
@@ -818,19 +943,21 @@ The first change is that we don't initially wait for the write to complete.
 				| SDIO_WRITE | SDIO_MEM) + 25;
 \end{zCpp}
 
-Instead, we load a second sector into the FIFO.  In general, we'll alternate
-which FIFO we use.
+Then we come to our first change: we don't wait yet for the transfer to
+complete.  Instead, we load the next sector into the second FIFO.  In general,
+we'll alternate which FIFO we use.
 
 \begin{zCpp}
-	unsigned *src = &buf[s*512];
+	for(s=1; s<sector_count; s++) {
+		unsigned *src = &buf[s*512];
 
-	if (s&1) {
-		for(int w=0; w<512/sizeof(uint32_t); w++)
-			_sdio->sd_fifb = src[w];
-	} else {
-		for(int w=0; w<512/sizeof(uint32_t); w++)
-			_sdio->sd_fifa = src[w];
-	}
+		if (s&1) {
+			for(int w=0; w<512/sizeof(uint32_t); w++)
+				_sdio->sd_fifb = src[w];
+		} else {
+			for(int w=0; w<512/sizeof(uint32_t); w++)
+				_sdio->sd_fifa = src[w];
+		}
 \end{zCpp}
 
 Once the second sector has been transferred to FIFO memory, we can then wait
@@ -838,44 +965,61 @@ for the current write transaction to complete and issue a new write request
 for the next sector.
 
 \begin{zCpp}
-	while(_sdio->sd_cmd & SDIO_BUSY)
-		;
+		while(_sdio->sd_cmd & SDIO_BUSY)
+			;
 
-	_sdio->sd_cmd = (SDIO_WRITE | SDIO_MEM)
-			+ ((s & 1) ? SDIO_FIFO : 0)
+		_sdio->sd_cmd = (SDIO_WRITE | SDIO_MEM)
+				+ ((s & 1) ? SDIO_FIFO : 0)
 \end{zCpp}
 
 At this point, we repeat until we've written all of the sectors we wish
-to write to.
+to write to.  Once we are done, we can send a command to
+{\tt STOP\_TRANSMISSION}, expecting an R1 response.
 
-Once we are done, we can send an R1 command to {\tt STOP\_TRANSMISSION}.
+\begin{zCpp}
+	// Send a STOP_TRANSMISSION request
+	_sdio->sd_data = (RCA << 16);	// EMMC requires the RCA here
+	_sdio->sd_cmd = (SDIO_CMD | SDIO_R1 | SDIO_ERR) + 12;
+\end{zCpp}
 
 %% }}}
 \section{Reading multiple sectors}
 %% {{{
 Reading multiple sectors is almost identical to writing multiple sectors, save
-that the operation proceeds in reverse.
+that the operation proceeds in reverse: we issue the read command first, and
+then copy data out of the FIFOs second.
 
-First, the command is issued to read multiple sectors.  We then wait for that
-command to complete.  Once complete, we immediately switch FIFOs and
-issue a command to store the read data into the next sector.  This is also a
-good time to check for any read errors that may have taken place while
-reading the last sector.
+First, the command is issued to read multiple sectors, given a starting
+sector.
+
+\begin{zCpp}
+	_sdio->sd_data = sector;	// Assumes a high capacity card
+	_sdio->sd_cmd = (SDIO_CMD|SDIO_R1|SDIO_MEM) + 18;
+\end{zCpp}
+
+We then wait for that command to complete.
 
 \begin{zCpp}
 	while(_sdio->sd_cmd & SDIO_BUSY)
 		;
+\end{zCpp}
 
-	if (0 != _sdio->sd_cmd & SDIO_ERR)
-		err = 1; // No more commands to issue on error
-	if (s + 1 < count && !err) {
-		// Immediately start the next request
-		_sdio->sd_cmd = SDIO_MEM + ((s&1) ? 0:SDIO_FIFO) + 18;
-	} else {
-		// Send a STOP_TRANSMISSION request
-		_sdio->sd_data = 0;
-		_sdio->sd_cmd = (SDIO_CMD | SDIO_R1 | SDIO_ERR) + 12;
-	}
+Once complete, we immediately switch FIFOs and issue a command to store the
+read data from the next sector into the next FIFO.  This is also a good time
+to check for any read errors that may have taken place while reading the last
+sector.
+
+\begin{zCpp}
+	for(s=1; !err && s<sector_count; s++) {
+		while(_sdio->sd_cmd & SDIO_BUSY)
+			;
+
+		if (0 != _sdio->sd_cmd & SDIO_ERR)
+			err = 1; // No more commands to issue on error
+		if (s + 1 < sector_count && !err) {
+			// Immediately start the next request
+			_sdio->sd_cmd = SDIO_MEM + ((s&1) ? 0:SDIO_FIFO) + 18;
+		}
 \end{zCpp}
 
 This second command must be issued before the device starts sending the
@@ -885,22 +1029,22 @@ Once the second read request is away, we have until it finishes to copy the
 data out of the first FIFO.
 
 \begin{zCpp}
-	unsigned *dst = &buf[s*512];
+		unsigned *dst = &buf[s*512];
 
-	if (s&1) {
-		for(int w=0; w<512/sizeof(uint32_t); w++)
-			dst[w] = _sdio->sd_fifb;
-	} else {
-		for(int w=0; w<512/sizeof(uint32_t); w++)
-			dst[w] = _sdio->sd_fifa;
-	}
+		if (s&1) {
+			for(int w=0; w<512/sizeof(uint32_t); w++)
+				dst[w] = _sdio->sd_fifa;
+		} else {
+			for(int w=0; w<512/sizeof(uint32_t); w++)
+				dst[w] = _sdio->sd_fifb;
+		}
 \end{zCpp}
 
+These operations are time sensitive, and could create a race condition.
+Specifically, the host must request the next sector before the SD card
+starts to send it.
 
-Again, these operations are time sensitive: the must be done before the
-SD card sends the next sector.
-
-It is possible to reduce this time pressure by setting the clock shutdown
+It is recommended to reduce this time pressure by setting the clock shutdown
 bit in the PHY.  If this bit is set, the SDIO/eMMC clock will stop toggling
 when not in use.  This should allow the software driver enough time to finish
 copying out any data, and to issue a second read command before the data starts
@@ -908,13 +1052,104 @@ showing up.\footnote{There is an unwritten requirement here, however, that
 the card must provide at least a break of a couple of system clocks plus at
 least one SDIO clock in order for this clock stop to happen in time.}
 
+Once all transfers have completed, a stop transmission command needs to be
+sent for the card to stop sending more data.
+
+\begin{zCpp}
+	while(_sdio->sd_cmd & SDIO_BUSY)
+		;
+
+	// Send a STOP_TRANSMISSION request
+	_sdio->sd_data = (RCA << 16);	// EMMC requires the RCA here
+	_sdio->sd_cmd = (SDIO_CMD | SDIO_R1 | SDIO_ERR) + 12;
+\end{zCpp}
+
+The software driver can then copy the last sector out of the FIFO.
+
+\begin{zCpp}
+	unsigned *dst = &buf[s*512];
+
+	if (s&1) {
+		for(int w=0; w<512/sizeof(uint32_t); w++)
+			dst[w] = _sdio->sd_fifa;
+	} else {
+		for(int w=0; w<512/sizeof(uint32_t); w++)
+			dst[w] = _sdio->sd_fifb;
+	}
+\end{zCpp}
+
+Do note that we are reading the FIFOs in reverse.  When \cppinline{s==0},
+we request FIFO zero.  However, when we come back to read from that FIFO
+\cppinline{s} will have advanced, so it will look like we are reading opposite
+of what we have requested even though this isn't the case.
+%% }}}
+\section{Using the DMA to write multiple sectors}
+%% {{{
+It's even easier to write multiple sectors using the DMA.  In this case,
+you only need to make one request and then wait for it to complete.
+
+\begin{zCpp}
+	_sdio->sd_dma_address = (char *)src;
+	_sdio->sd_dma_length = sector_count;
+	_sdio->sd_data = sector;	// Assumes a high capacity card
+	_sdio->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR | SDIO_DMA
+				| SDIO_WRITE | SDIO_MEM) + 25;
+\end{zCpp}
+
+All that's required next is to wait for the operation to complete.
+
+\begin{zCpp}
+	while(_sdio->sd_cmd & SDIO_BUSY)
+		;
+\end{zCpp}
+
+There's no need to send any {\tt STOP\_TRANSMISSION} command, since the DMA
+will send it automatically once all sector data has been transferred to the
+card.
+
+Unlike using an external DMA, there's no requirement to first read from the
+bus before writing the data back to the bus.  Hence, the number of clock
+cycles required for a single sector of this write operation will be given
+by 512 divided by the bus width, times any throughput delays, plus the
+bus/memory latency.  This will be nearly twice as fast as when using an
+external DMA, such as the ZipCPU's DMA.
+%% }}}
+\section{Reading multiple sectors with the DMA}
+%% {{{
+As with writing to the SD card using the DMA, reading from the card is just
+a matter of setting four configuration registers and then waiting.
+
+\begin{zCpp}
+	const	SDIO_DMA  = 0x00002000;
+
+	_sdio->sd_dma_address = (char *)dst;
+	_sdio->sd_dma_length = sector_count;
+	_sdio->sd_data = sector;
+	_sdio->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR | SDIO_DMA) + 18;
+\end{zCpp}
+
+As with DMA writing, all that's required next is to wait for the operation to
+complete.
+
+\begin{zCpp}
+	while(_sdio->sd_cmd & SDIO_BUSY)
+		;
+\end{zCpp}
+
+Again, there's no need to send any {\tt STOP\_TRANSMISSION} command, since the
+DMA will send it automatically once all sector data has been transferred to the
+card. 
+
+Unlike the multisector read command above, there's no reason to adjust the
+clock stop bit of the PHY register.  When using the DMA to read, the clock
+may be stopped automatically as necessary between commands.
 %% }}}
 \section{GO IRQ STATE}
 %% {{{
 The one command that the IP knows by number is the GO IRQ State command,
 CMD40.  This command needs to be treated special, because it has no timeout.
 It also needs to be treated special, so that the controller can end the
-command.
+command if necessary.
 
 The first step in the GO IRQ STATE command is to switch to an open--drain
 IO mode.  This will likely also mean that we need to switch clock speeds
@@ -938,10 +1173,11 @@ read, or a timeout indicating something has gone wrong and we don't wish to
 wait any longer.
 
 If the response has been read, then the command is complete and we are done.
-We can clean up by restoring the PHY to its original mode.
+We can clean up by restoring the PHY to its original mode.  No other actions
+are required.
 
-If no response has been read and the command has timed out, then we need
-to create a self--reply to this command.
+If no response has been read and the software decides not to wait any longer,
+then we need to create a self--reply to this command.
 
 \begin{zCpp}
 	_sdio->sd_data = 0;
@@ -953,14 +1189,18 @@ mode.  No valid data will be returned from this command.
 
 There exists the possibility that this command will step ontop of an
 actual return from the eMMC card.  Electrically, this should be okay since
-we've returned to open drain mode.
+we've returned to open drain mode.  If the parameter {\tt OPT\_COLLISION}
+is set, then the front end will detect a collision and automatically back
+off.  If not, the collision may result in a command response with a bad CRC.
+Either way, the card will leave its IRQ state.
 %% }}}
 
 %% }}}
 \chapter{Registers}\label{ch:regs}
-
-As mentioned in the last two chapters, the SDSPI core has five registers.
-These are shown in Tbl.~\ref{tbl:ioregs}.
+%% {{{
+As mentioned in the last two chapters, the SDIO IP supports five registers,
+and three additional DMA--only registers.  These are shown in
+Tbl.~\ref{tbl:ioregs}.
 \begin{table}[htbp]
 \begin{center}\begin{reglist}
 CMD     &{\tt 0x00} & 32 & R/W & SDSPI Command and status register\\\hline
@@ -974,13 +1214,14 @@ PHY     &{\tt 0x04} & 32 & R/W & Front end configuration register\\\hline
 \end{reglist}
 \caption{I/O Peripheral Registers}\label{tbl:ioregs}
 \end{center}\end{table}
-An additional three registers, shown at the end of this list, have been reserved
-for a future DMA capability.  Of these registers, the most powerful is the
-command register, CMD, so we'll spend most of our time discussing that one.
+Of these registers, the command register, CMD, initiates and provides feedback
+from all commands to/from the external device, so we'll spend most of our time
+discussing it.
 
 \section{CMD Register}
 %% {{{
-Only writes to the CMD register will cause the device to act.  The CMD
+Only writes to the CMD register will initiate interactions with the external
+device.  As a result, it is central to how the entire IP operates.  The CMD
 register itself is composed of several packed bit fields, as shown in
 Fig.~\ref{fig:CMD}.
 \begin{figure}\begin{center}
@@ -988,6 +1229,7 @@ Fig.~\ref{fig:CMD}.
 \begin{bytefield}[endianness=big,bitwidth=0.03\linewidth]{32}
 \bitheader{0-31}\\
 \bitbox{8}{(Reserved)}
+\bitbox{1}{B$_E$}	% DMA Bus error
 \bitbox{1}{C$_r$}	% Rx ECode
 \bitbox{1}{E$_r$}	% Rx Err
 \bitbox{1}{E$_c$}	% Cmd Err
@@ -999,7 +1241,7 @@ Fig.~\ref{fig:CMD}.
 \bitbox{1}{E}	% ERROR,   0x08000
 \bitbox{1}{B}	% BUSY,    0x04000
 \bitbox{1}{D}	% (Activate DMA)
-\bitbox{1}{I}	% 0x01000
+\bitbox{1}{I}	% FIFO selection
 %
 \bitbox{1}{M}	% MEM
 \bitbox{1}{W}	% Write / Tx active/enabled
@@ -1016,45 +1258,63 @@ The various fields of this register are explained in Tbl.~\ref{tbl:CMD}.
 %% {{{
 \begin{tabular}{|p{1.2in}|p{0.5in}|p{4.0in}|}\hline
 	\rowcolor[gray]{0.85} Name & Width & Description\\\hline\hline
+D$_E$&1& DMA Bus Error.  True if the DMA encounters a bus error while
+	transferring data. \\
 C$_r$&1& Receive error code.  On any receive error, indicates the cause of
 	the error. \\
 E$_r$&1& Receive error.  Set if the E bit is set due to a data reception error.
 	\\
-E$_c$&1& Command error.  Set if the E bit is set due to a command error.
-	\\
-C$_B$&1& Card is busy.  Following a command that expects an R1b response, the
-	card may assert a busy signal by lowering DAT[0].  If it does, this
-	bit will be set until the card releases DAT[0].\\
+E$_c$&1& Command error.  Set if the E bit is set due to an error in command
+	wire processing.  \\
+C$_B$&1& Card is busy.  This is a separate indication from whether or not the
+	controller is busy.  Specifically, certain commands expect R1b
+	R1b responses.  Following one of these commands, the card may assert a
+	busy signal by lowering DAT[0].  If it does, this bit will be set
+	until the card releases DAT[0].\\
 P & 1 & No card present.  Set if the card detect bit indicates no card is
 	currently present.  This bit will automatically clear when a card
-	is inserted.  Only active if the {\tt OPT\_CARD\_DETECT} parameter
-	is also set.\\
-R & 1 & Removed.  The card detected bit has dropped since a card was last
-	acknowledged.  Write a one to this bit to clear it.   Only active if
-	the {\tt OPT\_CARD\_DETECT} parameter is also set. \\
+	is inserted.  This facility is only available if the
+	{\tt OPT\_CARD\_DETECT} parameter set to enable it.\\
+R & 1 & Card removed.  This bit will be set if both the {\tt OPT\_CARD\_DETECT}
+	parameter has been set, and the card detected bit has dropped since
+	a card was last acknowledged.  This bit will only be cleared by the user
+	writing a one to this bit to clear it.   As a result, it can be used
+	to detect if a card has been inserted and thus needs to be set up. \\
 C$_C$&2& Command error code.  Indicates the type of error, if any, received
-	from the last command.\\
+	from the last command.  This is separate from any potential bus or
+	receive errors. \\
 E & 1 & Error.  The last command or data receipt completed with error.  
-	Once set, further commands will be ignored.  Write a one to this bit
-	to clear it.  Errors may be cleared concurrent with new transactions
-	requests. \\
+	Once set, further commands will be ignored until this bit is cleared.
+	Write a one to this bit to clear it.  Errors may be cleared concurrent
+	with new transactions requests. \\
 B & 1 & Busy.  Either a command or data transfer is currently in progress.\\
-D & 1 & (Reserved for DMA control)\\
-I & 1 & FIFO selection.  Keep clear to use FIFO A.  Set to use FIFO B.\\
-M & 1 & Memory operation.  Once the command is complete, a memory read or write
-	will take place.  If this bit is set and bit[6] is clear, then
-	a memory operation will take place without an associated prior command
-	and response.\\
+D & 1 & DMA Enable.  Set this bit to enable a DMA operation as part of an
+	issued command. \\
+I & 1 & FIFO selection.  Keep clear to use FIFO A.  Set to use FIFO B.
+	When using the DMA, the DMA will begin with the selected FIFO, but then
+	alternate FIFOs on a block by block basis.  \\
+M & 1 & Memory operation.  If set, the requested command also includes a data
+	transfer to or from the FIFOs.  If bit[6] is also set, this transfer
+	will take place once the assicated command is complete.  Otherwise, if
+	bit[6] is clear, the memory operation will take place without an
+	associated prior command and response.  This is useful for supporting
+	multi--block transfers. \\
 W & 1 & Write operation.  If this bit is set for a memory operation, then
 	data will be transferred from a FIFO to the device.  Otherwise, and
 	memory operation is a read operation, which will transfer data from
 	the device to the FIFO.\\
 T & 1 & Response type.  Indicates whether a response is expected, and
-	whether or not that response will have 48'bits or 136'bits.\\
-CMD & 8 & The command.  Writes with bits [7] equal to 1'b0 will issue
-	a comand to the controller, although memory commands require bit
-	[6] be set as well.  Upon command completion, these bits will
-	be replaced by the first 8--bits of the reply.
+	whether or not that response will have 48'bits or 136'bits.
+	See Tbl.~\ref{tbl:CMD-TYPE} for more info.\\
+CMD & 8 & The command.  Writes with bits [7:6] set to 2'b01 will forward
+	the other six bits of the command to the external device.  Writes with
+	bit [7] set can be used to communicate with the controller without
+	going to the device as well.  Writes with both bits clear and the
+	memory request bit set can be used to make requests of the memory
+	channel without also requesting a preceding command transfer.  Once
+	any requested command transfer completes, these 8-bits will be
+	replaced by the first 8--bits of the reply.  Most such replies will
+	typically just clear bit [6].
 	\\\hline
 \end{tabular}
 %% }}}
@@ -1064,18 +1324,54 @@ CMD & 8 & The command.  Writes with bits [7] equal to 1'b0 will issue
 In general, a command will be issued any time bits [7:6] of the command
 register are 2'b01.  There are some exceptions to this rule:
 \begin{itemize}
-\item If the error bit is set, then any command without bit 15 (clear error)
-	set will be ignored.
+\item If the error bit is set, then any command that doesn't also set bit 15
+	(clear error) will be ignored.
 \item If the device is already busy with another command, then any new command
 	will be ignored.
 \item If the FIFOs are busy with a previous command, then any new command that
 	would use the FIFOs will also be ignored.
+\item If the DMA is busy, then all new commands will be ignored.  (Controller
+	reset commands will still abort ongoing DMA operations.)
 \item If bits [7:6] are both zero, a new command will be issued if the device
 	was configured with eMMC support (OPT\_EMMC=1), no FIFO activity
 	is requested, and no response is expected.  This is to support the
 	`self-reply' capability designed to force a slave to exit the IRQ
 	state.
 \end{itemize}
+
+While most writes to the command register will initiate commands or data
+interactions with the external device, there are several exceptions to this
+rule as shown in Tbl.~\ref{tbl:CMD-BITS}.
+\begin{table}\begin{center}
+%% {{{
+\begin{tabular}{|p{0.36in}|p{0.36in}|p{0.36in}|p{0.36in}|p{4.0in}|}\hline
+	\rowcolor[gray]{0.85} D & M & R2 & [7:6] & Description\\\hline\hline
+? & 0 & 0 & 2'b00 & If {\tt OPT\_EMMC} is set, a command response will be
+	sent.  This is useful for ending an IRQ waiting period if the IRQ
+	hasn't taken place. \\
+1 & ? & 0 & 2'b00 & No command will be sent, but a DMA operation will
+	begin. \\
+? & 1 & 0 & 2'b00 & No command will be sent, but a memory operation will
+	begin. \\
+? & ? & ? & 2'b01 & A command will be sent to the card. \\
+1 & ? & 0 & 2'b01 & The command will be followed by a DMA transaction. \\
+0 & 1 & 0 & 2'b01 & The command will be followed by a memory transaction
+	using the FIFOs. \\
+0 & 0 & 1 & 2'b01 & The command response will be placed into the selected
+	FIFO. \\
+? & ? & ? & 2'b1x & No commands will issue, nor DMA nor memory operations
+	commence.  Writes of this type may be used to reset the user FIFO
+	position, to clear any error flags, or card removed bit(s)\\\cline{1-4}
+\multicolumn{4}{|c|}{{\tt 32'h5200\_0000}} & Soft reset request.  This will
+	resets the controller internally.  Any ongoing operations will be
+	aborted.  No indication of this reset will be sent to the external
+	card.  \\\hline
+\end{tabular}
+%% }}}
+\caption{Types of writes to the CMD register}\label{tbl:CMD-BITS}
+\end{center}\end{table}
+Other than soft reset requests, all writes to the command register will be
+ignored while it is busy.
 
 Commands may expect one of four types of responses, as shown in
 Tbl.~\ref{tbl:CMD-TYPE}.
@@ -1149,8 +1445,8 @@ reflected in the ``Card busy'' bit.  Once the card raises DAT[0], the
 ``Card busy'' line will be cleared automatically and will not reassert until
 the next R1b command.
 
-If, following any command, the card holds the DAT[0] line low, this will be
-reflected in the ``Card busy'' bit.
+If, following any command, the card holds the DAT[0] line low, this will also
+be reflected in the ``Card busy'' bit.
 
 The error bit may be set from either a command or a data receiver error.
 The E$_r$ and E$_c$ bits exist so you can know which of the two (or both)
@@ -1180,7 +1476,7 @@ According to both SDIO and eMMC specifications, all commands sent to the
 device have a 48--bit format.  The first 8-bits specify a start bit followed
 by the 7--bit command itself, where commands from the host begin with a
 2'b01 (including the start bit).  The next 32-bits constitute an argument
-to the command.  This argument register controls these next 32-bits.
+to the command.  The argument register controls these next 32-bits.
 
 Writes to this register, prior to issuing a command, will set the argument
 for the next command.
@@ -1191,10 +1487,11 @@ reply may be read from this register.
 %% }}}
 \section{FIFO Registers}	%%%%
 %% {{{
-As with the SDSPI controller, the SDIO/eMMC controller maintains two 512~byte
-memory areas called FIFOs.  Reads from the card will write data into one of
-the two FIFO's, whereas writes to the card will read data out from one of the
-FIFO's.  Which FIFO the card uses is determined by the $I$ bit in the CMD
+As with the SDSPI controller, the SDIO/eMMC controller maintains two (nominally)
+512~byte memory areas called FIFOs.\footnote{Actual FIFO size is determined
+by the {\tt LGFIFO} parameter.}  Reads from the card will write data into one
+of the two FIFO's, whereas writes to the card will read data out from one of
+the FIFO's.  Which FIFO the card uses is determined by the $I$ bit in the CMD
 register (above).
 
 Further, upon any write to the CMD register, the FIFO address will be set
@@ -1212,7 +1509,8 @@ used for writing: A multi--sector write might start by first writing into one
 FIFO.  The write command would then be issued, followed by writing into the
 second (now unused) FIFO.  Once the first write completes, a second write
 command may be issued while the first FIFO is refilled for a third command
-and so forth.
+and so forth.  Feel free to examine the various include software drivers for
+examples of how this may be accomplished.
 
 One item to note before closing: there is only one internal address register
 when accessing the FIFO from the wishbone bus.  Attempts to read from or write
@@ -1225,16 +1523,18 @@ wishbone bus at a time.
 %% }}}
 \section{PHY Register}
 %% {{{
-The PHY register controls the SPI clock rate and the sector size. 
-Specifically, with regards to the FIFO size, it controls how many bytes will
-be written into the FIFO (which is really of a fixed size) before the expecting
-a CRC, or equivalently how many bytes to read out of the FIFO before adding a
-CRC.  The fields of this register are shown in Fig.~\ref{fig:PHY}.
+The PHY register controls the SPI clock rate, the sector size, and any other
+PHY IO options, such as the width of the bus or whether command and data wires
+are in push-pull or open drain modes.  Specifically, with regards to the FIFO
+size, the PHY register controls how many bytes will be written into the FIFO
+(which is really of a fixed size) before expecting CRC when receiving data, or
+equivalently how many bytes to read out of the FIFO before adding a CRC to any
+transmission.  The fields of this register are shown in Fig.~\ref{fig:PHY}.
 \begin{figure}\begin{center}
 %% {{{
 \begin{bytefield}[endianness=big,bitwidth=0.03\linewidth]{32}
 \bitheader{0-31}\\
-\bitbox{4}{Rsrvd}
+\bitbox{4}{LgFSz}
 \bitbox{4}{LgBlk}
 %
 \bitbox{1}{V$_O$}
@@ -1261,15 +1561,17 @@ and explained in Tbl.~\ref{tbl:PHY}.
 %% {{{
 \begin{tabular}{|p{1.2in}|p{0.5in}|p{4.0in}|}\hline
 	\rowcolor[gray]{0.85} Name & Description\\\hline\hline
+LgFSz & 4 & Reflects the {\tt LGFIFO} parameter, and hence the log based two
+	of the maximum transfer block size. \\
 LgBlk & 4 & Log based two of the transfer block size.  Set to 9 for 512~Byte
-	transfers, 4 for 16`Byte transfers, etc.\\
+	transfers, 4 for 16`Byte transfers, etc.  Cannot be set below 2.\\
 %
 V$_O$ & 1 & Read only value reflecting the parameter {\tt OPT\_1PV}.  If set,
-	indicates that the controller is capable of changing voltages upon
-	request.\\
+	indicates that the controller is capable of driving an output value
+	to direct hardware to switch to a lower voltage.\\
 V$_R$ & 1 & 1.8~Volt request.  Set to transition to 1.8~Volts, or leave clear
-	to operate at 3.3~Volts.  Only relevant if {\tt OPT\_1PV} is set, and
-	hardware is present to allow voltage changes.\\
+	to operate at 3.3~Volts.  Only relevant if both {\tt OPT\_1PV} is set,
+	and external hardware is present to allow voltage changes.\\
 D$_C$ & 1 & Set for enhanced data strobe support.  If set, both the command
 	and data pins will use the data strobe as a clock pin.  Will only
 	be set if D$_S$ and D$_D$ are also set.
@@ -1277,16 +1579,18 @@ D$_C$ & 1 & Set for enhanced data strobe support.  If set, both the command
 Shift & 5 & Sample shift.  This is used to determine IO sampling.  The digtal
 	clock output signal will be delayed by one clock plus this many
 	eighth clock units to determine the receive sample point when not
-	using the data strobe.  This is nominally set to zero during simulation
-	testing, but many need to be adjusted due to IO delays from the
-	external device. \\
+	using the data strobe.  This value is likely to need to be adjusted
+	from its simulation/demonstration settings when operating at high speeds
+	in order to reflect IO delays contained in either the front end IO
+	drivers, the external device, or delays across the circuit board
+	itself. \\
 %
 nC & 1 & Clock shutdown.  Set in order to deactivate the clock between commands,
 	or leave clear for a continuously operating clock.\\
 C9 & 1 & Clock--90.  Set in order to offset the clock from the data by
-	ninety degrees, or leave clear for the two to be offset by
-	180~degrees.  Any attempt to use DDR data transfer will automatically
-	set this bit.\\
+	ninety degrees, or leave clear for the clock to be offset from the
+	data by 180~degrees.  Any attempt to use DDR data transfer will
+	automatically set this bit.\\
 P$_C$ & 1 & Push--Pull CMD.  Set in order to drive the CMD wire via a
 	push--pull scheme, or leave clear to use open--drain for CMD transfers.
 	\\
@@ -1297,13 +1601,13 @@ P$_D$ & 1 & Push--Pull Data.  Set to drive data wires via a push--pull
 %
 W & 2 & Width.  Controls how many data bits are used in any data transaction.
 	Set to 0 to use DAT[0] only, 2'b01 to use DAT[3:0], and 2'b10 to use
-	DAT[7:0].  \\
+	DAT[7:0].  See also Tbl.~\ref{tbl:PHY-WIDTH}. \\
 D$_S$&1& Data strobe.  Set to one to use the eMMC data strobe, clear
 	otherwise.  Requires DDR mode set, so D$_D$ must be high.  Parameters
 	{\tt OPT\_EMMC} and {\tt OPT\_DS} must also be set to use this
 	capability.\\
 D$_D$ & 1 & DDR.  Set to one to transmit on both edges of the clock.  Clear
-	to send one bit at a time on the positive edge of the clock only. \\
+	to send data on the positive edge of the clock only. \\
 CKDIV & 8 & Clock division control.  See Tbl.~\ref{tbl:CKDIV} for more
 	information.
 	\\\hline
@@ -1312,8 +1616,22 @@ CKDIV & 8 & Clock division control.  See Tbl.~\ref{tbl:CKDIV} for more
 \caption{PHY Front end configuration register fields}\label{tbl:PHY}
 \end{center}\end{table}
 
+\begin{table}\begin{center}
+%% {{{
+\begin{tabular}{|p{1.2in}|p{4.0in}|}\hline
+	\rowcolor[gray]{0.85} Width & Description\\\hline\hline
+2'b00 & 1b data width.  Only DAT[0] will be used to transfer data.\\
+2'b01 & 4b data width.  DAT[3:0] will be used to transfer data.\\
+2'b10 & 8b data width.  DAT[7:0] will be used to transfer data.  Only used in
+	eMMC protocols.\\
+2'b11 & Reserved/unused.  \\\hline
+\end{tabular}
+%% }}}
+\caption{Width enumeration}\label{tbl:PHY-WIDTH}
+\end{center}\end{table}
+
 The CKDIV field needs the most explanation.  This field is used to control
-a digital clock divider.  Particular high speed frequency do not go through
+a digital clock divider.  Particular high speed frequencies do not go through
 the divider.  All other frequencies may be expressed as divisions of 50~MHz,
 as shown in Tbl.~\ref{tbl:CKDIV}.
 \begin{table}\begin{center}
@@ -1342,25 +1660,28 @@ whether or not controller support exists for either {\tt OPT\_SERDES} or
 
 This controller supports both SDR and DDR IO modes.  DDR IO, however, requires
 that the clock be offset from the data by 90~degrees rather than the nominal
-180~degrees.  While the {\tt OPT\_SERDES} driver will support 90~degree clock
-and data offsets at all frequencies, the {\tt OPT\_DDR} driver will only do
-so at 25~MHz and below.  Any attempt to enable DDR mode will automatically
-place the clock in its 90~degree offset mode.  Alternatively, the 90~degree
-offset mode may be enabled specifically.
+180~degrees.\footnote{DDR support may also require 1.8V IO.  Check the SDIO/EMMC
+specifications and your board support for more information.}  While the
+{\tt OPT\_SERDES} driver will support 90~degree clock and data offsets at all
+frequencies, the {\tt OPT\_DDR} driver will only do so at 25~MHz and below.
+Any attempt to enable DDR mode will automatically place the clock in its
+90~degree offset mode.  Alternatively, the 90~degree offset mode may be
+enabled specifically--even if not required.
 
 The eMMC controller contains the option of using a data strobe to clock
 the return data.  This requires {\tt OPT\_EMMC}.  This mode may be enabled
-in the PHY register.  Doing so will force all data bits returned by the external
-device to be clocked using this return data strobe.
+in the PHY register.  Doing so will force all data bits returned by the
+external device to be clocked using this return data strobe.
 
 The SDIO/eMMC IO clock may be turned off when not in use.  To turn this clock
-off, set the clock shutdown bit in the PHY register.
+off, set the clock shutdown bit in the PHY register.  Note that the DMA may
+automatically shutdown the clock when reading as well.
 
 The LgBlk field sets the log, base two, of the any memory transfer size.  The
 actual transfer length will be will be $2^{\mbox{\tiny LGBLK}}$ bytes.  The
 WB controller will not allow this to be set larger than the size of the FIFO,
-so any attempt to set this value past its maximum can be used to read back what
-the maximum value actually is.
+as reported by the LgFSz field, so any attempt to set this value past its
+maximum can be used to read back what the maximum value actually is.
 %% }}}
 \section{Soft Resets}
 %% {{{
@@ -1368,10 +1689,41 @@ The controller may be reset at any time by writing a 32'h52000000 to the
 CMD register.
 
 Any ongoing transactions will be canceled at that time and the controller will
-return immediately to idle.
+return immediately to idle.  Note that this reset {\em does not} send any
+commands to the card, it simply resets the controller.  Any ongoing operations
+will be halted mid-operation.  If the card is in the middle of a multi-block
+operation, an additional stop transmission command, followed by an appropriate
+wait of (roughly) one block length, may be required to bring the card back into
+a usable state.
 
 Alternatively, a {\tt GO\_IDLE} command may be sent at any time--even if
 a command response is pending or an IO operation is ongoing.
+%% }}}
+\section{DMA Usage}
+%% {{{
+An optional DMA may be integrated into this controller.  Additional registers
+are required to use the DMA.  These include the DMA length register, and the
+DMA address register.  To use the DMA, these two additional registers must
+first be set.
+
+The DMA length register controls the number of {\em blocks} the DMA will
+transfer.  The block length can be set in the PHY register, and it is required
+to be a power of two.  Once the DMA has transferred this many blocks, the
+DMA operation will end.
+
+The DMA address register controls where on the bus data will be drawn from
+or written to.  During a write operation, data will be read from the bus
+and written to the card.  During a read operation, data will be read from
+the card and written to the bus.  The direction of the operation is controlled
+by the command word when the DMA operation is requested.
+
+To request a DMA operation, set the DMA bit when requesting a command.  A
+typical read DMA command will set the command bit, request an R1 response, and
+request a multiblock read.  A typical write DMA operation will request an
+R1 response, set the write bit, the DMA bit, and request a multiblock write
+from the card.
+
+%% }}}
 %% }}}
 \chapter{Interrupts}\label{ch:int}
 %% {{{
@@ -1380,10 +1732,16 @@ An interrupt may be generated for any of the following reasons:
 \begin{enumerate}
 \item Any time a command completes, and any anticipated response is either
 	returned or timed out.  The exception to this rule is that no interrupt
-	will be generated if subsequent IO to or from FIFOs is still pending
-	and the command request completes without error.
-\item Any time a sector if finished being sent to the device.
-\item Any time a sector finishes being received by the device.
+	will be generated if either the DMA is active, or if subsequent IO to
+	or from FIFOs is still pending and the command request completes
+	without error.
+\item If {\tt OPT\_DMA} is set, and the DMA is included, then an interrupt will
+	be generated once a DMA operation is completed.  During the DMA
+	operation, however, other interrupts will be suppressed.
+\item An interrupt will be generated in non-DMA mode any time a sector is
+	finished being sent to the controller.
+\item An interrupt will be generated in non-DMA mode any time a sector
+	finishes being received by the controller.
 \item If the {\tt OPT\_CARD\_DETECT} parameter is set, then an interrupt
 	will be generated any time an acknowledged card is removed.
 \item If the {\tt OPT\_CARD\_DETECT} parameter is set, then an interrupt will
@@ -1416,6 +1774,7 @@ Signal Names & \begin{tabular}{ll}
 		{\tt i\_wb\_we} & {\tt WE\_I} \\
 		{\tt i\_wb\_addr} & {\tt ADR\_I} \\
 		{\tt i\_wb\_data} & {\tt DAT\_I} \\
+		{\tt i\_wb\_sel} & {\tt SEL\_I} \\
 		{\tt o\_wb\_ack} & {\tt ACK\_O} \\
 		{\tt o\_wb\_stall} & {\tt STALL\_O} \\
 		{\tt o\_wb\_data} & {\tt DAT\_O}
@@ -1423,15 +1782,45 @@ Signal Names & \begin{tabular}{ll}
 \end{wishboneds}
 \caption{Wishbone Slave Datasheet}\label{tbl:wishbone}
 \end{center}\end{table}
-is required by the wishbone specification, and so it is included here.  Note
-that all wishbone operations may be pipelined, to include FIFO operations,
-for speed.
+describes the Wishbone command bus interface.  It is required by the wishbone
+specification, and so it is included here.  Note that all wishbone operations
+may be pipelined, to include FIFO operations, for speed.
 
 The particular constraint on the clock is not really a wishbone constraint, but
 rather an SD--Card constraint.  Not all cards can handle clocks faster than
 25~MHz.  For this reason, the wishbone clock, which forms the master clock for
 this entire controller, must be divided down so that the SPI clock is within 
 the limits the card can handle.
+
+When the {\tt OPT\_DMA} parameter is also set, a Wishbone master interface
+will also be enabled, as outlined in Tbl.~\ref{tbl:wbdma}.
+Tbl.~\ref{tbl:wbdma}
+\begin{table}[htbp]
+\begin{center}
+\begin{wishboneds}
+Revision level of wishbone & WB B4 spec \\\hline
+Type of interface & Master, (Block/pipelined) Read/Write \\\hline
+Port size & 32--bit or larger\\\hline
+Port granularity & 8--bit \\\hline
+Maximum Operand Size & Full bus width\\\hline
+Data transfer ordering & (Optional)\\\hline
+Clock constraints & (Same)\\\hline
+Signal Names & \begin{tabular}{ll}
+		Signal Name & Wishbone Equivalent \\\hline
+		{\tt o\_clk} & {\tt CLK\_O} \\
+		{\tt o\_dma\_cyc} & {\tt CYC\_O} \\
+		{\tt o\_dma\_stb} & {\tt STB\_O} \\
+		{\tt o\_dma\_we} & {\tt WE\_O} \\
+		{\tt o\_dma\_addr} & {\tt ADR\_O} \\
+		{\tt o\_dma\_data} & {\tt DAT\_O} \\
+		{\tt o\_dma\_sel} & {\tt SEL\_O} \\
+		{\tt i\_dma\_ack} & {\tt ACK\_I} \\
+		{\tt i\_dma\_stall} & {\tt STALL\_I} \\
+		{\tt i\_dma\_data} & {\tt DAT\_I}
+		\end{tabular}\\\hline
+\end{wishboneds}
+\caption{DMA Wishbone Master Datasheet}\label{tbl:wbdma}
+\end{center}\end{table}
 %% }}}
 \chapter{Clocks}\label{ch:clk}
 %% {{{
@@ -1440,11 +1829,11 @@ system clock, {\tt i\_clk}.  This clock determines all other clock speeds
 within the design.
 
 \begin{clocklist}
-i\_clk   & Input & 104 & 96 & System clock \\
+i\_clk   & Input & 104 & 96 & System clock.  Nominally at 100~MHz. \\
 i\_hsclk & Input & & & I/OSERDES clock.  Must be 4x the i\_clk rate, and
-	must come from the same
-	PLL or MMCM as i\_clk.  Only used if {\tt OPT\_SERDES}
-	is set so the design uses the 8x SERDES based front end.\\
+	must come from the same PLL or MMCM as i\_clk.  This clock input is
+	only used if {\tt OPT\_SERDES} is set to cause the design to use the
+	8x SERDES based front end that requires it.\\
 o\_ck & Output & 200 & 0.1 & SDIO/eMMC interface clock.  This signal
 	is output over the interface at a frequency given by the clock divider
 	controller.  May also be turned off between commands.  \\\hline
@@ -1453,6 +1842,10 @@ o\_ck & Output & 200 & 0.1 & SDIO/eMMC interface clock.  This signal
 The {\tt i\_clk} speed has been nominally fixed at 100~MHz.  Based upon this
 speed, the controller can generate 200~MHz, 100~MHz, and 50~MHz IO clocks.
 Other clocks may be generated by integer divisions of 50~MHz.
+
+Other clock speeds may also be possible.  However, the design operates
+primarily on a single clock.  Other clock rates will therefore impact both
+bus and IO operations together.
 %% }}}
 \chapter{I/O Ports}\label{ch:io}
 %% {{{
@@ -1463,19 +1856,23 @@ Table.~\ref{tbl:ioports}
 i\_clk & 1 & Input & System Clock, nominally 100~MHz\\\hline
 i\_hsclk & 1 & Input & SERDES Clock.  Must be 4x the system clock.\\\hline
 i\_reset & 1 & Input & System reset.  Active high.\\\hline\hline
-WISHBONE &  & & Wishbone bus slave signals\\\hline\hline
+\multicolumn{3}{c}{?\_wb\_ Wishbone Slv} & Wishbone bus slave signals\\\hline
+\multicolumn{3}{c}{?\_dma\_ Wishbone Master} & DMA Wishbone bus master signals\\\hline\hline
 o\_ck & 1 & Output & SDIO/eMMC protocol clock signal\\\hline
 io\_cmd & 1 & In/Out & SDIO/eMMC command wire\\\hline
 io\_dat & NUMIO & In/Out & 1, 4, or 8 SDIO/eMMC data lines\\\hline
 i\_ds & 1 & Input & eMMC data strobe\\\hline\hline
-i\_card\_detect & 1 & Input & High if the hardware detects a card, low o.w.\\\hline
-o\_1p8v & 1 & Output & High if requesting 1.8 Volt IO.  Requires {\tt OPT\_1P8V} be set.\\\hline\hline
+i\_card\_detect & 1 & Input & High if the hardware detects a card, low o.w.
+	Ignored if {\tt OPT\_CARD\_DETECT} is not also set.\\\hline
+o\_1p8v & 1 & Output & High if requesting 1.8 Volt IO.  Requires
+	{\tt OPT\_1P8V} be set.\\\hline\hline
 o\_int & 1 & Output & An interrupt line to the CPU controller\\\hline
 o\_debug & 32 & Output & See Verilog for details\\\hline
 \end{portlist}
 \caption{List of IO ports}\label{tbl:ioports}
 \end{center}\end{table}
-inputs and outputs are divided into sections: the master clock, the wishbone
+lists the various ports used by this controller, excluding DMA ports.  Inputs
+and outputs are divided into sections: the master clock, the wishbone
 bus, the SDIO/eMMC interface to the card, and four other wires.  Of these, the
 last two chapters discussed the wishbone bus interface and the clocks.  The
 SDIO/eMMC interface should be fairly straightforward, so we'll move on and

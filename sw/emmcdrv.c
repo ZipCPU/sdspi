@@ -67,6 +67,10 @@ static	const	int	EMMCDMA = 0, EXTDMA = 1;
 static	const	int	EMMCMULTI = 1;
 // }}}
 
+#define	NEW_MUTEX
+#define	GRAB_MUTEX
+#define	RELEASE_MUTEX
+
 typedef	struct	EMMCDRV_S {
 	EMMC		*d_dev;
 	uint32_t	d_CID[4], d_OCR;
@@ -942,7 +946,7 @@ static void emmc_dump_sector(const unsigned *ubuf) {
 
 int	emmc_write_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 24
 	// {{{
-	unsigned	vc, vd;
+	unsigned	vc, dev_stat, card_stat;
 
 	if (SECTOR_512B != (dev->d_dev->sd_phy & 0x0f000000)) {
 		uint32_t	phy = dev->d_dev->sd_phy;
@@ -950,17 +954,27 @@ int	emmc_write_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 24
 		phy |= (9 << 24);
 	}
 
+	// Set up the device address
+	// {{{
+	if (dev->d_OCR & 0x40000000)
+		// High capacity card
+		dev->d_dev->sd_data = sector;
+	else
+		dev->d_dev->sd_data = sector*512;
+	// }}}
+
 	if (EMMCDMA) {
-		// Set up the DMA
 		// {{{
+		// Set up the DMA
 		dev->d_dev->sd_dma_addr = buf;
 		// Always transfer in units of 512 bytes
 		dev->d_dev->sd_dma_length = 1;
-		// }}}
 
-		dev->d_dev->sd_data = sector;
+		// Command the device
 		dev->d_dev->sd_cmd = SDIO_WRITEBLK | SDIO_DMA;
+		// }}}
 	} else {
+		// {{{
 #ifdef	INCLUDE_DMA_CONTROLLER_NOT
 		if (EXTDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
 			_zip->z_dma.d_len = 512;
@@ -975,40 +989,53 @@ int	emmc_write_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 24
 			for(int k=0; k<512/sizeof(uint32_t); k++)
 				dev->d_dev->sd_fifa = buf[k];
 
-		dev->d_dev->sd_data = sector;
 		dev->d_dev->sd_cmd = SDIO_WRITEBLK;
+		// }}}
 	}
 
 	emmc_wait_while_busy(dev);
 
-	vc = dev->d_dev->sd_cmd;
-	vd = dev->d_dev->sd_data;
+	dev_stat  = dev->d_dev->sd_cmd;
+	card_stat = dev->d_dev->sd_data;
 
-	if (EMMCDEBUG) {
-		if (vc & SDIO_ERR) {
-			txstr("SDIO ERR: SDIO write response = ");
-			txhex(vc);
-			txstr("\n");
-		}
-
-		if (EMMCINFO)
-			emmc_get_r1(dev);
-	} if (vc & SDIO_ERR) {
-		dev->d_dev->sd_cmd = SDIO_ERR;
+	// Return an error code if necessary
+	// {{{
+	if (dev_stat & (SDIO_ERR|SDIO_REMOVED|SDIO_RXERR))
 		return -1;
-	} return 0;
+	else if (card_stat & SDIO_R1ERR) {
+		if (EMMCDEBUG) {
+			if (card_stat & SDIO_ERR) {
+				txstr("SDIO ERR: SDIO write response = ");
+				txhex(card_stat);
+				txstr("\n");
+			}
+
+			if (EMMCINFO)
+				emmc_get_r1(dev);
+		} dev->d_dev->sd_cmd = SDIO_ERR;
+		return -1
+	}
+	// }}}
+
+	return 0;
 }
 // }}}
 
 int	emmc_read_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 17
 	// {{{
+	int	err = 0, dev_stat, card_stat;
+
 	if (EMMCDEBUG) {
 		txstr("SDIO-READ: ");
 		txhex(sector);
 		txstr("\n");
 	}
 
+	GRAB_MUTEX;
+
 	if (dev->d_dev->sd_cmd & SDIO_REMOVED) {
+		RELEASE_MUTEX;
+
 		txstr("SDIO ERR: SD-Card was removed\n");
 		return -1;
 	}
@@ -1021,6 +1048,8 @@ int	emmc_read_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 17
 
 	if (EMMCDMA) {
 		// {{{
+		GRAB_MUTEX;
+
 		// Make sure our device is idle
 		while((cmd = dev->d_dev->sd_cmd) & SDIO_BUSY)
 			;
@@ -1066,12 +1095,14 @@ int	emmc_read_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 17
 		RELEASE_MUTEX;
 		// }}}
 	} else {
-
+		// {{{
 		dev->d_dev->sd_data = sector;
 		dev->d_dev->sd_cmd = SDIO_READBLK;
 
 		emmc_wait_while_busy(dev);
 
+		// Read the data back out
+		// {{{
 #ifdef	INCLUDE_DMA_CONTROLLER_NOT
 		if (EXTDMA && (0 == (_zip->z_dma.d_ctrl & DMA_BUSY))) {
 			_zip->z_dma.d_len = 512;
@@ -1087,14 +1118,27 @@ int	emmc_read_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 17
 			for(int k=0; k<512/sizeof(uint32_t); k++)
 				buf[k] = dev->d_dev->sd_fifa;
 #endif
+		// }}}
 
-	if (EMMCDEBUG && EMMCINFO)
-		emmc_dump_sector(buf);
+		dev_stat = dev->d_dev->sd_cmd;
+		card_stat = dev->d_dev->sd_data;
+		RELEASE_MUTEX;
 
-	if (dev->d_dev->sd_cmd & (SDIO_ERR | SDIO_REMOVED)) {
-		txstr("EMMC ERR: Read\n");
+
+		if (EMMCDEBUG && EMMCINFO)
+			emmc_dump_sector(buf);
+		// }}}
+	}
+
+	// Return an error code if necessary
+	// {{{
+	if (dev_stat & (SDIO_ERR|SDIO_REMOVED|SDIO_RXERR))
 		return -1;
-	} return 0;
+	else if (card_stat & SDIO_R1ERR)
+		return -1;
+	// }}}
+
+	return 0;
 }
 // }}}
 
@@ -1421,7 +1465,12 @@ EMMCDRV *emmc_init(EMMC *dev) {
 	dv->d_sector_count = 0;
 	dv->d_block_size   = 0;
 
+	// NEW_MUTEX;
+	GRAB_MUTEX;
+
 	dv->d_dev->sd_phy = SDIOCK_400KHZ | SECTOR_512B;
+	while(SDIOCK_400KHZ != (dv->d_dev->sd_phy & 0x0ff))
+		;
 
 	emmc_go_idle(dv);
 
@@ -1459,6 +1508,8 @@ EMMCDRV *emmc_init(EMMC *dev) {
 
 	emmc_best_width(dv);
 
+	RELEASE_MUTEX;
+
 	// dv->d_sector_count = 0;
 	dv->d_block_size   = 512;
 
@@ -1476,10 +1527,6 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 	unsigned	st;
 	unsigned	card_stat, phy, cmd;
 
-	phy = dev->d_dev->sd_phy;
-	phy &= 0xf0ffffff;
-	dev->d_dev->sd_phy = phy | SECTOR_512B;
-
 	if (count == 1 || !EMMCMULTI) {
 		for(unsigned k=0; k<count; k++) {
 			st = emmc_write_block(dev, sector+k,
@@ -1489,12 +1536,21 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 			}
 		} return RES_OK;
 	} else if (EMMCDMA) {
-			// {{{
-			// Make sure our device is idle
-			while((cmd = dev->d_dev->sd_cmd) & SDIO_BUSY)
-				;
+		// {{{
+		GRAB_MUTEX;
 
-			// Set up the device address
+		// Make sure our device is idle
+		while((cmd = dev->d_dev->sd_cmd) & SDIO_BUSY)
+			;
+
+		// Make sure we are using 512B sectors
+		// {{{
+		phy = dev->d_dev->sd_phy;
+		phy &= 0xf0ffffff;
+		dev->d_dev->sd_phy = phy | SECTOR_512B;
+		// }}}
+
+		// Set up the device address
 		// {{{
 		if (dev->d_OCR & 0x40000000)
 			// High capacity card
@@ -1503,23 +1559,23 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 			dev->d_dev->sd_data = sector*512;
 		// }}}
 
-			// Set up the DMA
-			// {{{
-			dev->d_dev->sd_dma_addr = buf;
-			// Always transfer in units of 512 bytes
-			dev->d_dev->sd_dma_length = count;
-			// }}}
+		// Set up the DMA
+		// {{{
+		dev->d_dev->sd_dma_addr = buf;
+		// Always transfer in units of 512 bytes
+		dev->d_dev->sd_dma_length = count;
+		// }}}
 
-			// Command the transfer, setting SDIO_DMA to use the DMA
+		// Command the transfer, setting SDIO_DMA to use the DMA
 		// {{{
 		// SDIO_MEM is irrelevant if SDIO_DMA is selected.
 		dev->d_dev->sd_cmd = (SDIO_CMD | SDIO_R1 | SDIO_DMA | SDIO_ERR
 				| SDIO_WRITE | SDIO_MEM) + 25;
 		// }}}
 
-			emmc_wait_while_busy(dev);
+		emmc_wait_while_busy(dev);
 
-			// Get our status
+		// Get our status
 		// {{{
 		dev_stat = dev->d_dev->sd_cmd;
 
@@ -1531,10 +1587,10 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 		card_stat = dev->d_dev->sd_data;
 		// }}}
 
-			CLEAR_DCACHE;
-			RELEASE_MUTEX;
+		CLEAR_DCACHE;
+		RELEASE_MUTEX;
 
-			// Return an error code if necessary
+		// Return an error code if necessary
 		// {{{
 		if (dev_stat & (SDIO_ERR|SDIO_REMOVED|SDIO_RXERR))
 			return RES_ERROR;
@@ -1542,9 +1598,11 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 			return	RES_ERROR;
 		// }}}
 
-			return RES_OK;
-			// }}}
+		return RES_OK;
+		// }}}
 	} else {
+		GRAB_MUTEX;
+
 		for(unsigned s=0; s<count; s++) {
 			// Load the first/next block of data to FIFO
 			// {{{
@@ -1618,6 +1676,10 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 		while((cmd = dev->d_dev->sd_cmd) & SDIO_BUSY)
 			;
 
+		card_stat = dev->d_dev->sd_data;
+
+		RELEASE_MUTEX;
+
 		if (cmd & SDIO_ERR)
 			return RES_ERROR;
 
@@ -1634,9 +1696,9 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 				const unsigned count, char *buf) {
 	// {{{
 	unsigned	st = 0;
-	unsigned	err, card_stat, phy;
+	unsigned	err = 0, card_stat, phy;
 
-	if (1 == count || !EMMCMULTI) {
+	if (!EMMCDMA && (1 == count || !EMMCMULTI)) {
 		for(unsigned k=0; k<count; k++) {
 			st = emmc_read_block(dev, sector+k,
 						(uint32_t *)(&buf[k*512]));
@@ -1646,6 +1708,8 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 		} return RES_OK;
 	} else if (EMMCDMA) {
 		// {{{
+		GRAB_MUTEX;
+
 		// Make sure our device is idle
 		while((cmd = dev->d_dev->sd_cmd) & SDIO_BUSY)
 			;
@@ -1694,13 +1758,15 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 		// {{{
 		if (dev_stat & (SDIO_ERR|SDIO_REMOVED|SDIO_RXERR))
 			return RES_ERROR;
-			else if (card_stat & SDIO_R1ERR)
-		return	RES_ERROR;
+		else if (card_stat & SDIO_R1ERR)
+			return	RES_ERROR;
 		// }}}
 
 		return RES_OK;
 		// }}}
 	} else {
+		GRAB_MUTEX;
+
 		phy = dev->d_dev->sd_phy;
 		if ((0 == (phy & SDIOCK_SHUTDN)) || (9 != ((phy >> 24)&0x0f))) {
 			// Read multiple *requires* the clock be shut down
@@ -1775,6 +1841,7 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 		while(dev->d_dev->sd_cmd & SDIO_BUSY)
 			;
 
+		RELEASE_MUTEX;
 		if (err) {
 			// If we had any read failures along the way,
 			// return an error status
@@ -1797,7 +1864,9 @@ int	emmc_ioctl(EMMCDRV *dev, char cmd, char *buf) {
 
 	switch(cmd) {
 	case CTRL_SYNC: {
+			GRAB_MUTEX;
 			emmc_wait_while_busy(dev);
+			RELEASE_MUTEX;
 			return	RES_OK;
 		} break;
 	case GET_SECTOR_COUNT:

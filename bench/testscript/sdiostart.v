@@ -38,20 +38,48 @@
 // }}}
 
 task	testscript;
-	reg	[31:0]	read_data, ocr_reg, if_cond, op_cond, r6;
+	reg	[31:0]	read_data, ocr_reg, if_cond, op_cond, r6, sample_shift;
 	reg	[15:0]	rca;
 	reg	[127:0]	CID;
+	integer		numio;
+	reg	[7:0]	max_spd;
 begin
 	@(posedge clk);
 	while(reset !== 1'b0)
 		@(posedge clk);
 	@(posedge clk);
 
-	// u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_100KHZ | SDIO_W1);
-	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_1MHZ | SDIO_W1);
+	// Read our capabilities back from the controller
+	// {{{
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_200MHZ
+				| SDIO_WTEST | SPEED_CLKOFF
+				| SDIO_DDR | SDIO_SHFTMSK);
+	do begin
+		u_bfm.readio(ADDR_SDPHY, read_data);
+	end while(read_data[7:0] > 8'h2);
+
+	case(read_data[11:10])
+	2'b00: numio = 1;
+	default: numio = 4;
+	endcase
+
+	max_spd = read_data[7:0];
+	if (3'h0 == read_data[18:16])
+		sample_shift = { 11'h0, 5'h08, 16'h0 };
+	else if (2'b00 == read_data[17:16])
+		sample_shift = { 11'h0, 5'h0c, 16'h0 };
+	else
+		sample_shift = { 11'h0, 5'h08, 16'h0 };
+	// }}}
+
+	// Now set up for the capabilities we will be using
+	// {{{
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_1MHZ | SDIO_W1 | sample_shift);
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
 	end while(read_data[7:0] != SPEED_1MHZ[7:0]);
+	// }}}
+
 	u_bfm.readio(ADDR_SDCARD, read_data);
 	sdcard_go_idle;
 
@@ -110,7 +138,7 @@ begin
 	// CMD7 SELECT/DESELCT Card
 	sdcard_select_card(rca);
 
-	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDIO_W1);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDIO_W1 | sample_shift);
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
 	end while(read_data[7:0] != SPEED_DS[7:0]);
@@ -132,58 +160,70 @@ begin
 
 	// Test at SPEED_DS=25MHZ SDR
 	// {{{
-	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDIO_W4);
+	if (numio >= 4)
+	begin
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDIO_W4 | sample_shift);
 
-	// CMD6		// Select drive strength ??
-	// CMD19	// Tuning block to determine sampling point
-	// sdcard_read_ocr(ocr_reg);
+		// CMD6		// Select drive strength ??
+		// CMD19	// Tuning block to determine sampling point
+		// sdcard_read_ocr(ocr_reg);
 
-	sdcard_send_random_block(32'h04);
-	sdcard_send_random_block(32'h06);
-	sdcard_send_random_block(32'h05);
-	sdcard_send_random_block(32'h07);
+		sdcard_send_random_block(32'h04);
+		sdcard_send_random_block(32'h06);
+		sdcard_send_random_block(32'h05);
+		sdcard_send_random_block(32'h07);
 
-	sdcard_read_block(32'h05);
+		sdcard_read_block(32'h05);
+	end
 	// }}}
 	//
 
 	// Test at SPEED_HSSDR=50MHZ SDR
 	// {{{
-	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | SDIO_W4);
+	if (numio >= 4 && SPEED_HSSDR[7:0] >= max_spd)
+	begin
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | SDIO_W4 | sample_shift);
 
-	sdcard_send_random_block(32'h0b);
-	sdcard_send_random_block(32'h09);
-	sdcard_send_random_block(32'h0a);
-	sdcard_send_random_block(32'h08);
+		sdcard_send_random_block(32'h0b);
+		sdcard_send_random_block(32'h09);
+		sdcard_send_random_block(32'h0a);
+		sdcard_send_random_block(32'h08);
 
-	sdcard_read_block(32'h0a);
-	sdcard_read_block(32'h0b);
+		sdcard_read_block(32'h0a);
+		sdcard_read_block(32'h0b);
+	end
 	// }}}
 
 	// Test at SPEED_SDR100=100MHZ SDR
 	// {{{
-	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | SDIO_W4);
+	if (numio >= 4 && SPEED_HSSDR[7:0] >= max_spd)
+	begin
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | SDIO_W4 | sample_shift);
 
-	sdcard_send_random_block(32'h0c);
-	sdcard_send_random_block(32'h0d);
-	sdcard_send_random_block(32'h0e);
-	sdcard_send_random_block(32'h0f);
+		sdcard_send_random_block(32'h0c);
+		sdcard_send_random_block(32'h0d);
+		sdcard_send_random_block(32'h0e);
+		sdcard_send_random_block(32'h0f);
 
-	sdcard_read_block(32'h0d);
-	sdcard_read_block(32'h0c);
+		sdcard_read_block(32'h0d);
+		sdcard_read_block(32'h0c);
+	end
 	// }}}
 
 	// Test at fastest SDR speed=200MHz SDR
 	// {{{
-	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR200 | SDIO_W4);
+	if (numio >= 4 && SPEED_HSSDR[7:0] >= max_spd)
+	begin
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR200 | SDIO_W4 | sample_shift);
 
-	sdcard_send_random_block(32'h10);
-	sdcard_send_random_block(32'h11);
-	sdcard_send_random_block(32'h12);
-	sdcard_send_random_block(32'h13);
+		sdcard_send_random_block(32'h10);
+		sdcard_send_random_block(32'h11);
+		sdcard_send_random_block(32'h12);
+		sdcard_send_random_block(32'h13);
 
-	sdcard_read_block(32'h10);
-	sdcard_read_block(32'h11);
+		sdcard_read_block(32'h10);
+		sdcard_read_block(32'h11);
+	end
 	// }}}
 
 	repeat(512)

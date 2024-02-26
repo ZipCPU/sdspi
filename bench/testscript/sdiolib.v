@@ -56,11 +56,13 @@ localparam [31:0]	SDIO_RNONE = 32'h0,
 			SDIO_BUSY  = 32'h6800,
 			SDIO_ERR   = 32'h8000;
 
-localparam [31:0]	SDIO_DS    = 32'h00100,
-			SDIO_DDR   = 32'h04200,
-			SDIO_W1    = 32'h00000,
-			SDIO_W4    = 32'h00400,
-			SDIO_W8    = 32'h00800;
+localparam [31:0]	SDIO_DS     = 32'h00100,
+			SDIO_DDR    = 32'h04200,
+			SDIO_W1     = 32'h00000,
+			SDIO_W4     = 32'h00400,
+			// SDIO_W8  = 32'h00800,	// 8b SDIO not supported
+			SDIO_WTEST  = 32'h00c00,
+			SDIO_SHFTMSK= 32'h1f0000;
 
 localparam [31:0]	SPEED_100KHZ   = 32'h00fc,
 			SPEED_200KHZ   = 32'h007f,
@@ -71,7 +73,8 @@ localparam [31:0]	SPEED_100KHZ   = 32'h00fc,
 			SPEED_25MHZ    = 32'h0003,
 			SPEED_50MHZ    = 32'h0002,
 			SPEED_100MHZ   = 32'h0001,
-			SPEED_200MHZ   = 32'h0000;
+			SPEED_200MHZ   = 32'h0000,
+			SPEED_CLKOFF   = 32'h8000;
 
 localparam [31:0]	SPEED_DS     = 32'h03000|SPEED_25MHZ,	// Push/Pull,
 			SPEED_HSSDR  = 32'h03000|SPEED_50MHZ,	// | push/pull

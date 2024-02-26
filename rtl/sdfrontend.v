@@ -880,7 +880,12 @@ module	sdfrontend #(
 			r_rx_strb <= 2'b0;
 		else if (sample_ck == 0)
 			r_rx_strb <= 2'b0;
-		else if (io_started[1])
+		else if (io_started == 0
+				&& (|sample_pck[7:4]) && (|sample_pck[3:0])
+				&& start_io[1])
+		begin
+			r_rx_strb <= 2'b10;
+		end else if (io_started[1])
 		begin
 			r_rx_strb[1] <= (|sample_ck);
 			r_rx_strb[0] <= (|sample_ck[7:4]) && (|sample_ck[3:0]);

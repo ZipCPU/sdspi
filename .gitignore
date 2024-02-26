@@ -11,6 +11,7 @@ obj-zip
 *.log
 .*.swp
 .*.swo
+*.autosave
 .swp
 .swo
 svn-commit*

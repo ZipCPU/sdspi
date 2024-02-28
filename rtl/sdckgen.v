@@ -153,8 +153,8 @@ module	sdckgen #(
 		o_ckwide <= 0;
 	end else if ((nxt_clk && i_cfg_shutdown) || (w_ckspd == 0))
 	begin
-		o_ckstb  <= 1'b1;	// Or should this be !i_cfg_shutdown?
-		o_hlfck  <= 1'b1;
+		o_ckstb  <= !i_cfg_shutdown;
+		o_hlfck  <= !i_cfg_shutdown;
 		o_ckwide <= (i_cfg_shutdown) ? 8'h00
 				: (i_cfg_clk90) ? 8'h66 : 8'h33;
 	end else if (w_ckspd == 1)
@@ -209,12 +209,18 @@ module	sdckgen #(
 	always @(posedge i_clk)
 	if (f_past_valid)
 	begin
+		if ($past(!i_reset && i_cfg_shutdown))
+		begin
+			assert(!o_ckstb);
+		end
+
 		if (ckspd == 0)
 		begin
-			assert(o_ckstb);
+			assert(o_ckstb || $past(i_cfg_shutdown));
 			assert(counter == 0
 				||counter == {2'b11,{(NCTR-2){1'b0}} });
 		end
+
 		if (ckspd == 1)
 			assert(counter == {2'b11,{(NCTR-2){1'b0}} });
 		if (ckspd == 2)

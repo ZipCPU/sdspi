@@ -53,9 +53,9 @@
 ##		This top level contains a ZipCPU, and it's test script is a
 ##		hex file specifying the software load for the test.
 ## }}}
-sdioio		WB  sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=1
+sdioio		WB  sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=0
 sdioddr		WB  sdiostart	OPT_SERDES=0 OPT_DDR=1
-sdio8x		WB  sdiostart	OPT_SERDES=1 OPT_DDR=1
+sdio8x		WB  sdiostart	OPT_SERDES=1 OPT_DDR=1 OPT_VCD=0
 sddmachk	WB  sddmachk	OPT_SERDES=1 OPT_DDR=1 OPT_DMA=1 OPT_VCD=1
 axsdioio	AXI sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=0 -DSDIO_AXI
 axsdioddr	AXI sdiostart	OPT_SERDES=0 OPT_DDR=1 OPT_VCD=0 -DSDIO_AXI
@@ -72,9 +72,16 @@ axemmc8x	AXI emmcstart	OPT_SERDES=1 OPT_DDR=1 OPT_VCD=0 -DSDIO_AXI
 #	run under Verilator.
 #
 # The CPU tests aren't yet fully implemented ...
-# CPU  cpusdio	sdcheck.hex	OPT_SERDES=0 OPT_DDR=0
-# CPU  cpusdddr	sdcheck.hex	OPT_SERDES=0 OPT_DDR=1
-# CPU  cpusd8x	sdcheck.hex	OPT_SERDES=1 OPT_DDR=1
-# CPU  cpuemio	emcheck.hex	OPT_SERDES=0 OPT_DDR=0
-# CPU  cpuemddr	emcheck.hex	OPT_SERDES=0 OPT_DDR=1
-# CPU  cpuem8x	emcheck.hex	OPT_SERDES=1 OPT_DDR=1
+# cpusdio	WBCPU sdcheck.hex	OPT_SERDES=0 OPT_DDR=0
+# cpusdddr	WBCPU sdcheck.hex	OPT_SERDES=0 OPT_DDR=1
+# cpusd8x	WBCPU sdcheck.hex	OPT_SERDES=1 OPT_DDR=1
+# cpuemio	WBCPU emcheck.hex	OPT_SERDES=0 OPT_DDR=0
+# cpuemddr	WBCPU emcheck.hex	OPT_SERDES=0 OPT_DDR=1
+# cpuem8x	WBCPU emcheck.hex	OPT_SERDES=1 OPT_DDR=1
+#
+# caxsdio	AXCPU sdcheck.hex	OPT_SERDES=0 OPT_DDR=0
+# caxsdddr	AXCPU sdcheck.hex	OPT_SERDES=0 OPT_DDR=1
+# caxsd8x	AXCPU sdcheck.hex	OPT_SERDES=1 OPT_DDR=1
+# caxemio	AXCPU emcheck.hex	OPT_SERDES=0 OPT_DDR=0
+# caxemddr	AXCPU emcheck.hex	OPT_SERDES=0 OPT_DDR=1
+# caxem8x	AXCPU emcheck.hex	OPT_SERDES=1 OPT_DDR=1

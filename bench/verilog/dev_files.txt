@@ -12,6 +12,8 @@ wb2axip/addrdecode.v
 wb2axip/axi_addr.v
 wb2axip/axi2axilite.v
 wb2axip/axi2axilsub.v
+wb2axip/axiempty.v
+wb2axip/axilgpio.v
 wb2axip/axilite2axi.v
 wb2axip/axilupsz.v
 wb2axip/axiram.v
@@ -20,6 +22,7 @@ wb2axip/memdev.v
 wb2axip/sfifo.v
 wb2axip/skidbuffer.v
 wb2axip/wbdown.v
+wb2axip/wbgpio.v
 wb2axip/wbupsz.v
 wb2axip/wbxbar.v
 ../../rtl/sdio_top.v

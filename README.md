@@ -54,12 +54,12 @@ For more information, please consult the [SDSPI user guide](doc/sdspi.pdf).
 This repository also contains a [second and newer SD card
 controller](rtl/sdio.v), designed to exploit both the full SDIO protocol and
 the 8b EMMC protocol--either with or without data strobes.  This controller
-should work with both SDIO and eMMC chips, with the differences between the two
-types of chips handled by software.
+has been tested against both SDIO and eMMC chips, with the differences between
+the two types of chips handled by software.
 
 The interface to this controller is roughly the same as that of the [SDSPI
 controller](rtl/sdspi.v), although there are enough significant differences
-to warrant a new user guide.
+to warrant a [separate user guide](doc/sdio.pdf).
 
 The controller is designed to support IO modes all the way up to the HS400
 mode used by eMMC.  HS400 is an eMMC DDR mode based off of a 200MHz IO clock,
@@ -72,7 +72,7 @@ designs without 8:1 and 1:8 SERDES IO components, 100MHz and slower clocks are
 still supported, depending upon whether or not DDR I/O components are available.
 Both open-drain and push-pull IOs are supported, and the front end can switch
 between the two as necessary based upon options within a PHY configuration
-register.
+register.  No support is planned for any of the UHS-II protocols.
 
 Both Wishbone and AXI-Lite interfaces are supported.
 
@@ -80,49 +80,44 @@ Both Wishbone and AXI-Lite interfaces are supported.
   working successfully in [its first FPGA
   project](https://github.com/ZipCPU/eth10g), where it is being used to control
   both an SD card as well as an eMMC chip.  Many of the components of this IP
-  have formal proofs, which they are known to pass.  Notably missing among the
-  component proofs is a proof of the [front end](rtl/sdfrontend.v).  The
-  [front end](rtl/sdfrontend.v)'s verification depends upon integrated
-  simulation testing.  Both [Verilog](bench/verilog/mdl_sdio.v) and
-  [C++](bench/cpp/sdiosim.cpp) models have been built which can be used to
-  test this controller in simulation, although only the Verilog
-  [SDIO](bench/verilog/mdl_sdio.v) and [eMMC](bench/verilog/mdl_emmc.v) models
-  have been tested to date.
+  have formal proofs, which they are known to pass.
+
+  Notably missing among the component proofs is a proof of the [front
+  end](rtl/sdfrontend.v).  The [front end](rtl/sdfrontend.v)'s verification
+  depends upon integrated simulation testing.
+
+  Both [Verilog](bench/verilog/mdl_sdio.v) and [C++](bench/cpp/sdiosim.cpp)
+  models have been built which can be used to test this controller in
+  simulation, although only the Verilog [SDIO](bench/verilog/mdl_sdio.v) and
+  [eMMC](bench/verilog/mdl_emmc.v) models have been tested to date.
 
 For more information, please consult the [SDIO user guide](doc/sdio.pdf).
 
 ### Roadmap and TODO items
 
-Although the RTL is now fully drafted, this project is far from finished.
-Several key steps remain before it will be a viable product:
+Although the initial RTL has both been fully drafted and successfully hardware
+tested, this project is far from finished.  Several key steps remain before
+this controller will be a completed product:
 
-- **C++ Model**: An early [Verilator C++ model](bench/cpp/sdiosim.cpp) has
-  been drafted.  It needs to be finished and tested.  No data strobe support
-  is planned for this model at present.
+- **Multi-block**: Multiple block commands have been demonstrated in
+  simulation for the SDIO model.  While eMMC multiblock support exists, it
+  hasn't yet been tested, and will likely fail.
 
-- **Multi-block**: Multiple block commands have been demonstrated in simulation.
-  Multiblock read commands depend upon the ability to stop the clock.
+  Multiblock commands form the basis for the DMA's operation.
 
-- **SW Testing**: [Control software](sw/) has been written, and has been
-  used to demonstrate both [SDIO](sw/sdiodrv.c) and [EMMC](sw/emmcdrvr.c)
-  performance.  This software is designed to work with the [FATFS
-  library](http://elm-chan.org/fsw/ff/00index_e.html).
+- **OPT_DMA**: An optional DMA is now passing both formal proofs and simulation
+  tests.  The DMA has yet to be tested in hardware, but is in all other
+  respects fully verified.
 
-  An integrated test bench exists for testing this software from a ZipCPU, it
-  just hasn't (yet) been tested.  Because this integrated test requires
-  integration with an external project (the ZipCPU), it's integration and
-  further work is on hold pending resolution of how to integrate multiple
-  design components together for this purpose.
+  Only the Wishbone version of the DMA controller exists at present.  Although
+  some components exist in my [wb2axip
+  repository](https://github.com/ZipCPU/wb2axip) which could support an AXI
+  DMA, these components have neither been integrated nor tested as part of this
+  design.
 
-- **OPT_DMA**: An optional DMA is now passing simulation tests.  The
-  controller has not (yet) been (fully) formally verified, nor has the DMA
-  been tested in hardware.  At present, I expect this new DMA to work in
-  "good" scenarios, but it is likely to lock up following something
-  unexpected, such as an error or an abort.  (i.e., the DMA controller is not
-  ASIC certified ...)
-
-  Only the Wishbone DMA controller exists at present.  Although some
-  components exist to support an AXI DMA, they have not (yet) been integrated.
+  Since the [eMMC model](bench/verilog/mdl_emmc.v) doesn't yet support the
+  multi-block commands required by the DMA, DMA simulation testing has been
+  limited to the [SDIO model](bench/verilog/mdl_sdio.v).
 
 - **STREAM DMA**: At customer request, hooks now exist for an (optional)
   stream DMA interface.  This interface will accept an AXI stream input,
@@ -130,17 +125,37 @@ Several key steps remain before it will be a viable product:
   then be written directly to the device.  Reads from the device may also
   produce data at the output stream.  At present, the stream inputs must
   be a minimum of 32bits, and a power of two in width.  The stream outputs
-  must either be 32bits or the bus width.  No provision exist for stream
+  must either be 32bits or the full bus width.  No provision exist for stream
   data less than a word in size.
 
-  This interface should become fully functional once the DMA is ready.
+  This interface will need to be tested together with the pending hardware
+  tests for the DMA.
+
+- **C++ Model**: An early [Verilator C++ model of an SDIO
+  component](bench/cpp/sdiosim.cpp) has been drafted.  It needs to be finished
+  and tested.  No C++ eMMC model exists at present, nor is any data strobe
+  support is planned.
+
+- **SW Testing**: [Control software](sw/) has been written, and has been
+  used to demonstrate both [SDIO](sw/sdiodrv.c) and [EMMC](sw/emmcdrvr.c)
+  performance.  This software is designed to work with the [FATFS
+  library](http://elm-chan.org/fsw/ff/00index_e.html).
+
+  An integrated test bench exists for testing this software from a
+  [ZipCPU](https://zipcpu.com/about/zipcpu.html), it just hasn't (yet) been
+  tested.  Because this integrated test bench will require integration with an
+  external project (i.e. the [ZipCPU](https://zipcpu.com/about/zipcpu.html),
+  further work is on hold pending a decision on how to integrate multiple
+  dissimilar design components together for this purpose.
 
 - **eMMC Boot mode**: No plan exists to support eMMC boot mode (at present).
   This decision will likely be revisited in the future.
 
-  Boot mode will require support for eMMC CRC tokens, which aren't (yet)
+  Boot mode may require support for eMMC CRC tokens, which aren't (yet)
   supported.  These are 8'bit return values, indicating whether or not a
   page has been read or written and passes its CRC check.
+
+  Some (untested) support exists for boot mode in the eMMC model.
 
 # Logic usage
 

@@ -391,7 +391,7 @@ module	sdaxil #(
 
 	assign	bus_cmd_stb = bus_write && bus_wraddr == ADDR_CMD
 			&& (dma_busy == dma_write)
-			&&((!r_cmd_err && !r_rx_err)
+			&&((!dma_error && !r_cmd_err && !r_rx_err)
 					|| (bus_wstrb[1] && bus_wdata[15]));
 
 
@@ -824,7 +824,8 @@ module	sdaxil #(
 
 	always @(*)
 	begin
-		clear_err = bus_cmd_stb && bus_wstrb[ERR_BIT/8] && bus_wdata[ERR_BIT];
+		clear_err = bus_write && bus_wraddr == ADDR_CMD
+			&& bus_wstrb[ERR_BIT/8] && bus_wdata[ERR_BIT];
 
 		if (o_tx_en || r_tx_request || o_rx_en || r_rx_request)
 			clear_err = 1'b0;
@@ -1650,8 +1651,6 @@ module	sdaxil #(
 			dma_sd2s   <= 1'b0;
 			// }}}
 		end else if (o_soft_reset)
-			// || (dma_busy && (i_dma_err
-			//	|| i_cmd_err || (!r_tx && i_rx_err))))
 		begin
 			// {{{
 			r_dma <= 1'b0;
@@ -1662,7 +1661,8 @@ module	sdaxil #(
 		end else if (!dma_busy && new_dma_request)
 		begin // User command to activate the DMA
 			// {{{
-			if (!r_dma_zero_len && !r_mem_busy)
+			if (!r_dma_zero_len && !r_mem_busy && card_present
+				&& (!dma_error || clear_err))
 			begin
 				r_dma <= 1'b1;
 				if (bus_wdata[FIFO_WRITE_BIT])
@@ -1672,7 +1672,7 @@ module	sdaxil #(
 					{ dma_s2sd, dma_sd2s } <= 2'b00;
 			end
 			// }}}
-		end else if (i_dma_busy && r_dma)
+		end else if ((r_abort || i_dma_busy) && r_dma)
 		begin
 			{ dma_s2sd, dma_sd2s } <= 2'b00;
 		end else if (r_dma && !i_dma_busy && !o_dma_s2sd && !o_dma_sd2s)
@@ -1689,11 +1689,11 @@ module	sdaxil #(
 				// Otherwise, if we are transmitting, wait
 				// until our buffer is unloaded, then command
 				// the DMA to load it.
-				dma_s2sd <= !r_dma_loaded[r_dma_fifo] && !r_dma_err && !r_abort;
+				dma_s2sd <= !r_dma_loaded[r_dma_fifo] && !r_dma_err && !w_dma_abort;
 			end else begin
 				// If we are receiving, wait until the buffer
 				// is fully loaded, then write it out.
-				dma_sd2s <= r_dma_loaded[r_dma_fifo] && !r_dma_err && !r_abort;
+				dma_sd2s <= r_dma_loaded[r_dma_fifo] && !r_dma_err && !w_dma_abort;
 			end
 		end
 
@@ -1710,6 +1710,10 @@ module	sdaxil #(
 			r_dma_int <= 1'b0;
 			if (!r_dma_zero_len && !r_mem_busy)
 				r_dma_int <= 1'b1;
+			if (!card_present)
+				r_dma_int <= 1'b1;
+			if (dma_error && !clear_err)
+				r_dma_int <= 1'b1;
 			// }}}
 		end else if (w_release_dma)
 			r_dma_int <= 1'b1;
@@ -1724,6 +1728,14 @@ module	sdaxil #(
 		always @(*)
 		if (!i_reset && !r_dma)
 			assert(!dma_sd2s && !dma_s2sd);
+
+		always @(posedge i_clk)
+		if (!i_reset && $past(r_abort))
+		begin
+			assert(!dma_sd2s);
+			assert(!dma_s2sd);
+		end
+
 		always @(*)
 		if (!i_reset && r_dma)
 		begin
@@ -1846,7 +1858,7 @@ module	sdaxil #(
 		end
 
 		always @(posedge i_clk)
-		if (i_reset)
+		if (i_reset || dma_error)
 		begin
 			r_abort <= 1'b0;
 		end else if (w_dma_abort)
@@ -1854,7 +1866,7 @@ module	sdaxil #(
 			r_abort <= 1'b0;
 			if (o_dma_s2sd || o_dma_sd2s || i_dma_busy)
 				r_abort <= 1'b1;
-		end else if (!dma_busy)
+		end else
 			r_abort <= 1'b0;
 
 		assign	o_dma_abort = r_abort;
@@ -1899,13 +1911,10 @@ module	sdaxil #(
 		wire	[LGFIFOW-1:0]	f_dma_rdaddr;
 
 		always @(*)
-		if (!i_reset && dma_busy)
+		if (!i_reset && dma_busy && r_dma_loaded[dma_fifo] == r_tx)
 		begin
-			if (r_dma_loaded[dma_fifo] == r_tx)
-			begin
-				assert(!r_dma_last);
-				assert(r_subblock == blk_words);
-			end
+			assert(!r_dma_last);
+			assert(r_subblock == blk_words);
 		end
 
 		always @(*)
@@ -1928,14 +1937,15 @@ module	sdaxil #(
 				assert(!dma_read_fifo);
 				assert(fif_wraddr ==(f_blocksz- r_subblock-1));
 			end else begin
-				if (!r_sd2s_valid)
+				if (!r_sd2s_valid && !r_dma_err)
 				begin
 					assert(r_subblock == f_blocksz-1);
 					assert(!dma_last || lgblk == 2);
 				end
 
 				if (r_read_active)
-					assert(fif_rdaddr == f_dma_rdaddr);
+					assert(fif_rdaddr == f_dma_rdaddr
+						|| r_dma_err);
 				else begin
 					assert(!pre_dma_valid);
 					assert(!r_sd2s_valid);
@@ -2166,7 +2176,7 @@ module	sdaxil #(
 		// o_sd2s_valid, pre_dma_valid
 		// {{{
 		always @(posedge i_clk)
-		if (i_reset || o_soft_reset || !dma_busy || r_tx)
+		if (i_reset || o_soft_reset || !dma_busy || r_tx || dma_error)
 			{ r_sd2s_valid, pre_dma_valid } <= 2'b00;
 		else if (o_sd2s_valid && i_sd2s_ready && o_sd2s_last)
 			{ r_sd2s_valid, pre_dma_valid } <= 2'b00;
@@ -2177,7 +2187,7 @@ module	sdaxil #(
 		always @(*)
 		if (i_reset) begin
 		end else if (!dma_busy || r_tx || r_dma_zero_len)
-			// Now receive outputs allowed while transmitting
+			// No receive outputs allowed while transmitting
 			assert(!r_sd2s_valid && !pre_dma_valid);
 		else if (!r_dma_loaded[dma_fifo])
 			assert(!r_sd2s_valid && !pre_dma_valid);
@@ -2240,20 +2250,29 @@ module	sdaxil #(
 		reg[DMA_AW-1:0]	f_cfg_addr;
 		reg	[31:0]	f_cfg_len;
 
-		// assume i_dma_busy
+		// assumptions about i_dma_busy
 		// {{{
+		// Busy only rises when requested
 		always @(posedge i_clk)
 		if (!$past(o_dma_s2sd) && !$past(o_dma_sd2s))
 			assume(!$rose(i_dma_busy));
 
 		always @(posedge i_clk)
-		if ($past(i_reset) || $past(o_soft_reset))
+		if (!i_reset && !dma_busy)
+			// i_dma_busy can't start without a request
+			assert(!i_dma_busy);
+
+		always @(posedge i_clk)
+		if ($past(i_reset) || $past(o_soft_reset) || $past(o_dma_abort))
 			assume(!i_dma_busy);
 		else if ($past(i_s2sd_valid && o_s2sd_ready && dma_last))
+			// Busy always falls after last on TX
 			assume($fell(i_dma_busy));
 		else if ($past(o_sd2s_valid && i_sd2s_ready && dma_last))
+			// Busy always falls after last on RX
 			assume($fell(i_dma_busy));
 		else if ($past(o_dma_s2sd) || $past(o_dma_sd2s))
+			// Busy always rises on request
 			assume(i_dma_busy);
 		else
 			assume($stable(i_dma_busy));
@@ -2263,16 +2282,14 @@ module	sdaxil #(
 	//		assume(i_dma_busy);
 
 		always @(posedge i_clk)
-		if (!i_dma_busy) assume(!i_s2sd_valid);
+		if (!i_dma_busy)
+			// Valid only rises if the DMA is busy
+			assume(!i_s2sd_valid);
 		// }}}
 
 		always @(*)
 		if (!dma_busy)
 			assume(!i_dma_err);
-
-		always @(posedge i_clk)
-		if (!i_reset && !o_soft_reset && !dma_busy)
-			assert(!i_dma_err);
 
 		// f_cfg_* configuration copy
 		// {{{
@@ -2309,10 +2326,11 @@ module	sdaxil #(
 			f_tx_blocks <= f_tx_blocks + 1;
 		// }}}
 
-		// Stream properties
+		// AXI Stream properties
 		// {{{
 		always @(posedge i_clk)
-		if (!f_past_valid || $past(i_reset) || $past(o_soft_reset))
+		if (!f_past_valid || $past(i_reset) || $past(o_soft_reset)
+			|| $past(r_abort))
 		begin
 			assume(!i_s2sd_valid);
 		end else if ($past(i_s2sd_valid && !o_s2sd_ready))
@@ -2322,7 +2340,8 @@ module	sdaxil #(
 		end
 
 		always @(posedge i_clk)
-		if (!f_past_valid || $past(i_reset) || $past(o_soft_reset))
+		if (!f_past_valid || $past(i_reset) || $past(o_soft_reset)
+			|| $past(r_abort))
 		begin
 			assert(!o_sd2s_valid || !f_past_valid);
 		end else if ($past(o_sd2s_valid && !i_sd2s_ready))
@@ -2330,6 +2349,40 @@ module	sdaxil #(
 			assert(o_sd2s_valid);
 			assert($stable(o_sd2s_data));
 			assert($stable(o_sd2s_last));
+		end
+		// }}}
+
+		// DMA Error/Abort properties
+		// {{{
+		always @(posedge i_clk)
+		if (!i_reset && $past(r_abort))
+			assert(!r_abort);
+
+		always @(posedge i_clk)
+		if (!i_reset && !$rose(r_dma_err) && !$past(o_soft_reset))
+			assert(!$rose(r_abort));
+
+		always @(posedge i_clk)
+		if (!i_reset && !r_dma_err)
+		begin
+			if (!$past(o_soft_reset))
+				assert(!r_abort);
+		end
+
+		always @(posedge i_clk)
+		if (!i_reset && $past(!i_reset && i_dma_busy && !card_present))
+		begin
+			// Abort on any card removal
+			assert(r_dma_err || $past(o_soft_reset));
+			assert(r_abort || $past(r_abort));
+		end
+
+		always @(posedge i_clk)
+		if (!i_reset && r_dma_err)
+		begin
+			assert(!o_dma_sd2s || r_abort);
+			assert(!o_dma_s2sd || r_abort);
+			assert(!i_dma_busy || r_abort);
 		end
 		// }}}
 
@@ -2345,6 +2398,8 @@ module	sdaxil #(
 					assert(!o_tx_en || r_tx_sent);
 					assert(!r_rx_request);
 					assert(!o_rx_en);
+				end else if (r_dma_err)
+				begin
 				end else if ((r_tx_request || o_tx_en) && (!r_tx_sent))
 				begin
 					assert(dma_cmd_fifo==(f_tx_blocks[0]
@@ -2356,7 +2411,9 @@ module	sdaxil #(
 
 				if (f_tx_blocks == 0)
 					assert(!r_tx_sent);
-				if (f_tx_blocks == 0 && (!o_tx_en && !r_tx_request))
+				if (r_dma_err)
+				begin
+				end else if (f_tx_blocks == 0 && (!o_tx_en && !r_tx_request))
 				begin
 					assert(dma_cmd_fifo == r_fifo);
 				end else begin
@@ -2364,7 +2421,8 @@ module	sdaxil #(
 				end
 				// r_fifo
 				// dma_cmd_fifo
-			end else begin
+			end else if (!r_dma_err)
+			begin
 				assert(dma_fifo==(f_tx_blocks[0] ^ f_cfg_fifo));
 				assert(dma_cmd_fifo != r_fifo);
 			end
@@ -2445,10 +2503,6 @@ module	sdaxil #(
 		// {{{
 		// always @(*)
 		// if (dma_busy) assume(r_tx);
-		always @(*)
-			assume(!r_dma_err);
-		always @(*)
-			assume(!r_abort);
 		always @(*)
 		if (dma_busy)
 			assume(lgblk > 2);

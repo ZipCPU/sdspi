@@ -1,7 +1,7 @@
 <HTML><HEAD><TITLE>Formal Verification Report</TITLE></HEAD>
 <BODY>
 <H1 align=center>SD Controller Formal Verification Report</H1>
-<H2 align=center>20240222</H2>
+<H2 align=center>20240301</H2>
 <TABLE border>
 <TR><TH>Status</TH><TH>Component</TD><TH>Proof</TH><TH>Component description</TH></TR>
 <TR></TR>
@@ -11,10 +11,10 @@
 <TR><TD bgcolor=#caeec8>Pass</TD><TD>llsdspi</TD><TD>_prfc</TD></TR>
 <TR><TD bgcolor=#caeec8>7 Cover points</TD><TD>llsdspi</TD><TD>_cvr</TD></TR>
 <TR></TR>
-<TR><TD bgcolor=#ffffca>9 steps of BMC</TD><TD>sdaxil</TD><TD>_prfdma</TD><TD rowspan=5>SDIO AXI-Lite Bus handler</TD></TR>
+<TR><TD bgcolor=#caeec8>Pass</TD><TD>sdaxil</TD><TD>_prfdma</TD><TD rowspan=5>SDIO AXI-Lite Bus handler</TD></TR>
 <TR><TD bgcolor=#caeec8>Pass</TD><TD>sdaxil</TD><TD>_prf</TD></TR>
-<TR><TD bgcolor=#ffffca>9 steps of BMC</TD><TD>sdaxil</TD><TD>_prfds</TD></TR>
-<TR><TD bgcolor=#ffffca>9 steps of BMC</TD><TD>sdaxil</TD><TD>_prfdr</TD></TR>
+<TR><TD bgcolor=#caeec8>Pass</TD><TD>sdaxil</TD><TD>_prfds</TD></TR>
+<TR><TD bgcolor=#caeec8>Pass</TD><TD>sdaxil</TD><TD>_prfdr</TD></TR>
 <TR><TD bgcolor=#caeec8>18 Cover points</TD><TD>sdaxil</TD><TD>_cvr</TD></TR>
 <TR></TR>
 <TR><TD bgcolor=#caeec8>Pass</TD><TD>sdckgen</TD><TD>_prf</TD><TD rowspan=1>SDIO Divided clock generator</TD></TR>
@@ -32,11 +32,11 @@
 <TR><TD bgcolor=#caeec8>34 Cover points</TD><TD>sdtxframe</TD><TD>_cvr</TD><TD rowspan=2>SDIO transmit data controller</TD></TR>
 <TR><TD bgcolor=#caeec8>Pass</TD><TD>sdtxframe</TD><TD>_prf</TD></TR>
 <TR></TR>
-<TR><TD bgcolor=#ffffca>9 steps of BMC</TD><TD>sdwb</TD><TD>_prfdr</TD><TD rowspan=5>SDIO Wishbone Bus handler</TD></TR>
-<TR><TD bgcolor=#ffffca>9 steps of BMC</TD><TD>sdwb</TD><TD>_prfds</TD></TR>
+<TR><TD bgcolor=#caeec8>Pass</TD><TD>sdwb</TD><TD>_prfdr</TD><TD rowspan=5>SDIO Wishbone Bus handler</TD></TR>
+<TR><TD bgcolor=#caeec8>Pass</TD><TD>sdwb</TD><TD>_prfds</TD></TR>
 <TR><TD bgcolor=#caeec8>Pass</TD><TD>sdwb</TD><TD>_prf</TD></TR>
 <TR><TD bgcolor=#caeec8>19 Cover points</TD><TD>sdwb</TD><TD>_cvr</TD></TR>
-<TR><TD bgcolor=#ffffca>9 steps of BMC</TD><TD>sdwb</TD><TD>_prfdma</TD></TR>
+<TR><TD bgcolor=#caeec8>Pass</TD><TD>sdwb</TD><TD>_prfdma</TD></TR>
 <TR></TR>
 <TR><TD bgcolor=#caeec8>11 Cover points</TD><TD>spicmd</TD><TD>_cvr</TD><TD rowspan=2>SPI Command processor</TD></TR>
 <TR><TD bgcolor=#caeec8>Pass</TD><TD>spicmd</TD><TD>_prf</TD></TR>

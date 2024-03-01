@@ -41,6 +41,7 @@ use Cwd;
 $path_cnt = @ARGV;
 
 $filelist = "dev_files.txt";
+$cpu_files= "cpu_files.txt";
 $testlist = "dev_testcases.txt";
 $exefile  = "./devsim";
 $linestr  = "----------------------------------------";
@@ -115,6 +116,7 @@ sub simline($) {
 
 	my $defs = "";
 	my $parm = "";
+	my $cpu_flag = 0;
 
 	my $vcddump=0;
 	my $vcdfile="";
@@ -128,23 +130,35 @@ sub simline($) {
 		$args = $4;
 	}
 
-	# if ($tstcfg =~ /CPU/i) {
-	#	$toplevel = $cputop;
-	#	$filelist = "cpu_files.txt";
-	#} els
-	if ($tstcfg =~ /WB/i) {
+	if ($tstcfg =~ /WBCPU/i) {
 		$toplevel = $wbtoplvl;
 		$filelist = "dev_files.txt";
+		$parm = $parm . " -P$toplevel.OPT_CPU=1";
+		$defs = $defs . " -DSCRIPT=\\\"/dev/null\\\"";
+		$cpu_flag = 1;
+	} elsif ($tstcfg =~ /WB/i) {
+		$toplevel = $wbtoplvl;
+		$filelist = "dev_files.txt";
+		$parm = $parm . " -P$toplevel.OPT_CPU=0 -P$toplevel.MEM_FILE=\\\"\\\"";
+		$cpu_flag = 0;
+	} elsif ($tstcfg =~ /AXICPU/i) {
+		$toplevel = $axtoplvl;
+		$filelist = "dev_files.txt";
+		$parm = $parm . " -P$toplevel.OPT_CPU=1";
+		$defs = $defs . " -DSCRIPT=\\\"/dev/null\\\"";
+		$cpu_flag = 1;
 	} elsif ($tstcfg =~ /AXI/i) {
 		$toplevel = $axtoplvl;
 		$filelist = "dev_files.txt";
+		$parm = $parm . " -P$toplevel.OPT_CPU=0 -P$toplevel.MEM_FILE=\\\"\\\"";
+		$cpu_flag = 0;
 	} else {
 		return();
 	}
 
-	if ($tstname eq "") {
+	if ($tstname eq "") {	## No test
 		return();
-	} elsif ($vivado > 0) {
+	} elsif ($vivado > 0) {	## We have no Vivado test support
 		return();
 	} else {
 		## {{{
@@ -157,9 +171,12 @@ sub simline($) {
 		$tstamp = timestamp();
 
 		## Set up the IVerilog command
+		## {{{
 		$cmd = "iverilog -g2012";
 		$defs = $defs . " -DIVERILOG";
-		
+
+		## Process parameters
+		## {{{
 		while($args =~ /\s*(\S+)\s*(.*)$/) {
 			my $eq = 0;
 			if ($args =~ /\s*(\S+)\s*=\s*(\S+)(.*)$/) {
@@ -174,7 +191,8 @@ sub simline($) {
 				$eq = 0;
 			}
 
-			if ($p =~ /^-D(\S+)/) {
+			if ($p =~ /^-D(\S+)/) { ## A macro definition
+				## {{{
 				$p = $1;
 				if ($v =~ /\"(.*)\"/) {
 					$str = $1;
@@ -184,27 +202,49 @@ sub simline($) {
 				} else {
 					$defs = $defs . " -D$p";
 				}
-			} elsif ($v =~ /\"(.*)\"/) {
+				## }}}
+			} elsif ($v =~ /\"(.*)\"/) { ## Parameter string
+				## {{{
 				$str = $1;
 				$parm = $parm . " -P$toplevel.$p=\\\"$str\\\"";
+				## }}}
 			} else {
 				$parm = $parm . " -P$toplevel.$p=$v";
 			}
 		}
+		## }}}
 
-		$defs = $defs . " -DSCRIPT=\\\"../testscript/$tstscript.v\\\"";
+		## Include the test script
+		## {{{
+		if ($cpu_flag) {
+			if ($tstscript =~ /.hex$/) {
+				$parm = $parm . " -P$toplevel.MEM_FILE=\\\"$tstscript\\\"";
+			} else {
+				$parm = $parm . " -P$toplevel.MEM_FILE=\\\"$tstscript.hex\\\"";
+			}
+		} else {
+			$defs = $defs . " -DSCRIPT=\\\"../testscript/$tstscript.v\\\"";
+		}
+		## }}}
 
 		$cmd = $cmd . " " . $defs . " " . $parm;
 
 		$cmd = $cmd . " -c " . $filelist;
+		if ($cpu_flag) {
+			$cmd = $cmd . " -c " . $cpu_files;
+		}
 		$cmd = $cmd . " -o " . $exefile;
 		$cmd = $cmd . " -s " . $toplevel;
 		$sim_log = $testd . $tstname . ".txt";
+		## }}}
 
+		## Build the IVerilog simulation
+		## {{{
 		$cmd = $cmd . " |& tee $sim_log";
 		system "echo \'$cmd\'";
 		system "bash -c \'$cmd\'";
 		$errB= $?;
+		## }}}
 
 		if ($errB == 0 and -x $exefile) {
 			## Run the simulation
@@ -263,7 +303,8 @@ sub simline($) {
 			## }}}
 			## }}}
 		} else {
-			## Report that this failed to build
+			## Report that the simulation failed to build
+			## {{{
 			open (SUM,">> $report");
 			$tstamp = timestamp();
 			$msg = sprintf("%s IVerilog  -- %s", $tstamp, $tstname);
@@ -271,6 +312,7 @@ sub simline($) {
 			print     "BLD-FAIL  $msg\n";
 			push @failed,$tstname;
 			close SUM;
+			## }}}
 		}
 		## }}}
 	}

@@ -44,7 +44,10 @@ module	tb_wb;
 	parameter	[1:0]	OPT_DDR = 1'b1;
 	parameter	[0:0]	OPT_DMA = 1'b0;
 	parameter	[0:0]	OPT_VCD = 1'b0;
+	parameter	[0:0]	OPT_CPU = 1'b0;
 	parameter		DW = 64;
+	parameter		MEM_FILE = "";
+	parameter		CONSOLE_FILE = "";
 	localparam		BFM_DW=32;
 	localparam		VCD_FILE = "trace.vcd";
 	parameter		LGMEMSZ = 16;	// 64kB
@@ -55,12 +58,16 @@ module	tb_wb;
 			BFM_AW = ADDRESS_WIDTH-$clog2(BFM_DW/8);
 
 	parameter [ADDRESS_WIDTH-1:0]
-			MEM_ADDR  = { 1'b1,  {(AW-1){1'b0}}, {(WBLSB){1'b0}} },
-			SDIO_ADDR = { 3'b001,{(AW-3){1'b0}}, {(WBLSB){1'b0}} },
-			EMMC_ADDR = { 3'b010,{(AW-3){1'b0}}, {(WBLSB){1'b0}} };
+			MEM_ADDR  = { 1'b1,   {(AW-1){1'b0}}, {(WBLSB){1'b0}} },
+			CON_ADDR  = { 5'b00010,{(AW-5){1'b0}},{(WBLSB){1'b0}} },
+			GPIO_ADDR = { 5'b00011,{(AW-5){1'b0}},{(WBLSB){1'b0}} },
+			SDIO_ADDR = { 3'b001, {(AW-3){1'b0}}, {(WBLSB){1'b0}} },
+			EMMC_ADDR = { 3'b010, {(AW-3){1'b0}}, {(WBLSB){1'b0}} };
 	//
 	parameter [ADDRESS_WIDTH-1:0]
 			MEM_MASK  = { 1'b1,  {(AW-1){1'b0}}, {(WBLSB){1'b0}} },
+			CON_MASK  = { 5'b11111,{(AW-5){1'b0}},{(WBLSB){1'b0}} },
+			GPIO_MASK = { 5'b11111,{(AW-5){1'b0}},{(WBLSB){1'b0}} },
 			SDIO_MASK = { 3'b111,{(AW-3){1'b0}}, {(WBLSB){1'b0}} },
 			EMMC_MASK = { 3'b111,{(AW-3){1'b0}}, {(WBLSB){1'b0}} };
 
@@ -83,41 +90,88 @@ module	tb_wb;
 	wire	[DW/8-1:0]	bfmw_sel;
 	// }}}
 
+	// CPU bus definitions
+	// {{{
+	wire			cpu_cyc, cpu_stb, cpu_we,
+				cpu_stall, cpu_ack, cpu_err;
+	wire	[AW-1:0]	cpu_addr;
+	wire	[DW-1:0]	cpu_data, cpu_idata;
+	wire	[DW/8-1:0]	cpu_sel;
+	// }}}
+
+	// GPIO bus-slave definitions
+	// {{{
+	wire			gpio_cyc, gpio_stb, gpio_we,
+				gpio_stall, gpio_ack, gpio_err;
+	wire	[AW-1:0]	gpio_addr;
+	wire	[DW-1:0]	gpio_data, gpio_idata;
+	wire	[DW/8-1:0]	gpio_sel;
+
+	wire			gpio_vcd_flag, gpio_error_flag;
+	// }}}
+
+	// Console bus-slave definitions
+	// {{{
+	wire			con_cyc, con_stb, con_we,
+				con_stall, con_ack, con_err;
+	wire	[AW-1:0]	con_addr;
+	wire	[DW-1:0]	con_data, con_idata;
+	wire	[DW/8-1:0]	con_sel;
+	// }}}
+
+	// sdiow_*
+	// {{{
 	wire			sdiow_cyc, sdiow_stb, sdiow_we,
 				sdiow_stall, sdiow_ack, sdiow_err;
 	wire	[AW-1:0]	sdiow_addr;
 	wire	[DW-1:0]	sdiow_data, sdiow_idata;
 	wire	[DW/8-1:0]	sdiow_sel;
+	// }}}
 
+	// sdio_dma_*
+	// {{{
 	wire			sdio_dma_cyc, sdio_dma_stb, sdio_dma_we,
 				sdio_dma_stall, sdio_dma_ack, sdio_dma_err;
 	wire	[AW-1:0]	sdio_dma_addr;
 	wire	[DW-1:0]	sdio_dma_data, sdio_dma_idata;
 	wire	[DW/8-1:0]	sdio_dma_sel;
+	// }}}
 
+	// sdio_*
+	// {{{
 	wire			sdio_cyc, sdio_stb, sdio_we,
 				sdio_stall, sdio_ack, sdio_err;
 	wire	[BFM_AW-1:0]	sdio_addr;
 	wire	[BFM_DW-1:0]	sdio_data, sdio_idata;
 	wire	[BFM_DW/8-1:0]	sdio_sel;
+	// }}}
 
+	// emmcw_*
+	// {{{
 	wire			emmcw_cyc, emmcw_stb, emmcw_we,
 				emmcw_stall, emmcw_ack, emmcw_err;
 	wire	[AW-1:0]	emmcw_addr;
 	wire	[DW-1:0]	emmcw_data, emmcw_idata;
 	wire	[DW/8-1:0]	emmcw_sel;
+	// }}}
 
+	// emmc_dma_*
+	// {{{
 	wire			emmc_dma_cyc, emmc_dma_stb, emmc_dma_we,
 				emmc_dma_stall, emmc_dma_ack, emmc_dma_err;
 	wire	[AW-1:0]	emmc_dma_addr;
 	wire	[DW-1:0]	emmc_dma_data, emmc_dma_idata;
 	wire	[DW/8-1:0]	emmc_dma_sel;
+	// }}}
 
+	// emmc_cyc
+	// {{{
 	wire			emmc_cyc, emmc_stb, emmc_we,
 				emmc_stall, emmc_ack, emmc_err;
 	wire	[BFM_AW-1:0]	emmc_addr;
 	wire	[BFM_DW-1:0]	emmc_data, emmc_idata;
 	wire	[BFM_DW/8-1:0]	emmc_sel;
+	// }}}
 
 	// RAM WB declarations
 	// {{{
@@ -132,7 +186,8 @@ module	tb_wb;
 	wire	[3:0]		sd_dat;
 	wire			emmc_cmd, emmc_ck, emmc_ds;
 	wire	[7:0]		emmc_dat;
-	wire			sdio_interrupt, emmc_interrupt;
+	wire			sdio_interrupt, emmc_interrupt, cpu_interrupt,
+				gpio_interrupt;
 	wire	[31:0]		sdio_debug, emmc_debug;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -209,41 +264,47 @@ module	tb_wb;
 	//
 
 	wbxbar #(
-		.NM(3), .NS(3),
+		// {{{
+		.NM(4), .NS(5),
 		.AW(AW), .DW(DW),
 		.SLAVE_ADDR({
 			MEM_ADDR[AW+WBLSB-1:WBLSB],
+			CON_ADDR[AW+WBLSB-1:WBLSB],
+			GPIO_ADDR[AW+WBLSB-1:WBLSB],
 			EMMC_ADDR[AW+WBLSB-1:WBLSB],
 			SDIO_ADDR[AW+WBLSB-1:WBLSB]}),
 		.SLAVE_MASK({
 			MEM_MASK[AW+WBLSB-1:WBLSB],
+			CON_MASK[AW+WBLSB-1:WBLSB],
+			GPIO_MASK[AW+WBLSB-1:WBLSB],
 			EMMC_MASK[AW+WBLSB-1:WBLSB],
 			SDIO_MASK[AW+WBLSB-1:WBLSB]})
+		// }}}
 	) u_xbar (
 		// {{{
 		.i_clk(clk), .i_reset(reset),
 		//
-		.i_mcyc({   emmc_dma_cyc,   sdio_dma_cyc,   bfmw_cyc   }),
-		.i_mstb({   emmc_dma_stb,   sdio_dma_stb,   bfmw_stb   }),
-		.i_mwe({    emmc_dma_we,    sdio_dma_we,    bfmw_we    }),
-		.i_maddr({  emmc_dma_addr,  sdio_dma_addr,  bfmw_addr  }),
-		.i_mdata({  emmc_dma_data,  sdio_dma_data,  bfmw_data  }),
-		.i_msel({   emmc_dma_sel,   sdio_dma_sel,   bfmw_sel   }),
-		.o_mstall({ emmc_dma_stall, sdio_dma_stall, bfmw_stall }),
-		.o_mack({   emmc_dma_ack,   sdio_dma_ack,   bfmw_ack   }),
-		.o_mdata({  emmc_dma_idata, sdio_dma_idata, bfmw_idata }),
-		.o_merr({   emmc_dma_err,   sdio_dma_err,   bfmw_err   }),
+		.i_mcyc({   cpu_cyc,   emmc_dma_cyc,   sdio_dma_cyc,   bfmw_cyc   }),
+		.i_mstb({   cpu_stb,   emmc_dma_stb,   sdio_dma_stb,   bfmw_stb   }),
+		.i_mwe({    cpu_we,    emmc_dma_we,    sdio_dma_we,    bfmw_we    }),
+		.i_maddr({  cpu_addr,  emmc_dma_addr,  sdio_dma_addr,  bfmw_addr  }),
+		.i_mdata({  cpu_data,  emmc_dma_data,  sdio_dma_data,  bfmw_data  }),
+		.i_msel({   cpu_sel,   emmc_dma_sel,   sdio_dma_sel,   bfmw_sel   }),
+		.o_mstall({ cpu_stall, emmc_dma_stall, sdio_dma_stall, bfmw_stall }),
+		.o_mack({   cpu_ack,   emmc_dma_ack,   sdio_dma_ack,   bfmw_ack   }),
+		.o_mdata({  cpu_idata, emmc_dma_idata, sdio_dma_idata, bfmw_idata }),
+		.o_merr({   cpu_err,   emmc_dma_err,   sdio_dma_err,   bfmw_err   }),
 		//
-		.o_scyc({   mem_cyc,   emmcw_cyc,   sdiow_cyc   }),
-		.o_sstb({   mem_stb,   emmcw_stb,   sdiow_stb   }),
-		.o_swe({    mem_we,    emmcw_we,    sdiow_we    }),
-		.o_saddr({  mem_addr,  emmcw_addr,  sdiow_addr  }),
-		.o_sdata({  mem_data,  emmcw_data,  sdiow_data  }),
-		.o_ssel({   mem_sel,   emmcw_sel,   sdiow_sel   }),
-		.i_sstall({ mem_stall, emmcw_stall, sdiow_stall }),
-		.i_sack({   mem_ack,   emmcw_ack,   sdiow_ack   }),
-		.i_sdata({  mem_idata, emmcw_idata, sdiow_idata }),
-		.i_serr({   mem_err,   emmcw_err,   sdiow_err   })
+		.o_scyc({   mem_cyc,   con_cyc, gpio_cyc,   emmcw_cyc,   sdiow_cyc   }),
+		.o_sstb({   mem_stb,   con_stb, gpio_stb,   emmcw_stb,   sdiow_stb   }),
+		.o_swe({    mem_we,    con_we, gpio_we,    emmcw_we,    sdiow_we    }),
+		.o_saddr({  mem_addr,  con_addr, gpio_addr,  emmcw_addr,  sdiow_addr  }),
+		.o_sdata({  mem_data,  con_data, gpio_data,  emmcw_data,  sdiow_data  }),
+		.o_ssel({   mem_sel,   con_sel, gpio_sel,   emmcw_sel,   sdiow_sel   }),
+		.i_sstall({ mem_stall, con_cyc, gpio_stall, emmcw_stall, sdiow_stall }),
+		.i_sack({   mem_ack,   con_ack, gpio_ack,   emmcw_ack,   sdiow_ack   }),
+		.i_sdata({  mem_idata, con_idata, gpio_idata, emmcw_idata, sdiow_idata }),
+		.i_serr({   mem_err,   con_err, gpio_err,   emmcw_err,   sdiow_err   })
 		// }}}
 	);
 
@@ -257,7 +318,7 @@ module	tb_wb;
 	//
 
 	memdev #(
-		.LGMEMSZ(LGMEMSZ), .DW(DW)
+		.LGMEMSZ(LGMEMSZ), .DW(DW), .HEXFILE(MEM_FILE)
 	) u_mem (
 		.i_clk(clk), .i_reset(reset),
 		.i_wb_cyc(mem_cyc), .i_wb_stb(mem_stb), .i_wb_we(mem_we),
@@ -434,11 +495,114 @@ module	tb_wb;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
+	// Console peripheral
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
+
+	// An SDIO/eMMC test bench doesn't really need a console peripheral.
+	// However, if you intend to run the test bench from a CPU, the CPU
+	// *will* need the console port.
+
+	reg		con_write_en, r_con_ack;
+	reg	[7:0]	con_write_byte;
+	integer	sim_console;
+
+
+	assign	con_stall = 1'b0;
+
+	initial	r_con_ack = 1'b0;
+	always @(posedge clk)
+		r_con_ack <= !reset && con_stb;
+	assign	con_ack = r_con_ack;
+
+	initial	if (CONSOLE_FILE != 0)
+	begin
+		sim_console = $fopen(CONSOLE_FILE);
+	end else
+		sim_console = -1;
+
+	// Make sure we can read the outgoing console data from the trace
+	initial	con_write_en = 1'b0;
+	always @(posedge clk)
+	if (reset)
+		con_write_en <= 1'b0;
+	else if (con_stb && con_we && con_sel[DW/8-4])
+		con_write_en <= 1'b1;
+	else
+		con_write_en <= 1'b0;
+
+	initial	con_write_byte = 8'h0;
+	always @(posedge clk)
+	if (con_stb && con_we && con_sel[DW/8-4])
+		con_write_byte <= con_data[DW-32 +: 8];
+
+	always @(posedge clk)
+	if (!reset && con_write_en)
+	begin
+		if (sim_console >= 0)
+			$fwrite(sim_console, "%1s", con_write_byte);
+		$write("%1s", con_write_byte);
+	end
+
+	assign	con_idata = {(DW){1'b0}};
+	assign	con_err   = 1'b0;
+
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// GPIO peripheral
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
+
+	// The SDIO/eMMC test doesn't really need a GPIO peripheral, however
+	// if we want the CPU to be able to generate an error signal to trigger
+	// the error flag below, then we need some peripheral to give it the
+	// ability to do that.  This GPIO peripheral will do that for us.
+
+	// Since this doesn't really have any other addresses, we don't
+	// really need to downsize.
+
+	wbgpio #(
+		.NOUT(2), .NIN(1), .DEFAULT((OPT_CPU) ? 2'b0 : 2'b1)
+	) u_gpio (
+		// {{{
+		.i_clk(clk),
+		//
+		.i_wb_cyc(gpio_cyc && !reset), .i_wb_stb(gpio_stb && !reset),
+			.i_wb_we(gpio_we),
+		.i_wb_data(gpio_data[DW-1:DW-32]),
+			.i_wb_sel(gpio_sel[DW/8-1:DW/8-4]),
+		.o_wb_stall(gpio_stall), .o_wb_ack(gpio_ack),
+		.o_wb_data(gpio_idata[DW-1:DW-32]),
+		.i_gpio(OPT_VCD && gpio_vcd_flag),
+		.o_gpio({ gpio_error_flag, gpio_vcd_flag }),
+		.o_int(gpio_interrupt)
+		// }}}
+	);
+
+	generate if (DW>32)
+	begin : BIG_GPIO_IDATA
+		assign	gpio_idata[DW-33:0] = 0;
+	end endgenerate
+
+	assign	gpio_err = 1'b0;
+
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
 	// VCD generation
 	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
 
 	initial if (OPT_VCD && VCD_FILE != 0)
 	begin
+		wait(gpio_vcd_flag);
 		$dumpfile(VCD_FILE);
 		$dumpvars(0, tb_wb);
 	end
@@ -448,25 +612,92 @@ module	tb_wb;
 	//
 	// Test script
 	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
 	reg	error_flag;
+
+	generate if (OPT_CPU)
+	begin : GEN_CPU
+		// {{{
+		wire				cpu_prof_stb;
+		wire	[ADDRESS_WIDTH-1:0]	cpu_prof_addr;
+		wire	[31:0]			cpu_prof_ticks;
+		//
+		wire				dbg_stall, dbg_ack;
+		wire	[31:0]			dbg_data, cpu_debug;
+
+		zipsystem #(
+			// {{{
+			.RESET_ADDRESS(MEM_ADDR),
+			.ADDRESS_WIDTH(ADDRESS_WIDTH),
+			.BUS_WIDTH(DW), .START_HALTED(1'b0),
+			.OPT_LGICACHE(CPU_LGCACHE), .CPU_LGDCACHE(CPU_LGCACHE),
+			.OPT_DBGPORT(1'b0), .OPT_TRACE_PORT(1'b0),
+			.OPT_PROFILER(1'b0), .OPT_SIM(1'b1),
+			.OPT_CLKGATE(1'b1),
+			.EXTERNAL_INTERRUPTS(3)
+			// }}}
+		) u_cpu (
+			// {{{
+			.i_clk(clk), .i_reset(reset),
+			// WB master
+			// {{{
+			.o_wb_cyc(cpu_cyc), .o_wb_stb(cpu_stb),
+				.o_wb_we(cpu_we),
+			.o_wb_addr(cpu_addr), .o_wb_data(cpu_data),
+				.o_wb_sel(cpu_sel),
+			.i_wb_stall(cpu_stall),
+			.i_wb_ack(cpu_ack), .i_wb_data(cpu_idata),
+			.i_wb_err(cpu_err),
+			// }}}
+			.i_ext_int({ gpio_interrupt, emmc_interrupt, sdio_interrupt }),
+			.o_ext_int(cpu_interrupt),
+			// (Unused) WB Debug port
+			// {{{
+			.i_dbg_cyc(1'b0), .i_dbg_stb(1'b0), .i_dbg_we(1'b0),
+			.i_dbg_addr(0), .i_dbg_data(32'h0), .i_dbg_sel(4'h0),
+			.o_dbg_stall(dbg_stall), .o_dbg_ack(dbg_all),
+				.o_dbg_data(dbg_data),
+			// }}}
+			.o_cpu_debug(cpu_debug),
+			//
+			.o_prof_stb(cpu_prof_stb),
+			.o_prof_addr(cpu_prof_addr),
+			.o_prof_ticks(cpu_prof_ticks)
+			// }}}
+		);
+		// }}}
+	end else begin : TESTSCRIPT
 `include	`SCRIPT
+		// {{{
+		initial begin
+			error_flag = 1'b0;
+			@(posedge clk);
+			wait(!reset);
+			@(posedge clk);
+			testscript;
 
-	initial begin
-		error_flag = 1'b0;
-		@(posedge clk);
-		wait(!reset);
-		@(posedge clk);
-		testscript;
+			if (error_flag)
+			begin
+				$display("TEST FAIL!");
+			end else begin
+				$display("Test pass");
+			end
 
-		if (error_flag)
-		begin
-			$display("TEST FAIL!");
-		end else begin
-			$display("Test pass");
+			$finish;
 		end
 
-		$finish;
-	end
+		assign	{ cpu_cyc, cpu_stb, cpu_we } = 3'h0;
+		assign	cpu_addr = 0;
+		assign	cpu_data = 0;
+		assign	cpu_sel  = 0;
+		assign	cpu_interrupt = 0;
+		// }}}
+	end endgenerate
+
+	always @(gpio_error_flag)
+		error_flag = error_flag || gpio_error_flag;
 
 	always @(posedge error_flag)
 	if (!reset)

@@ -295,16 +295,16 @@ module	tb_wb;
 		.o_mdata({  cpu_idata, emmc_dma_idata, sdio_dma_idata, bfmw_idata }),
 		.o_merr({   cpu_err,   emmc_dma_err,   sdio_dma_err,   bfmw_err   }),
 		//
-		.o_scyc({   mem_cyc,   con_cyc, gpio_cyc,   emmcw_cyc,   sdiow_cyc   }),
-		.o_sstb({   mem_stb,   con_stb, gpio_stb,   emmcw_stb,   sdiow_stb   }),
-		.o_swe({    mem_we,    con_we, gpio_we,    emmcw_we,    sdiow_we    }),
-		.o_saddr({  mem_addr,  con_addr, gpio_addr,  emmcw_addr,  sdiow_addr  }),
-		.o_sdata({  mem_data,  con_data, gpio_data,  emmcw_data,  sdiow_data  }),
-		.o_ssel({   mem_sel,   con_sel, gpio_sel,   emmcw_sel,   sdiow_sel   }),
-		.i_sstall({ mem_stall, con_cyc, gpio_stall, emmcw_stall, sdiow_stall }),
-		.i_sack({   mem_ack,   con_ack, gpio_ack,   emmcw_ack,   sdiow_ack   }),
+		.o_scyc({   mem_cyc,   con_cyc,   gpio_cyc,   emmcw_cyc,   sdiow_cyc   }),
+		.o_sstb({   mem_stb,   con_stb,   gpio_stb,   emmcw_stb,   sdiow_stb   }),
+		.o_swe({    mem_we,    con_we,    gpio_we,    emmcw_we,    sdiow_we    }),
+		.o_saddr({  mem_addr,  con_addr,  gpio_addr,  emmcw_addr,  sdiow_addr  }),
+		.o_sdata({  mem_data,  con_data,  gpio_data,  emmcw_data,  sdiow_data  }),
+		.o_ssel({   mem_sel,   con_sel,   gpio_sel,   emmcw_sel,   sdiow_sel   }),
+		.i_sstall({ mem_stall, con_cyc,   gpio_stall, emmcw_stall, sdiow_stall }),
+		.i_sack({   mem_ack,   con_ack,   gpio_ack,   emmcw_ack,   sdiow_ack   }),
 		.i_sdata({  mem_idata, con_idata, gpio_idata, emmcw_idata, sdiow_idata }),
-		.i_serr({   mem_err,   con_err, gpio_err,   emmcw_err,   sdiow_err   })
+		.i_serr({   mem_err,   con_err,   gpio_err,   emmcw_err,   sdiow_err   })
 		// }}}
 	);
 

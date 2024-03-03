@@ -112,7 +112,7 @@ module	sdwb #(
 		input	wire	[32/8-1:0]	i_wb_sel,
 		output	wire			o_wb_stall,
 		output	reg			o_wb_ack,
-		output	reg	[32-1:0]	o_wb_data,
+		output	wire	[32-1:0]	o_wb_data,
 		// }}}
 		// Configuration options
 		// {{{
@@ -1798,7 +1798,7 @@ module	sdwb #(
 		always @(posedge i_clk)
 		if (i_reset || o_soft_reset || !dma_busy)
 		begin
-			r_subblock <= blk_words;
+			r_subblock <= blk_words[LGFIFO-2:0];
 			r_dma_last <= (lgblk <= 2);
 			r_dma_len  <= 1<<lgblk;
 		end else if ((i_s2sd_valid && o_s2sd_ready)
@@ -1806,7 +1806,7 @@ module	sdwb #(
 		begin
 			if (r_dma_last)
 			begin
-				r_subblock <= blk_words;
+				r_subblock <= blk_words[LGFIFO-2:0];
 				r_dma_last <= (lgblk <= 2);
 			end else begin
 				r_subblock <=  r_subblock - 1;

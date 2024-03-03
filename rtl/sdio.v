@@ -52,6 +52,7 @@ module	sdio #(
 		parameter	MW = 32,
 		parameter [0:0]	OPT_DMA = 1'b0,
 		parameter	ADDRESS_WIDTH = 30,
+		parameter	DMA_DW = 32,	// DMA bus width
 		// DMA_AW: The DMA address connection width
 `ifdef	SDIO_AXI
 		parameter	AXI_IW = 1,	// ID width
@@ -63,7 +64,6 @@ module	sdio #(
 		parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,
 		parameter	DMA_AW = ADDRESS_WIDTH-$clog2(DMA_DW/8),
 `endif
-		parameter	DMA_DW = 32,	// DMA bus width
 		// To support more than one bit of IO per clock, we need
 		//  serdes support.  Setting OPT_SERDES to zero will disable
 		//  that support, effectively limiting our operation to 50MHz

@@ -283,7 +283,7 @@ module	mdl_sdio #(
 			begin
 				reply_valid <= #7 1'b1;
 				reply_type <= 1'b1;
-				reply <= 6'd2;
+				reply <= 6'd63;
 				reply_data <= CID;
 				drive_cmd <= 1'b0;
 			end end
@@ -309,7 +309,7 @@ module	mdl_sdio #(
 			// {{{
 			card_selected <= (cmd_arg[31:16] == RCA);
 			reply_valid <= #7 (cmd_arg[31:16] == RCA);
-			reply <= 6'd2;
+			reply <= 6'd7;
 			reply_data <= { {(120-32){1'b0}}, R1};
 			end
 			// }}}

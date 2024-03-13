@@ -2546,7 +2546,7 @@ module	sdaxil #(
 		wire	unused_dma;
 		assign	unused_dma = &{ 1'b0,
 				i_s2sd_valid, i_s2sd_data,
-				i_sd2s_ready, i_dma_err, i_dma_busy
+				i_sd2s_ready, i_dma_err, i_dma_busy, new_dma_request
 				};
 		// Verilator lint_on  UNUSED
 		// }}}

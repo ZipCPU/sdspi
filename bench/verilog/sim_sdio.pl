@@ -157,7 +157,7 @@ sub simline($) {
 			## {{{
 			$tstamp = timestamp();
 			system "echo \"$tstamp -- Starting simulation\" | tee -a $sim_log";
-			system "$exefile >> $sim_log";
+			system "./$exefile >> $sim_log";
 
 			## Finish the log with another timestamp
 			## {{{

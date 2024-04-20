@@ -54,12 +54,12 @@ For more information, please consult the [SDSPI user guide](doc/sdspi.pdf).
 This repository also contains a [second and newer SD card
 controller](rtl/sdio.v), designed to exploit both the full SDIO protocol and
 the 8b EMMC protocol--either with or without data strobes.  This controller
-should work with both SDIO and eMMC chips, with the differences between the two
-types of chips handled by software.
+has been tested against both SDIO and eMMC chips, with the differences between
+the two types of chips handled by software.
 
 The interface to this controller is roughly the same as that of the [SDSPI
 controller](rtl/sdspi.v), although there are enough significant differences
-to warrant a new user guide.
+to warrant a [separate user guide](doc/sdio.pdf).
 
 The controller is designed to support IO modes all the way up to the HS400
 mode used by eMMC.  HS400 is an eMMC DDR mode based off of a 200MHz IO clock,
@@ -72,7 +72,7 @@ designs without 8:1 and 1:8 SERDES IO components, 100MHz and slower clocks are
 still supported, depending upon whether or not DDR I/O components are available.
 Both open-drain and push-pull IOs are supported, and the front end can switch
 between the two as necessary based upon options within a PHY configuration
-register.
+register.  No support is planned for any of the UHS-II protocols.
 
 *Status*: The SDIO controller has now been **silicon proven**.  It is currently
   working successfully in [its first FPGA
@@ -105,17 +105,27 @@ Several key steps remain before it will be a viable product:
   or write multiple blocks, or the ability to issue a command while a read or
   write operation is ongoing, are already drafted--they just need to be tested.
 
+  _Note: These commands are implemented and tested via simulation in the dev
+  branch, as part of the new DMA upgrade.  Their merge is pending a hardware
+  test._
+
 - **SW**: [Control software](sw/) has been written, and has been
   used to demonstrate both [SDIO](sw/sdiodrv.c) and [EMMC](sw/emmcdrvr.c)
   performance.  This software is designed to work with the [FATFS
   library](http://elm-chan.org/fsw/ff/00index_e.html).
 
-- **OPT_DMA**: An optional DMA extension is planned (not built), to allow data
-  blocks to be transferred to memory at the full speed of the internal bus
-  without CPU intervention.
+- **OPT_DMA**: An optional DMA extension is planned to allow data blocks to be
+  transferred to memory at the full speed of the internal bus without CPU
+  intervention.
 
   The DMA will be the focus of how the SDIO controller handles wider bus
   widths for higher throughput.
+
+  _Note: The DMA has been implemented, integrated, and tested (via simulation)
+  in the dev branch.  Its merge is pending a hardware test._
+
+- **AXI Support**: A version exists in the dev branch that supports an AXI-Lite
+  interface.
 
 - **eMMC Boot mode**: No plan exists to support eMMC boot mode (at present).
   This decision will likely be revisited in the future.

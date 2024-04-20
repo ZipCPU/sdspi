@@ -895,6 +895,7 @@ int	sdio_write_block(SDIODRV *dev, uint32_t sector, uint32_t *buf){// CMD 24
 		uint32_t	phy = dev->d_dev->sd_phy;
 		phy &= 0xf0ffffff;
 		phy |= SECTOR_512B;
+		dev->d_dev->sd_phy = phy;
 	}
 
 #ifdef	INCLUDE_DMA_CONTROLLER
@@ -958,6 +959,7 @@ int	sdio_read_block(SDIODRV *dev, uint32_t sector, uint32_t *buf){// CMD 17
 		uint32_t	phy = dev->d_dev->sd_phy;
 		phy &= 0xf0ffffff;
 		phy |= SECTOR_512B;
+		dev->d_dev->sd_phy = phy;
 	}
 
 	dev->d_dev->sd_data = sector;
@@ -1172,6 +1174,7 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 			// well, since we control the write speed.
 			phy &= 0xf0ffffff;
 			phy |= SECTOR_512B;
+			dev->d_dev->sd_phy = phy;
 		}
 
 		for(unsigned s=0; s<count; s++) {
@@ -1299,6 +1302,7 @@ int	sdio_read(SDIODRV *dev, const unsigned sector,
 			// to produce data before we are ready for it.
 			phy &= 0xf0ffffff;
 			phy |= SECTOR_512B | SDIOCK_SHUTDN;
+			dev->d_dev->sd_phy = phy;
 		}
 
 		err = 0;

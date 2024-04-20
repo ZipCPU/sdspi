@@ -941,6 +941,7 @@ int	emmc_write_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 24
 		uint32_t	phy = dev->d_dev->sd_phy;
 		phy &= 0xf0ffffff;
 		phy |= (9 << 24);
+		dev->d_dev->sd_phy = phy;
 	}
 
 #ifdef	INCLUDE_DMA_CONTROLLER_NOT
@@ -998,6 +999,7 @@ int	emmc_read_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 17
 		uint32_t	phy = dev->d_dev->sd_phy;
 		phy &= 0xf0ffffff;
 		phy |= (9 << 24);
+		dev->d_dev->sd_phy = phy;
 	}
 
 	dev->d_dev->sd_data = sector;
@@ -1530,6 +1532,7 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 			// to produce data before we are ready for it.
 			phy &= 0xf0ffffff;
 			phy |= (9 << 24) | SDIOCK_SHUTDN;
+			dev->d_dev->sd_phy = phy;
 		}
 
 		err = 0;

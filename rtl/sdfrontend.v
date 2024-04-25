@@ -712,7 +712,8 @@ module	sdfrontend #(
 		// Clock
 		// {{{
 		// Verilator lint_off UNUSED
-		wire		io_clk_tristate;
+		wire		io_clk_tristate, ign_clk_raw;
+		wire	[7:0]	ign_clk_mine, ign_clk_wide;
 		// Verilator lint_on  UNUSED
 
 		xsdserdes8x #(.OPT_BIDIR(1'b0))
@@ -725,7 +726,8 @@ module	sdfrontend #(
 			.o_pin(o_ck),
 			.i_pin(1'b0),
 			// Verilator lint_off PINCONNECTEMPTY
-			.o_mine(), .o_raw(), .o_wide()
+			.o_raw(ign_clk_raw), .o_mine(ign_clk_mine),
+			.o_wide(ign_clk_wide)
 			// Verilator lint_on  PINCONNECTEMPTY
 		);
 		// }}}
@@ -1077,7 +1079,8 @@ module	sdfrontend #(
 		// {{{
 		// Verilator lint_off UNUSED
 		wire	unused_serdes;
-		assign	unused_serdes = &{ 1'b0,
+		assign	unused_serdes = &{ 1'b0, ign_clk_mine,
+				ign_clk_raw, ign_clk_wide,
 				w_rx_data[15:9], w_rx_data[7:1] };
 		// Verilator lint_on  UNUSED
 		// }}}

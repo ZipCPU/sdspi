@@ -88,7 +88,9 @@ with this program.  If not, see \texttt{http://www.gnu.org/licenses/} for a copy
 \begin{revisionhistory}
 % Any changes here need to also be made to the \revision{} in the prologue
 1.0 & 8/15/2023 & Gisselquist & First release \\\hline
-1.9 & 2/24/2024 & Gisselquist & Pre-release updates, with DMA Added\\\hline
+1.9 & 2/24/2024 & Gisselquist & Pre-release updates, with a new (optional)
+		Wishbone DMA feature\\\hline
+1.91 & 4/25/2024 & Gisselquist & New hardware reset feature added\\\hline
 \end{revisionhistory}
 % Revision History
 % Table of Contents, named Contents
@@ -1228,8 +1230,10 @@ Fig.~\ref{fig:CMD}.
 %% {{{
 \begin{bytefield}[endianness=big,bitwidth=0.03\linewidth]{32}
 \bitheader{0-31}\\
-\bitbox{8}{(Reserved)}
-\bitbox{1}{B$_E$}	% DMA Bus error
+\bitbox{6}{(Rsrvd)}
+\bitbox{1}{R$_{\mbox{\tiny ST}}$}		% Hardware reset request
+\bitbox{1}{B$_{\mbox{\tiny E}}$}	% DMA Bus error
+
 \bitbox{1}{C$_r$}	% Rx ECode
 \bitbox{1}{E$_r$}	% Rx Err
 \bitbox{1}{E$_c$}	% Cmd Err
@@ -1253,13 +1257,17 @@ Fig.~\ref{fig:CMD}.
 %% }}}
 \caption{CMD Register fields}\label{fig:CMD}
 \end{center}\end{figure}
-The various fields of this register are explained in Tbl.~\ref{tbl:CMD}.
+The various fields of this register are explained in Tbls.~\ref{tbl:CMD1}
 \begin{table}\begin{center}
 %% {{{
 \begin{tabular}{|p{1.2in}|p{0.5in}|p{4.0in}|}\hline
 	\rowcolor[gray]{0.85} Name & Width & Description\\\hline\hline
-D$_E$&1& DMA Bus Error.  True if the DMA encounters a bus error while
-	transferring data. \\
+R$_{\mbox{\tiny ST}}$&1& Hardware reset.  Set to one to assert (lower) the
+	{\tt o\_hwreset\_n} wire.  Internal logic will insist on a minimum
+	1$\mu s$ (i.e. 100 clock) reset duration.  This feature is only
+	enabled if {\tt OPT\_HWRESET} is set.\\
+D$_{\mbox{\tiny E}}$&1& DMA Bus Error.  True if the DMA encounters a bus error
+	while transferring data. \\
 C$_r$&1& Receive error code.  On any receive error, indicates the cause of
 	the error. \\
 E$_r$&1& Receive error.  Set if the E bit is set due to a data reception error.
@@ -1293,6 +1301,15 @@ D & 1 & DMA Enable.  Set this bit to enable a DMA operation as part of an
 I & 1 & FIFO selection.  Keep clear to use FIFO A.  Set to use FIFO B.
 	When using the DMA, the DMA will begin with the selected FIFO, but then
 	alternate FIFOs on a block by block basis.  \\
+\end{tabular}
+%% }}}
+\caption{CMD Register field descriptions, part one}\label{tbl:CMD1}
+\end{center}\end{table}
+and~\ref{tbl:CMD2}.
+\begin{table}\begin{center}
+%% {{{
+\begin{tabular}{|p{1.2in}|p{0.5in}|p{4.0in}|}\hline
+	\rowcolor[gray]{0.85} Name & Width & Description\\\hline\hline
 M & 1 & Memory operation.  If set, the requested command also includes a data
 	transfer to or from the FIFOs.  If bit[6] is also set, this transfer
 	will take place once the assicated command is complete.  Otherwise, if
@@ -1318,11 +1335,18 @@ CMD & 8 & The command.  Writes with bits [7:6] set to 2'b01 will forward
 	\\\hline
 \end{tabular}
 %% }}}
-\caption{CMD Register field descriptions}\label{tbl:CMD}
+\caption{CMD Register field descriptions, part two}\label{tbl:CMD2}
 \end{center}\end{table}
 
-In general, a command will be issued any time bits [7:6] of the command
-register are 2'b01.  There are some exceptions to this rule:
+Starting at the top, any time R$_{\mbox{\tiny ST}}$ is set, the hardware
+reset pin output will be active (low).  If set, the hardware reset will be set
+for a minimum of 100$\mu s$.  This pin must be cleared manually, allowing
+the external reset pin to be controlled by the CPU.  While in reset, other
+command requests will be ignored.
+
+Commands are issued to the device by writing to this register with bits [7:6]
+set to 2'b01 and the reset bit is clear.  There are some exceptions to this
+rule:
 \begin{itemize}
 \item If the error bit is set, then any command that doesn't also set bit 15
 	(clear error) will be ignored.
@@ -1566,12 +1590,14 @@ LgFSz & 4 & Reflects the {\tt LGFIFO} parameter, and hence the log based two
 LgBlk & 4 & Log based two of the transfer block size.  Set to 9 for 512~Byte
 	transfers, 4 for 16`Byte transfers, etc.  Cannot be set below 2.\\
 %
-V$_O$ & 1 & Read only value reflecting the parameter {\tt OPT\_1PV}.  If set,
+V$_O$ & 1 & Read only value reflecting the parameter {\tt OPT\_1P8V}.  If set,
 	indicates that the controller is capable of driving an output value
 	to direct hardware to switch to a lower voltage.\\
 V$_R$ & 1 & 1.8~Volt request.  Set to transition to 1.8~Volts, or leave clear
-	to operate at 3.3~Volts.  Only relevant if both {\tt OPT\_1PV} is set,
-	and external hardware is present to allow voltage changes.\\
+	to operate at 3.3~Volts.  Only relevant if both {\tt OPT\_1P8V} is set,
+	and external hardware is present to allow voltage changes.  Once set,
+	this register cannot be cleared without either a hardware reset or
+	the card assertion pin (if supported) being withdrawn. \\
 D$_C$ & 1 & Set for enhanced data strobe support.  If set, both the command
 	and data pins will use the data strobe as a clock pin.  Will only
 	be set if D$_S$ and D$_D$ are also set.
@@ -1856,14 +1882,16 @@ Table.~\ref{tbl:ioports}
 i\_clk & 1 & Input & System Clock, nominally 100~MHz\\\hline
 i\_hsclk & 1 & Input & SERDES Clock.  Must be 4x the system clock.\\\hline
 i\_reset & 1 & Input & System reset.  Active high.\\\hline\hline
-\multicolumn{3}{c}{?\_wb\_ Wishbone Slv} & Wishbone bus slave signals\\\hline
-\multicolumn{3}{c}{?\_dma\_ Wishbone Master} & DMA Wishbone bus master signals\\\hline\hline
+\multicolumn{3}{|c|}{?\_wb\_ Wishbone Slv} & Wishbone bus slave signals\\\hline
+\multicolumn{3}{|c|}{?\_dma\_ Wishbone Master} & DMA Wishbone bus master signals\\\hline\hline
 o\_ck & 1 & Output & SDIO/eMMC protocol clock signal\\\hline
 io\_cmd & 1 & In/Out & SDIO/eMMC command wire\\\hline
 io\_dat & NUMIO & In/Out & 1, 4, or 8 SDIO/eMMC data lines\\\hline
 i\_ds & 1 & Input & eMMC data strobe\\\hline\hline
 i\_card\_detect & 1 & Input & High if the hardware detects a card, low o.w.
 	Ignored if {\tt OPT\_CARD\_DETECT} is not also set.\\\hline
+o\_hwreset\_n & 1 & Output & Low if requesting a hardware reset, high otherwise.
+	Requires {\tt OPT\_HWRESET} be set.\\\hline
 o\_1p8v & 1 & Output & High if requesting 1.8 Volt IO.  Requires
 	{\tt OPT\_1P8V} be set.\\\hline\hline
 o\_int & 1 & Output & An interrupt line to the CPU controller\\\hline
@@ -1882,6 +1910,9 @@ The {\tt i\_card\_detect} wire should come from any card detection circuitry
 if present.  This is an active high input.  If {\tt OPT\_CARD\_DETECT} is
 set, this wire will be to set both the ``Card not present'' and ``Card
 removed'' bits.
+
+The eMMC standard includes a negative edge triggered hardware reset.  If
+{\tt OPT\_HWRESET} is set, this reset is captured by {\tt o\_hwreset\_n}.
 
 The 1.8~Volt request line, {\tt o\_1p8v}, is used by the controller to
 indicate it's desire to switch from 3.3~Volts to 1.8~Volts.  The {\tt

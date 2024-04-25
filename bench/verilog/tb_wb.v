@@ -189,6 +189,8 @@ module	tb_wb;
 	wire			sdio_interrupt, emmc_interrupt, cpu_interrupt,
 				gpio_interrupt;
 	wire	[31:0]		sdio_debug, emmc_debug;
+	wire			sdio_1p8v, emmc_1p8v;
+	wire			ign_sdio_reset_n, emmc_reset_n;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -415,6 +417,7 @@ module	tb_wb;
 		//
 		.o_ck(sd_ck), .i_ds(1'b0), .io_cmd(sd_cmd), .io_dat(sd_dat),
 		.i_card_detect(1'b1), .o_int(sdio_interrupt),
+		.o_hwreset_n(ign_sdio_reset_n), .o_1p8v(sdio_1p8v),
 		.o_debug(sdio_debug)
 		// }}}
 	);
@@ -454,6 +457,7 @@ module	tb_wb;
 		.o_ck(emmc_ck),
 			.io_cmd(emmc_cmd), .io_dat(emmc_dat), .i_ds(emmc_ds),
 		.i_card_detect(1'b1), .o_int(emmc_interrupt),
+		.o_hwreset_n(emmc_reset_n), .o_1p8v(emmc_1p8v),
 		.o_debug(emmc_debug)
 		// }}}
 	);
@@ -473,7 +477,7 @@ module	tb_wb;
 		.LGMEMSZ(20),
 		.OPT_HIGH_CAPACITY(1'b1)
 	) u_mcchip (
-		.rst_n(!reset),
+		.rst_n(emmc_reset_n),
 		.sd_clk(emmc_ck), .sd_cmd(emmc_cmd), .sd_dat(emmc_dat),
 			.sd_ds(emmc_ds)
 	);

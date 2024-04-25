@@ -138,6 +138,13 @@ module sdio_top #(
 		parameter [0:0]	OPT_DS=OPT_SERDES && OPT_EMMC,
 		// }}}
 		parameter [0:0]	OPT_CARD_DETECT=!OPT_EMMC,
+		// OPT_HWRESET
+		// {{{
+		// eMMC cards can have hardware resets.  SD Cards do not.  Set
+		// OPT_HWRESET to include control logic to set the hardware
+		// reset.
+		parameter [0:0]	OPT_HWRESET = OPT_EMMC,
+		// }}}
 		// OPT_1P8V
 		// {{{
 		// Some protocols require switching voltages during the
@@ -310,6 +317,7 @@ module sdio_top #(
 `endif
 		// }}}
 		input	wire		i_card_detect,
+		output	wire		o_hwreset_n,
 		output	wire		o_1p8v,
 		output	wire		o_int,
 		output	wire	[31:0]	o_debug
@@ -356,6 +364,7 @@ module sdio_top #(
 		.OPT_DS(OPT_DS),
 		.OPT_CARD_DETECT(OPT_CARD_DETECT),
 		.OPT_EMMC(OPT_EMMC),
+		.OPT_HWRESET(OPT_HWRESET),
 		.OPT_1P8V(OPT_1P8V),
 		.LGTIMEOUT(LGTIMEOUT)
 		// }}}
@@ -475,6 +484,7 @@ module sdio_top #(
 		.m_last(m_last),
 		// }}}
 		.i_card_detect(i_card_detect),
+		.o_hwreset_n(o_hwreset_n),
 		.o_1p8v(o_1p8v),
 		.o_int(o_int),
 		// Interface to PHY

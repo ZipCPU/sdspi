@@ -52,8 +52,8 @@ begin
 	// Read our capabilities back from the controller
 	// {{{
 	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_200MHZ
-				| SDIO_WTEST | SPEED_CLKOFF
-				| SDIO_DDR | SDIO_SHFTMSK);
+				| SDPHY_WTEST | SPEED_CLKOFF
+				| SDPHY_DDR | SDPHY_SHFTMSK);
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
 	end while(read_data[7:0] > 8'h2);
@@ -74,7 +74,7 @@ begin
 
 	// Now set up for the capabilities we will be using
 	// {{{
-	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_1MHZ | SDIO_W1 | sample_shift);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_1MHZ | SDPHY_W1 | sample_shift);
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
 	end while(read_data[7:0] != SPEED_1MHZ[7:0]);
@@ -138,7 +138,7 @@ begin
 	// CMD7 SELECT/DESELCT Card
 	sdcard_select_card(rca);
 
-	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDIO_W1 | sample_shift);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDPHY_W1 | sample_shift);
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
 	end while(read_data[7:0] != SPEED_DS[7:0]);
@@ -162,7 +162,7 @@ begin
 	// {{{
 	if (numio >= 4)
 	begin
-		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDIO_W4 | sample_shift);
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDPHY_W4 | sample_shift);
 
 		// CMD6		// Select drive strength ??
 		// CMD19	// Tuning block to determine sampling point
@@ -182,7 +182,7 @@ begin
 	// {{{
 	if (numio >= 4 && SPEED_HSSDR[7:0] >= max_spd)
 	begin
-		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | SDIO_W4 | sample_shift);
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | SDPHY_W4 | sample_shift);
 
 		sdcard_send_random_block(32'h0b);
 		sdcard_send_random_block(32'h09);
@@ -198,7 +198,7 @@ begin
 	// {{{
 	if (numio >= 4 && SPEED_HSSDR[7:0] >= max_spd)
 	begin
-		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | SDIO_W4 | sample_shift);
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | SDPHY_W4 | sample_shift);
 
 		sdcard_send_random_block(32'h0c);
 		sdcard_send_random_block(32'h0d);
@@ -214,7 +214,7 @@ begin
 	// {{{
 	if (numio >= 4 && SPEED_HSSDR[7:0] >= max_spd)
 	begin
-		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR200 | SDIO_W4 | sample_shift);
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR200 | SDPHY_W4 | sample_shift);
 
 		sdcard_send_random_block(32'h10);
 		sdcard_send_random_block(32'h11);

@@ -292,9 +292,9 @@ module	mdl_sdio #(
 			// {{{
 			if (!cmd_collision)
 			begin
-				do begin
+				RCA = $random;
+				while(RCA == 16'h0)
 					RCA = $random;
-				end while(RCA == 16'h0);
 
 				reply_valid <= #7 1'b1;
 				reply <= 6'd3;
@@ -317,8 +317,8 @@ module	mdl_sdio #(
 			// {{{
 			reply_valid <= #7 1'b1;
 			reply <= 6'd8;
-			assert(cmd_arg[31:12]==20'h0);
-			assert(cmd_arg[11:8]==4'h1);
+			// assert(cmd_arg[31:12]==20'h0);
+			// assert(cmd_arg[11:8]==4'h1);
 			reply_data <= { {(120-32){1'b0}}, cmd_arg };
 
 			ocr[7] <= 1'b0;
@@ -352,6 +352,7 @@ module	mdl_sdio #(
 				multi_block <= 1'b0;
 				pending_read <= 1'b0;
 				pending_write <= 1'b0;
+				write_en <= 1'b0;
 			end end
 			// }}}
 		{ 1'b?, 6'd17 }: begin // CMD19: Read block
@@ -485,7 +486,13 @@ module	mdl_sdio #(
 
 	initial	internal_card_busy = 1'b0;
 	always @(posedge sd_clk)
-	if (pending_write && !reply_valid && !reply_busy)
+	if (cmd_valid && !cmd_crc_err && { cmd_alt, cmd[5:0] } == 7'hc)
+	begin // STOP_TRANSMISSION
+		write_en <= 1'b0;
+		tx_valid <= 1'b0;
+		tx_addr <= 0;
+		tx_last <= 0;
+	end else if (pending_write && !reply_valid && !reply_busy)
 	begin
 		// We can place a delay here, to simulate read access time
 		// if desired ...

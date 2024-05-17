@@ -74,7 +74,7 @@ begin
 	// We can start at 25MHz b/c the simulation model allows us to.  We
 	// might not do this with real hardware.
 	sample_shift = { 11'h0, 5'h08, 16'h0 };
-	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_25MHZ | SDIO_W1 | { 11'h0, 5'h1f, 16'h0 });
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_25MHZ | SDPHY_W1 | { 11'h0, 5'h1f, 16'h0 });
 	u_bfm.readio(ADDR_SDPHY, read_data);
 	if (read_data[18:16] == 3'h0)
 		sample_shift = { 11'h0, 5'h8, 16'h0 };
@@ -82,7 +82,7 @@ begin
 		sample_shift = { 11'h0, 5'hc, 16'h0 };
 	else
 		sample_shift = { 11'h0, 5'ha, 16'h0 };
-	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_25MHZ | SDIO_W1 | sample_shift);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_25MHZ | SDPHY_W1 | sample_shift);
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
 	end while(read_data[7:0] != SPEED_25MHZ[7:0]);
@@ -142,32 +142,44 @@ begin
 	// CMD7 SELECT/DESELCT Card
 	sdcard_select_card(rca);
 
-	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDIO_W1 | sample_shift);
+	// Set up for 1b @ 25MHz
+	// {{{
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDPHY_W1 | sample_shift);
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
 	end while(read_data[7:0] != SPEED_DS[7:0]);
+	// }}}
 
-$display("Set bus width to 4b");
+	$display("Set bus width to 4b");
 	sdcard_set_bus_width(2'b10);
 
 $display("Set speed to 25MHz");
 	// Test at SPEED_DS=25MHZ SDR = 12.5MB/s, or 32b / 32 clocks
 	// {{{
-	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_DS | SDIO_W4 | sample_shift);
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_512B | SPEED_DS | SDPHY_W4 | sample_shift);
 
 $display("DMA Write command");
 	sdcard_write_dma(5, 32'h3, MEM_ADDR);
 
 $display("DMA Read  command");
 	sdcard_read_dma(4, 32'h4, MEM_ADDR + ((5+3)<<9));
+$display("DMA Read  command #2");
+	sdcard_read_dma(1, 32'h3, MEM_ADDR + ((5+3+4)<<9));
 	// }}}
 
 	// Test at SPEED_200=200MHZ SDR = 100MB/s, or 32b / 4 clocks
 	// {{{
-	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR200 | SDIO_W4 | sample_shift);
+$display("Set speed to 200MHz");
+	u_bfm.write_f(ADDR_SDPHY, SECTOR_512B | SPEED_SDR200 | SDPHY_W4 | sample_shift);
 	sdcard_write_dma(6, 32'h4, MEM_ADDR);
+$display("DMA Read  command");
 	sdcard_read_dma(4, 32'h5, MEM_ADDR + ((6+4)<<9));
 	// }}}
+
+	// 1 block, sector 0, going right up to the end of memory
+	u_bfm.readio(ADDR_SDCARD, read_data);
+$display("DMA Read  command #2, cmd_reg = %08x", read_data);
+	sdcard_read_dma(1, 32'h9, MEM_ADDR + (1<<LGMEMSZ)-512);
 
 	repeat(512)
 		@(posedge clk);

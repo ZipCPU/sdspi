@@ -45,7 +45,7 @@ module	tb_wb;
 	parameter	[0:0]	OPT_DMA = 1'b0;
 	parameter	[0:0]	OPT_VCD = 1'b0;
 	parameter	[0:0]	OPT_CPU = 1'b0;
-	parameter		DW = 64;
+	parameter		DW = 512;
 	parameter		MEM_FILE = "";
 	parameter		CONSOLE_FILE = "";
 	localparam		BFM_DW=32;
@@ -387,7 +387,7 @@ module	tb_wb;
 
 	sdio_top #(
 		// {{{
-		.LGFIFO(12), .NUMIO(4),
+		.LGFIFO(9), .NUMIO(4), .DW(DW),
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
 		.OPT_CARD_DETECT(0), .LGTIMEOUT(10),
@@ -426,7 +426,7 @@ module	tb_wb;
 
 	sdio_top #(
 		// {{{
-		.LGFIFO(12), .NUMIO(8),
+		.LGFIFO(12), .NUMIO(8), .DW(DW),
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
 		.OPT_CARD_DETECT(0), .LGTIMEOUT(10),

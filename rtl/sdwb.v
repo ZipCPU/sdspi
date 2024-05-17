@@ -878,7 +878,7 @@ module	sdwb #(
 		w_cmd_word[19] = !card_present;
 		w_cmd_word[18] =  card_removed;
 		w_cmd_word[17:16] = r_cmd_ecode;
-		w_cmd_word[15] = r_cmd_err || r_rx_err;
+		w_cmd_word[15] = r_cmd_err || r_rx_err || dma_error;
 		w_cmd_word[14] = cmd_busy;
 		w_cmd_word[13] = dma_busy;
 		w_cmd_word[12] = r_fifo;
@@ -1135,6 +1135,11 @@ module	sdwb #(
 
 	// o_cfg_ds: Enable return data strobe support
 	// {{{
+	always @(posedge i_clk)
+	if (bus_phy_stb && (|bus_wstrb))
+		$display("PHY-WRITE: %08x/%01x (was %08x)",
+					bus_wdata, bus_wstrb, w_phy_ctrl);
+
 	generate if (OPT_DS && OPT_EMMC)
 	begin : GEN_DS_CONTROL
 		reg	r_cfg_ds, r_cfg_dscmd;
@@ -1748,12 +1753,13 @@ module	sdwb #(
 			dma_sd2s   <= 1'b0;
 			// o_dma_abort <= dma_busy;
 			// }}}
-		end else if (!dma_busy && new_dma_request)
-		begin // User command to activate the DMA
+		end else if (!dma_busy) // i.e. if !r_dma
+		begin
 			// {{{
-			if (!r_dma_zero_len && !r_mem_busy && card_present
+			if (new_dma_request && !r_dma_zero_len
+				&& !r_mem_busy && card_present
 				&& (!dma_error || clear_err))
-			begin
+			begin // User command to activate the DMA
 				r_dma <= 1'b1;
 				if (bus_wdata[FIFO_WRITE_BIT])
 					{ dma_s2sd, dma_sd2s } <= 2'b10;
@@ -1762,10 +1768,7 @@ module	sdwb #(
 					{ dma_s2sd, dma_sd2s } <= 2'b00;
 			end
 			// }}}
-		end else if ((r_abort || i_dma_busy) && r_dma)
-		begin
-			{ dma_s2sd, dma_sd2s } <= 2'b00;
-		end else if (r_dma && !i_dma_busy && !o_dma_s2sd && !o_dma_sd2s)
+		end else if (!i_dma_busy && !o_dma_s2sd && !o_dma_sd2s)//&&r_dma
 		begin
 			{ dma_s2sd, dma_sd2s } <= 2'b00;
 
@@ -1785,7 +1788,8 @@ module	sdwb #(
 				// is fully loaded, then write it out.
 				dma_sd2s <= r_dma_loaded[r_dma_fifo] && !r_dma_err && !w_dma_abort;
 			end
-		end
+		end else if (r_abort || i_dma_busy)	// &&r_dma
+			{ dma_s2sd, dma_sd2s } <= 2'b00;
 
 		always @(posedge i_clk)
 		if (i_reset)
@@ -1815,6 +1819,7 @@ module	sdwb #(
 		assign	dma_busy = r_dma;
 		assign	dma_int  = r_dma_int;
 `ifdef	FORMAL
+		// {{{
 		always @(*)
 		if (!i_reset && !r_dma)
 			assert(!dma_sd2s && !dma_s2sd);
@@ -1891,6 +1896,7 @@ module	sdwb #(
 		end else begin
 			assert(!dma_int);
 		end
+		// }}}
 `endif
 		// }}}
 
@@ -2075,7 +2081,7 @@ module	sdwb #(
 		// sent to the SD card?  When reading, ... when is the FIFO
 		// unloaded and ready to be filled again?
 		always @(posedge i_clk)
-		if (i_reset || o_soft_reset || !dma_busy)
+		if (i_reset || o_soft_reset || !dma_busy || r_abort)
 			r_dma_loaded <= 2'b0;
 		else if (r_tx)
 		begin
@@ -2200,11 +2206,11 @@ module	sdwb #(
 			// FIXME: Reads can be stopped before the DMA transfer
 			//  stops, writes cannot.  Below waits for DMA reads
 			//  to complete entirely, a bit of an overkill.
-			if ((dma_zero_len || r_abort || r_dma_err)
-						&& (!r_tx || r_dma_loaded == 0))
+			if ((r_abort || r_dma_err || dma_zero_len)
+				&& (!r_tx || r_dma_loaded == 0))
 			begin // Send STOP_TRANSMISSION
 				// {{{
-				if (!r_dma_stopped && (!r_tx
+				if (!r_dma_stopped && !cmd_busy && (!r_tx
 					||(!i_dma_busy&& !o_tx_en && r_dma_loaded == 2'b0)))
 				begin
 					r_dma_write <= 1'b1;
@@ -2232,16 +2238,18 @@ module	sdwb #(
 		// logic required for 32 bits--hence saving both logic and
 		// (potentially) power.
 		always @(posedge i_clk)
-		if (r_dma)
+		if (r_dma && !dma_write)
 		begin
-			if ((r_abort || r_dma_err || dma_zero_len) && (!r_tx
-					||(!i_dma_busy&& r_dma_loaded == 2'b0)))
-			begin
-				r_dma_command <= DMA_STOP_TRANSMISSION;
-			end else if (r_tx)
+			if (r_tx)
 				r_dma_command <= DMA_NULL_WRITE;
 			else
 				r_dma_command <= DMA_NULL_READ;
+
+			if ((r_abort || r_dma_err || dma_zero_len)
+				&&(!r_tx ||(!i_dma_busy&& r_dma_loaded== 2'b0)))
+			begin
+				r_dma_command <= DMA_STOP_TRANSMISSION;
+			end
 
 			r_dma_command[FIFO_ID_BIT] <= dma_cmd_fifo;
 		end
@@ -2322,7 +2330,7 @@ module	sdwb #(
 		// r_read_active
 		// {{{
 		always @(posedge i_clk)
-		if (i_reset || o_soft_reset || r_tx)
+		if (i_reset || o_soft_reset || r_tx || r_abort)
 			r_read_active <= 1'b0;
 		else if (o_dma_sd2s)
 			r_read_active <= 1'b1;

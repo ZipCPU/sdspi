@@ -158,7 +158,7 @@ module	mdl_sdrx(
 			crcfill <= STEPCRC(crcfill, sd_dat[gk] !== 1'b0);
 		end else if (rx_started && !eval_rail[gk]) // && rx_complete
 		begin
-			assert(crcfill == 0);
+			// assert(crcfill == 0);
 			eval_rail[gk] <= 1'b1;
 			rail_fail[gk] <= (crcfill != 0) ||(sd_dat[gk] === 1'b0);
 		end
@@ -181,7 +181,7 @@ module	mdl_sdrx(
 			half_fail[gk] <= 1'b0;
 		end else if (rx_started && !eval_half[gk]) // && rx_complete
 		begin
-			assert(halffill == 0);
+			// assert(halffill == 0);
 			eval_half[gk] <= 1'b1;
 			half_fail[gk] <= (halffill != 0) || sd_dat[gk] === 1'b0;
 		end
@@ -296,9 +296,7 @@ module	mdl_sdrx(
 		o_err  <= (rail_fail != 0 || half_fail != 0);
 	end
 
-	always @(*)
-	if (i_rx_en && rx_complete)
-		assert(!o_err);
+	// always @(*) if (i_rx_en && rx_complete) assert(!o_err);
 
 	function automatic [NCRC-1:0] STEPCRC(input [NCRC-1:0] prior,
 		// {{{

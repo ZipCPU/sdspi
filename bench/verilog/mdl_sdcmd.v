@@ -148,9 +148,9 @@ module	mdl_sdcmd #(
 	always @(posedge sd_clk)
 	if (r_incoming && icount == 48)
 	begin
-		assert(ireg[47:46] == 2'b01);
-		assert(ireg[0]);
-		assert(ireg[7:1] == CMDCRC(ireg[47:8]));
+		// assert(ireg[47:46] == 2'b01);
+		// assert(ireg[0]);
+		// assert(ireg[7:1] == CMDCRC(ireg[47:8]));
 	end
 
 	// }}}

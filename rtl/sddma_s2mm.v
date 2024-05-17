@@ -106,7 +106,7 @@ module	sddma_s2mm #(
 	reg	[DW-1:0]		r_data;
 	reg	[2*DW/8-1:0]		next_sel, pre_sel;
 	reg	[DW/8-1:0]		r_sel;
-	reg				r_last;
+	reg				r_last, r_wrap;
 
 	reg	[LGPIPE-1:0]		wb_outstanding;
 	reg				wb_pipeline_full;
@@ -281,6 +281,7 @@ module	sddma_s2mm #(
 		o_err  <= 1'b0;
 		{ o_wr_addr, subaddr } <= {(ADDRESS_WIDTH){1'b0}};
 		r_last <= 1'b0;
+		r_wrap <= 1'b0;
 		// }}}
 	end else if (!o_busy || o_err || (o_wr_cyc && i_wr_err))
 	begin
@@ -298,6 +299,7 @@ module	sddma_s2mm #(
 		o_wr_addr <= i_addr[ADDRESS_WIDTH-1:WBLSB];
 		subaddr   <= i_addr[WBLSB-1:0];
 		r_last <= 1'b0;
+		r_wrap <= 1'b0;
 		// }}}
 	end else if (!o_wr_stb || !i_wr_stall)
 	begin
@@ -305,17 +307,19 @@ module	sddma_s2mm #(
 		o_wr_stb <= 1'b0;
 
 		if (o_wr_stb)
-			{ o_wr_addr, subaddr } <= next_addr[ADDRESS_WIDTH-1:0];
+			{ r_wrap, o_wr_addr, subaddr } <= next_addr[ADDRESS_WIDTH:0];
 
-		if (addr_overflow)
-			{ o_err, o_wr_cyc, o_wr_stb } <= 3'b100;
-		else if (!wb_pipeline_full)
+		if (!wb_pipeline_full)
 		begin
 			if ((r_last && (|r_sel)) || (S_VALID && !r_last))
 			begin
 				// Need to flush our last result out
 				{ o_wr_cyc, o_wr_stb } <= 2'b11;
 
+				// If the address will overflow, then stop
+				// and generate an error.
+				if (r_wrap || (o_wr_stb && addr_overflow))
+					{ o_err, o_wr_cyc, o_wr_stb } <= 3'b100;
 			end else if (wb_outstanding + (o_wr_stb ? 1:0)
 							== (i_wr_ack ? 1:0))
 			begin

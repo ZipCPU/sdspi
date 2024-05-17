@@ -44,6 +44,9 @@
 @ACCESS=SDIO_ACCESS
 @SLAVE.TYPE=OTHER
 @SLAVE.BUS=wb
+@MASTER.TYPE=DMA
+@MASTER.BUS=wbwide
+@MASTER.ANSPREFIX=dma_
 ## @SCOPE.TRIGGER=@$(PREFIX)_debug[31]
 ## @SCOPE.DATA=@$(PREFIX)_debug
 @INT.SDCARD.WIRE= @$(PREFIX)_int
@@ -107,8 +110,9 @@
 @MAIN.DEFNS=
 	// @$(NAME) definitions
 	// Verilator lint_off UNUSED
-	wire		w_@$(PREFIX)_1p8v;
-	wire	[31:0]	@$(PREFIX)_debug;
+	wire		w_@$(PREFIX)_1p8v, s_@$(PREFIX)_ready,
+			m_@$(PREFIX)_valid, m_@$(PREFIX)_last;
+	wire	[31:0]	@$(PREFIX)_debug, m_@$(PREFIX)_data;
 	// Verilator lint_on  UNUSED
 @MAIN.INSERT=
 	////////////////////////////////////////////////////////////////////////
@@ -131,8 +135,20 @@
 		.i_reset(@$(SLAVE.BUS.CLOCK.RESET)),
 		.i_hsclk(1'b0),
 		@$(SLAVE.ANSIPORTLIST),
+		@$(MASTER.ANSIPORTLIST),
 		.o_ck(o_@$(PREFIX)_clk),
 		.i_ds(i_@$(PREFIX)_ds),
+		// (Unused) DMA Stream assignments
+		// {{{
+		.s_valid(1'b0),
+		.s_ready(s_@$(PREFIX)_ready),
+		.s_data(32'h0),
+		//
+		.m_valid(m_@$(PREFIX)_valid),
+		.m_ready(1'b1),
+		.m_data(m_@$(PREFIX)_data),
+		.m_last(m_@$(PREFIX)_last),
+		// }}}
 `ifdef	VERILATOR
 		.io_cmd_tristate(io_@$(PREFIX)_cmd_tristate),
 		.o_cmd(o_@$(PREFIX)_cmd),

@@ -84,6 +84,7 @@ module	xsdserdes8x #(
 	assign	o_mine = r_mine;
 
 `ifdef OPENSIM
+	// {{{
 	reg		last_ck;
 	reg	[7:0]	ir_wide, or_wide, rx_wide;
 
@@ -113,6 +114,7 @@ module	xsdserdes8x #(
 	wire	unused;
 	assign	unused = &{ 1'b0 };
 	// Verilator lint_on  UNUSED
+	// }}}
 	// }}}
 `else
 	wire	w_pin, w_in, w_reset, high_z, fabric_return;
@@ -151,39 +153,38 @@ module	xsdserdes8x #(
 	begin : GEN_BIDIRECTIONAL
 
 		ISERDESE2 #(
-		// {{{
-		.SERDES_MODE("MASTER"),
-		.DATA_RATE("DDR"),
-		.DATA_WIDTH(8),
-		.INTERFACE_TYPE("NETWORKING"),
-		.NUM_CE(1),
-		.INIT_Q1(1'b0), .INIT_Q2(1'b0),
-		.INIT_Q3(1'b0), .INIT_Q4(1'b0),
-		.SRVAL_Q1(1'b0), .SRVAL_Q2(1'b0),
-		.SRVAL_Q3(1'b0), .SRVAL_Q4(1'b0),
-		.SYN_CLKDIV_INV_EN("FALSE"),
-		.DYN_CLK_INV_EN("FALSE"),
-		.OFB_USED("FALSE")
-		// }}}
+			// {{{
+			.SERDES_MODE("MASTER"),
+			.DATA_RATE("DDR"),
+			.DATA_WIDTH(8),
+			.INTERFACE_TYPE("NETWORKING"),
+			.NUM_CE(1),
+			.INIT_Q1(1'b0), .INIT_Q2(1'b0),
+			.INIT_Q3(1'b0), .INIT_Q4(1'b0),
+			.SRVAL_Q1(1'b0), .SRVAL_Q2(1'b0),
+			.SRVAL_Q3(1'b0), .SRVAL_Q4(1'b0),
+			// .SYN_CLKDIV_INV_EN("FALSE"),
+			.DYN_CLK_INV_EN("FALSE"),
+			.OFB_USED("FALSE")
+			// }}}
 		) u_iserdes (
-		// {{{
-		.BITSLIP(1'b0), .CE(1'b1), // .CE2(),
-		.CLK(i_hsclk), .CLKB(!i_hsclk), .CLKDIV(i_clk), .CLKDIVP(1'b0),
-		.D(w_in), .DYNCLKDIVSEL(1'b0), .DYNCLKSEL(1'b0), // .DDLY()
-		.OCLK(1'b0), .OCLKB(1'b0), .O(o_raw), // .OFB(),
-		.Q1(o_wide[0]),	.Q2(o_wide[1]),
-		.Q3(o_wide[2]),	.Q4(o_wide[3]),
-		.Q5(o_wide[4]),	.Q6(o_wide[5]),
-		.Q7(o_wide[6]),	.Q8(o_wide[7]),
-		.RST(w_reset)
-		// .SHIFTIN1(), .SHIFTIN2(), .SHIFTOUT1(), .SHIFTOUT2()
-		// }}}
+			// {{{
+			.BITSLIP(1'b0), .CE1(1'b1), // .CE2(),
+			.CLK(i_hsclk), .CLKB(!i_hsclk), .CLKDIV(i_clk), .CLKDIVP(1'b0),
+			.D(w_in), .DYNCLKDIVSEL(1'b0), .DYNCLKSEL(1'b0), // .DDLY()
+			.OCLK(1'b0), .OCLKB(1'b0), .O(o_raw), // .OFB(),
+			.Q1(o_wide[0]),	.Q2(o_wide[1]),
+			.Q3(o_wide[2]),	.Q4(o_wide[3]),
+			.Q5(o_wide[4]),	.Q6(o_wide[5]),
+			.Q7(o_wide[6]),	.Q8(o_wide[7]),
+			.RST(w_reset)
+			// .SHIFTIN1(), .SHIFTIN2(), .SHIFTOUT1(), .SHIFTOUT2()
+			// }}}
 		);
 	end else begin : GEN_OUTPUT
 
 		assign	o_wide = 8'h0;
 		assign	o_raw  = fabric_return;
-		assign	o_mine = i_data;
 
 		// Keep Verilator happy
 		// {{{
@@ -191,6 +192,7 @@ module	xsdserdes8x #(
 		wire	unused;
 		assign	unused = &{ 1'b0, w_in };
 		// Verilator lint_on  UNUSED
+		// }}}
 	end endgenerate
 `endif	// OPENSIM
 endmodule

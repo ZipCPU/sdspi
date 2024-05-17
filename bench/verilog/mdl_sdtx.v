@@ -90,12 +90,14 @@ module mdl_sdtx #(
 		r_count <= 0;
 		r_crc   <= 0;
 		ds      <= 0;
-	end else if (!i_en && !r_active)
+		r_active<= 0;
+	end else if (!i_en)
 	begin
 		tx_sreg <= 0;
 		r_count <= 0;
 		r_crc   <= 0;
 		ds      <= 0;
+		r_active<= 0;
 	end else if (i_valid && o_ready)
 	begin // New data
 		// {{{
@@ -251,7 +253,7 @@ module mdl_sdtx #(
 		always @(posedge sd_clk or negedge rst_n)
 		if (!rst_n)
 			crc[gk] <= 0;
-		else if (!i_en && !r_active)
+		else if (!i_en)
 			crc[gk] <= 0;
 		else if (!r_crc)
 			crc[gk] <= STEPCRC(crc[gk], w_dat[gk]);
@@ -261,7 +263,7 @@ module mdl_sdtx #(
 		always @(negedge sd_clk or negedge rst_n)
 		if (!rst_n)
 			crc[8+gk] <= 0;
-		else if (!i_ddr || (!i_en && !r_active) || !i_ddr)
+		else if (!i_ddr || !i_en || !i_ddr)
 			crc[8+gk] <= 0;
 		else if (!r_crc)
 			crc[8+gk] <= STEPCRC(crc[8+gk], w_dat[gk]);

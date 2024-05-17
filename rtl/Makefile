@@ -46,7 +46,8 @@ VOBJ:= obj_dir
 VFLAGS := -MMD -Wall -trace -cc
 SUBMAKE:= $(MAKE) --no-print-directory -C
 SDSPI_FILES := sdspi.v spicmd.v spitxdata.v spirxdata.v llsdspi.v
-SDIO_FILES := sdio_top.v sdfrontend.v sdio.v sdwb.v sdckgen.v sdcmd.v sdrxframe.v sdtxframe.v
+SDDMA_FILES := sddma_mm2s.v sddma_rxgears.v sddma_txgears.v sddma_s2mm.v sddma.v sdfifo.v sdskid.v
+SDIO_FILES := sdio.v sdwb.v sdckgen.v sdcmd.v sdrxframe.v sdtxframe.v $(SDDMA_FILES)
 all: rtl export $(VOBJ)/Vsdspi__ALL.so usage
 
 .PHONY: rtl
@@ -83,7 +84,7 @@ usage.txt: usage.pl $(SDSPI_FILES) $(SDIO_FILES)
 .PHONY: clean
 ## {{{
 clean:
-	rm -rf export.v $(VOBJ)
+	rm -rf exportspi.v exportsd.v $(VOBJ)
 ## }}}
 
 ## Including dependencies

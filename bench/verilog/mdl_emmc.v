@@ -442,6 +442,7 @@ module	mdl_emmc #(
 	initial	bustest_r = 1'b0;
 	initial	bustest_w = 1'b0;
 	initial	busy_programming = 1'b0;
+	initial	cfg_partition = 2'b0;
 
 	initial	begin
 		reply_valid = 1'b0;

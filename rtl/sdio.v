@@ -71,6 +71,7 @@ module	sdio #(
 		parameter [0:0]	OPT_SERDES = 1'b0,
 		parameter [0:0]	OPT_DDR = 1'b0,
 		parameter [0:0]	OPT_DS  = OPT_SERDES,
+		parameter [0:0]	OPT_HWRESET = OPT_EMMC,
 		parameter [0:0]	OPT_1P8V= 1'b0,
 		parameter [0:0]	OPT_EMMC = 1'b1,
 		parameter [0:0]	OPT_CARD_DETECT = !OPT_EMMC,
@@ -197,6 +198,7 @@ module	sdio #(
 		output	wire			m_last,
 		// }}}
 		input	wire		i_card_detect,
+		output	wire		o_hwreset_n,
 		output	wire		o_1p8v,
 		output	wire		o_int,
 		// Interface to PHY
@@ -289,6 +291,7 @@ module	sdio #(
 		.OPT_DDR(OPT_DDR),
 		.OPT_DS(OPT_DS),
 		.OPT_CARD_DETECT(OPT_CARD_DETECT),
+		.OPT_HWRESET(OPT_HWRESET),
 		.OPT_1P8V(OPT_1P8V),
 		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN),
 		.OPT_EMMC(OPT_EMMC)
@@ -388,6 +391,7 @@ module	sdio #(
 		// }}}
 		.i_card_detect(i_card_detect),
 		.i_card_busy(i_card_busy),
+		.o_hwreset_n(o_hwreset_n),
 		.o_1p8v(o_1p8v),
 		.o_int(o_int)
 		// }}}
@@ -403,6 +407,7 @@ module	sdio #(
 		.OPT_CARD_DETECT(OPT_CARD_DETECT),
 		.OPT_DMA(OPT_DMA),
 		.DMA_AW(ADDRESS_WIDTH + ((OPT_ISTREAM||OPT_OSTREAM) ? 1:0)),
+		.OPT_HWRESET(OPT_HWRESET),
 		.OPT_1P8V(OPT_1P8V),
 		.OPT_EMMC(OPT_EMMC)
 		// }}}
@@ -484,6 +489,7 @@ module	sdio #(
 		// }}}
 		.i_card_detect(i_card_detect),
 		.i_card_busy(i_card_busy),
+		.o_hwreset_n(o_hwreset_n),
 		.o_1p8v(o_1p8v),
 		.o_int(o_int)
 		// }}}

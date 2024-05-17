@@ -45,24 +45,28 @@ localparam	[ADDRESS_WIDTH-1:0]
 				ADDR_DMABUS = SDIO_ADDR +20,
 				ADDR_DMALEN = SDIO_ADDR +28;
 
-localparam [31:0]	SDIO_RNONE = 32'h0,
-			SDIO_R1    = 32'h0100,
-			SDIO_R2    = 32'h0200,
-			SDIO_R1b   = 32'h0300,
-			SDIO_WRITE = 32'h0400,
-			SDIO_MEM   = 32'h0800,
-			SDIO_FIFO  = 32'h1000,
-			SDIO_DMA   = 32'h2000,
-			SDIO_BUSY  = 32'h6800,
-			SDIO_ERR   = 32'h8000;
+localparam [31:0]	SDIO_RNONE    = 32'h000000,
+			SDIO_R1       = 32'h000100,
+			SDIO_R2       = 32'h000200,
+			SDIO_R1b      = 32'h000300,
+			SDIO_WRITE    = 32'h000400,
+			SDIO_MEM      = 32'h000800,
+			SDIO_FIFO     = 32'h001000,
+			SDIO_DMA      = 32'h002000,
+			SDIO_CMDBUSY  = 32'h004000,
+			SDIO_ERR      = 32'h008000,
+			SDIO_REMOVED  = 32'h040000,
+			SDIO_PRESENTN = 32'h080000,
+			SDIO_CARDBUSY = 32'h100000,
+			SDIO_BUSY  = (SDIO_CARDBUSY | SDIO_CMDBUSY | SDIO_DMA | SDIO_MEM);
 
-localparam [31:0]	SDIO_DS     = 32'h00100,
-			SDIO_DDR    = 32'h04200,
-			SDIO_W1     = 32'h00000,
-			SDIO_W4     = 32'h00400,
-			// SDIO_W8  = 32'h00800,	// 8b SDIO not supported
-			SDIO_WTEST  = 32'h00c00,
-			SDIO_SHFTMSK= 32'h1f0000;
+localparam [31:0]	SDPHY_DDR    = 32'h04100,	// Requires CLK90
+			SDPHY_DS     = 32'h04300,	// Requires DDR & CLK90
+			SDPHY_W1     = 32'h00000,
+			SDPHY_W4     = 32'h00400,
+			// SDPHY_W8  = 32'h00800,	// 8b SDIO not supported
+			SDPHY_WTEST  = 32'h00c00,
+			SDPHY_SHFTMSK= 32'h1f0000;
 
 localparam [31:0]	SPEED_100KHZ   = 32'h00fc,
 			SPEED_200KHZ   = 32'h007f,

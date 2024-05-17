@@ -40,9 +40,9 @@
 
 typedef	struct SDIO_S {
 	volatile uint32_t	sd_cmd, sd_data, sd_fifa, sd_fifb, sd_phy;
-#if (sizeof(void *)<= 4)
+// #if (sizeof(void *)<= 4)
 	volatile uint32_t	sd_unused;
-#endif
+// #endif
 	volatile void		*sd_dma_addr;
 	volatile uint32_t	sd_dma_length;
 } SDIO;

@@ -296,7 +296,7 @@ static	int	sdspi_read_scr(SDSPIDRV *dev) {
 	dev->d_dev->sd_data = SECTOR_8B | SPEED_FAST;
 	dev->d_dev->sd_ctrl = SDSPI_SETAUX;
 
-	// 
+	//
 	dev->d_dev->sd_data = 0;
 	dev->d_dev->sd_ctrl = (SDSPI_CLEARERR|SDSPI_ACMD); // Go to alt command set
 	SDSPI_WAIT_WHILE_BUSY(dev);
@@ -1255,7 +1255,6 @@ int	sdspi_write(SDSPIDRV *dev, const unsigned sector, const unsigned count, cons
 	return 0;
 }
 // }}}
-
 
 int	sdspi_ioctl(SDSPIDRV *dev, char cmd, char *buf) {
 	// {{{

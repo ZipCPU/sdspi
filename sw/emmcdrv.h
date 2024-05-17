@@ -40,10 +40,13 @@
 
 typedef	struct EMMC_S {
 	volatile uint32_t	sd_cmd, sd_data, sd_fifa, sd_fifb, sd_phy;
-#if (sizeof(void *) <= 4)
+#if (sizeof(void *) <= 4) && !defined(__LITTLE_ENDIAN__)
 	volatile uint32_t	sd_unused;
 #endif
 	volatile void		*sd_dma_addr;
+#if (sizeof(void *) <= 4) &&  defined(__LITTLE_ENDIAN__)
+	volatile uint32_t	sd_unused;
+#endif
 	volatile uint32_t	sd_dma_length;
 } EMMC;
 

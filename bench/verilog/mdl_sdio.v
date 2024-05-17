@@ -98,7 +98,6 @@ module	mdl_sdio #(
 	reg	[31:0]	mem_buf	[0:127];
 	reg	[6:0]	rx_addr;
 
-	reg	[31:0]	mem	[0:(MEMSZ/4)-1];
 	reg	[LGMEMSZ-1:0]	read_posn;
 	integer		write_ik;
 
@@ -166,6 +165,87 @@ module	mdl_sdio #(
 		// }}}
 	);
 
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// SDIO MEM
+	// {{{
+
+	reg	[31:0]	mem	[0:(MEMSZ/4)-1];
+	integer	mem_fileid, mem_code;
+
+	/*
+	initial	if (MEMFILE != 0)
+	begin
+		mem_fileid = $fopen(MEMFILE, "rb");
+		mem_code = $fread(mem, mem_fileid);
+		$fclose(mem_fileid);
+	end
+	*/
+
+	task mem_blkwrite(input [31:0] posn);
+		// {{{
+		integer	write_ik;
+	begin
+		for(write_ik=0; write_ik<512/4; write_ik=write_ik+1)
+			mem[write_ik+posn] = mem_buf[write_ik];
+	end endtask
+	// }}}
+
+	task mem_blkread(input [31:0] posn);
+		// {{{
+		integer	read_ik;
+	begin
+		for(read_ik=0; read_ik<512/4; read_ik=read_ik+1)
+			mem_buf[read_ik] = mem[read_ik+read_posn];
+	end endtask
+	// }}}
+
+/*
+	generate if (MEMFILE == 0)
+	begin : NO_MEMFILE
+
+	end else begin : USE_MEMFILE
+		integer	mem_fileid;
+
+		initial	mem_fileid = $fope(MEMFILE, "rb+");
+
+		task mem_blkwrite(input [31:0] posn);
+			// {{{
+			integer	read_ik;
+			reg	[31:0]	word;
+		begin
+			$fseek(mem_fileid, posn, 1);
+			for(read_ik=0; read_ik<512/4; read_ik=read_ik+1)
+			begin
+				word[31:24] = $fgetc(mem_fileid);
+				word[23:16] = $fgetc(mem_fileid);
+				word[15: 8] = $fgetc(mem_fileid);
+				word[ 7: 0] = $fgetc(mem_fileid);
+				mem_buf[read_ik] = word;
+			end
+		end endtask
+		// }}}
+
+		task mem_blkread(input [31:0] posn);
+			// {{{
+			integer	read_ik;
+			reg	[31:0]	word;
+		begin
+			$fseek(mem_fileid, posn, 1);
+			for(read_ik=0; read_ik<512/4; read_ik=read_ik+1)
+			begin
+				word[31:24] = $fgetc(mem_fileid);
+				word[23:16] = $fgetc(mem_fileid);
+				word[15: 8] = $fgetc(mem_fileid);
+				word[ 7: 0] = $fgetc(mem_fileid);
+				mem_buf[read_ik] = word;
+			end
+		end endtask
+		// }}}
+
+	end endgenerate
+*/
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -470,6 +550,7 @@ module	mdl_sdio #(
 		rx_addr <= rx_addr + 1;
 	end else if (read_en && rx_good)
 	begin
+		// mem_blkwrite(read_posn);
 		for(write_ik=0; write_ik<512/4; write_ik=write_ik+1)
 			mem[write_ik+read_posn] = mem_buf[write_ik];
 		read_posn = read_posn + 512/4;
@@ -496,8 +577,7 @@ module	mdl_sdio #(
 					|| cmd[5:0] == 6'd18))
 			begin
 				write_en <= 1'b1;
-				for(read_ik=0; read_ik<512/4; read_ik=read_ik+1)
-					mem_buf[read_ik] = mem[read_ik+read_posn];
+				mem_blkread(read_posn);
 				read_posn = read_posn + 512/4;
 				tx_valid <= 1'b1;
 				tx_data <= mem_buf[0];

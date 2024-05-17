@@ -58,9 +58,9 @@ typedef	uint32_t DWORD, LBA_t, UINT;
 
 static	const int	EMMCINFO = 1, EMMCDEBUG=1;
 #ifdef	OPT_SDIODMA
-static	const	int	EMMCDMA = 1, EXTDMA = 0;
+static	const	int	EXTDMA = 0;
 #else
-static	const	int	EMMCDMA = 0, EXTDMA = 1;
+static	const	int	EXTDMA = 1;
 #endif
 // EMMCMULTI: Controls whether the read multiple block or write multiple block
 // commands will be used.  Set to 1 to use these commands, 0 otherwise.
@@ -75,8 +75,14 @@ typedef	struct	EMMCDRV_S {
 	EMMC		*d_dev;
 	uint32_t	d_CID[4], d_OCR;
 	char		d_SCR[8], d_CSD[16], d_EXCSD[512];
-	uint16_t	d_RCA;
-	uint32_t	d_sector_count, d_block_size;
+	uint16_t	d_RCA;	// Relative Card Address
+			// d_sector_count: the number of 512B blocks / device
+	uint32_t	d_sector_count,
+			// d_block_size = 512 (or at least better be ...)
+			d_block_size,
+			// d_DMA: A true/false flag indicating if we are to use
+			// the DMA (true) or not (false).
+			d_DMA;
 } EMMCDRV;
 
 static	const	uint32_t
@@ -963,7 +969,7 @@ int	emmc_write_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 24
 		dev->d_dev->sd_data = sector*512;
 	// }}}
 
-	if (EMMCDMA) {
+	if (dev->d_DMA) {
 		// {{{
 		// Set up the DMA
 		dev->d_dev->sd_dma_addr = buf;
@@ -1046,7 +1052,7 @@ int	emmc_read_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 17
 		phy |= (9 << 24);
 	}
 
-	if (EMMCDMA) {
+	if (dev->d_DMA) {
 		// {{{
 		GRAB_MUTEX;
 
@@ -1465,6 +1471,14 @@ EMMCDRV *emmc_init(EMMC *dev) {
 	dv->d_sector_count = 0;
 	dv->d_block_size   = 0;
 
+	// Determine if the DMA is present, and mark it for use if so
+	// {{{
+	dv->dev->sd_dma_length = -1;
+	dv->d_DMA = 0;
+	if (dv->sd_dma_length != 0)
+		dv->d_DMA = 1;
+	// }}}
+
 	// NEW_MUTEX;
 	GRAB_MUTEX;
 
@@ -1535,7 +1549,7 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 				return RES_ERROR;
 			}
 		} return RES_OK;
-	} else if (EMMCDMA) {
+	} else if (dev->d_DMA) {
 		// {{{
 		GRAB_MUTEX;
 
@@ -1698,7 +1712,7 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 	unsigned	st = 0;
 	unsigned	err = 0, card_stat, phy;
 
-	if (!EMMCDMA && (1 == count || !EMMCMULTI)) {
+	if (!dev->d_DMA && (1 == count || !EMMCMULTI)) {
 		for(unsigned k=0; k<count; k++) {
 			st = emmc_read_block(dev, sector+k,
 						(uint32_t *)(&buf[k*512]));
@@ -1706,7 +1720,7 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 				return RES_ERROR;
 			}
 		} return RES_OK;
-	} else if (EMMCDMA) {
+	} else if (dev->d_DMA) {
 		// {{{
 		GRAB_MUTEX;
 

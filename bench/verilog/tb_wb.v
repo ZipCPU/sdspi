@@ -37,43 +37,69 @@
 `default_nettype none
 `timescale 1ns / 1ps
 // }}}
-module	tb_wb;
+module	tb_wb
+	#(
+		// Local declarations
+		// {{{
+		parameter	[1:0]	OPT_SERDES = 1'b1,
+		parameter	[1:0]	OPT_DDR = 1'b1,
+		parameter	[0:0]	OPT_DMA = 1'b0,
+		parameter	[0:0]	OPT_VCD = 1'b0,
+		parameter	[0:0]	OPT_CPU = 1'b0,
+		parameter		DW = 64,
+		parameter		MEM_FILE = "",
+		parameter		CONSOLE_FILE = "",
+		localparam		BFM_DW=32,
+		localparam		VCD_FILE = "trace.vcd",
+		parameter		LGMEMSZ = 16,	// 64kB
+		localparam		ADDRESS_WIDTH = LGMEMSZ + 1
+		// }}}
+`ifdef	VERILATOR
+	) (
+		input	wire	clk, hsclk, reset,
+
+		output	wire		o_sd_ck,
+		output	wire		o_sd_cmd_tristate,
+		output	wire		o_sd_cmd,
+		input	wire		i_sd_cmd,
+		output	wire		o_sd_dat_tristate,
+		output	wire	[3:0]	o_sd_dat,
+		input	wire	[3:0]	i_sd_dat,
+		//
+		output	wire		o_emmc_ck,
+		output	wire		o_emmc_cmd_tristate,
+		output	wire		o_emmc_cmd,
+		input	wire		i_emmc_cmd,
+		input	wire		i_emmc_ds,
+		output	wire		o_emmc_dat_tristate,
+		output	wire	[3:0]	o_emmc_dat,
+		input	wire	[3:0]	i_emmc_dat
+`endif
+	);
+
 	// Local declarations
 	// {{{
-	parameter	[1:0]	OPT_SERDES = 1'b1;
-	parameter	[1:0]	OPT_DDR = 1'b1;
-	parameter	[0:0]	OPT_DMA = 1'b0;
-	parameter	[0:0]	OPT_VCD = 1'b0;
-	parameter	[0:0]	OPT_CPU = 1'b0;
-	parameter		DW = 64;
-	parameter		MEM_FILE = "";
-	parameter		CONSOLE_FILE = "";
-	localparam		BFM_DW=32;
-	localparam		VCD_FILE = "trace.vcd";
-	parameter		LGMEMSZ = 16;	// 64kB
-	localparam		ADDRESS_WIDTH = LGMEMSZ + 1;
-
 	localparam	WBLSB = $clog2(DW/8);
 	localparam	AW = ADDRESS_WIDTH-WBLSB,
 			BFM_AW = ADDRESS_WIDTH-$clog2(BFM_DW/8);
 
-	parameter [ADDRESS_WIDTH-1:0]
+	localparam [ADDRESS_WIDTH-1:0]
 			MEM_ADDR  = { 1'b1,   {(AW-1){1'b0}}, {(WBLSB){1'b0}} },
 			CON_ADDR  = { 5'b00010,{(AW-5){1'b0}},{(WBLSB){1'b0}} },
 			GPIO_ADDR = { 5'b00011,{(AW-5){1'b0}},{(WBLSB){1'b0}} },
 			SDIO_ADDR = { 3'b001, {(AW-3){1'b0}}, {(WBLSB){1'b0}} },
 			EMMC_ADDR = { 3'b010, {(AW-3){1'b0}}, {(WBLSB){1'b0}} };
 	//
-	parameter [ADDRESS_WIDTH-1:0]
+	localparam [ADDRESS_WIDTH-1:0]
 			MEM_MASK  = { 1'b1,  {(AW-1){1'b0}}, {(WBLSB){1'b0}} },
 			CON_MASK  = { 5'b11111,{(AW-5){1'b0}},{(WBLSB){1'b0}} },
 			GPIO_MASK = { 5'b11111,{(AW-5){1'b0}},{(WBLSB){1'b0}} },
 			SDIO_MASK = { 3'b111,{(AW-3){1'b0}}, {(WBLSB){1'b0}} },
 			EMMC_MASK = { 3'b111,{(AW-3){1'b0}}, {(WBLSB){1'b0}} };
-
-	reg	[2:0]		ckcounter;
+`ifndef	VERILATOR
 	wire			clk, hsclk;
 	reg			reset;
+`endif
 
 	// BFM definitions
 	// {{{
@@ -182,10 +208,12 @@ module	tb_wb;
 	wire	[DW/8-1:0]	mem_sel;
 	// }}}
 
+`ifndef	VERILATOR
 	wire			sd_cmd, sd_ck;
 	wire	[3:0]		sd_dat;
 	wire			emmc_cmd, emmc_ck, emmc_ds;
 	wire	[7:0]		emmc_dat;
+`endif
 	wire			sdio_interrupt, emmc_interrupt, cpu_interrupt,
 				gpio_interrupt;
 	wire	[31:0]		sdio_debug, emmc_debug;
@@ -194,7 +222,9 @@ module	tb_wb;
 	//
 	// Clock/reset generation
 	// {{{
+`ifndef	VERILATOR
 	localparam	realtime CLK_PERIOD = 10.0;	// 100MHz
+	reg	[2:0]		ckcounter;
 
 	initial	begin
 		ckcounter = 0;
@@ -211,7 +241,7 @@ module	tb_wb;
 		@(posedge clk)
 			reset <= 0;
 	end
-
+`endif
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -333,7 +363,7 @@ module	tb_wb;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
-	// Unit under test
+	// Unit(s) under test
 	// {{{
 
 	// Downsize
@@ -413,7 +443,19 @@ module	tb_wb;
 		.i_dma_err(sdio_dma_err),
 		// }}}
 		//
+`ifdef	VERILATOR
+		.o_ck(o_sd_ck), .i_ds(1'b0),
+		//
+		.io_cmd_tristate(o_sd_cmd_tristate),
+		.o_cmd(o_sd_cmd),
+		.i_cmd(i_sd_cmd),
+		//
+		.io_dat_tristate(o_sd_dat_tristate),
+		.o_dat(o_sd_dat),
+		.i_dat(i_sd_dat),
+`else
 		.o_ck(sd_ck), .i_ds(1'b0), .io_cmd(sd_cmd), .io_dat(sd_dat),
+`endif
 		.i_card_detect(1'b1), .o_int(sdio_interrupt),
 		.o_debug(sdio_debug)
 		// }}}
@@ -451,8 +493,21 @@ module	tb_wb;
 		.i_dma_err(emmc_dma_err),
 		// }}}
 		//
+`ifdef	VERILATOR
+		.o_ck(o_emmc_ck),
+		.i_ds(i_emmc_ds),
+		//
+		.io_cmd_tristate(o_emmc_cmd_tristate),
+		.o_cmd(o_emmc_cmd),
+		.i_cmd(i_emmc_cmd),
+		//
+		.io_dat_tristate(o_emmc_dat_tristate),
+		.o_dat(o_emmc_dat),
+		.i_dat(i_emmc_dat),
+`else
 		.o_ck(emmc_ck),
 			.io_cmd(emmc_cmd), .io_dat(emmc_dat), .i_ds(emmc_ds),
+`endif
 		.i_card_detect(1'b1), .o_int(emmc_interrupt),
 		.o_debug(emmc_debug)
 		// }}}
@@ -464,6 +519,7 @@ module	tb_wb;
 	////////////////////////////////////////////////////////////////////////
 	//
 	// eMMC Device model
+`ifndef	VERILATOR
 	// {{{
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -479,9 +535,11 @@ module	tb_wb;
 	);
 
 	// }}}
+`endif
 	////////////////////////////////////////////////////////////////////////
 	//
 	// SDIO Device model
+`ifndef	VERILATOR
 	// {{{
 
 	mdl_sdio #(
@@ -493,6 +551,7 @@ module	tb_wb;
 	);
 
 	// }}}
+`endif
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Console peripheral

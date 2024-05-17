@@ -92,9 +92,9 @@ typedef	uint32_t DWORD, LBA_t, UINT;
 
 static	const int	SDINFO = 1, SDDEBUG=1;
 #ifdef	OPT_SDIODMA
-static	const	int	SDDMA = 1, SDEXTDMA=0;
+static	const	int	SDEXTDMA=0;
 #else
-static	const	int	SDDMA = 0, SDEXTDMA=1;
+static	const	int	SDEXTDMA=1;
 #endif
 
 // SDMULTI: Controls whether the read multiple block or write multiple block
@@ -116,7 +116,7 @@ typedef	struct	SDIODRV_S {
 	uint32_t	d_CID[4], d_OCR;
 	char		d_SCR[8], d_CSD[16];
 	uint16_t	d_RCA;
-	uint32_t	d_sector_count, d_block_size;
+	uint32_t	d_sector_count, d_block_size, d_DMA;
 } SDIODRV;
 
 static	const	uint32_t
@@ -1013,6 +1013,14 @@ SDIODRV *sdio_init(SDIO *dev) {
 	dv->d_sector_count = 0;
 	dv->d_block_size   = 0;
 
+	// Determine if the DMA is present, and mark it for use if so.
+	// {{{
+	dv->d_dev->sd_dma_length = -1;
+	dv->d_DMA = 0;
+	if (dv->sd_dma_length != 0)
+		dv->d_DMA = 1;
+	// }}}
+
 	// NEW_MUTEX;
 	GRAB_MUTEX;
 
@@ -1164,7 +1172,7 @@ SDIODRV *sdio_init(SDIO *dev) {
 int	sdio_write(SDIODRV *dev, const unsigned sector,
 			const unsigned count, const char *buf) {
 	// {{{
-	if (!SDDMA && (1 == count || !SDMULTI)) {
+	if (!dev->d_DMA && (1 == count || !SDMULTI)) {
 		unsigned	st;
 
 		for(unsigned k=0; k<count; k++) {
@@ -1208,7 +1216,7 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 		else
 			dev->d_dev->sd_data = sector*512;
 
-		if (SDDMA) {
+		if (dev->d_DMA) {
 			// {{{
 			dev->d_dev->sd_dma_addr = buf;
 			dev->d_dev->sd_dma_length = count;
@@ -1306,7 +1314,7 @@ int	sdio_read(SDIODRV *dev, const unsigned sector,
 	// {{{
 	unsigned	st = 0;
 
-	if (!SDDMA && (1 == count || !SDMULTI)) {
+	if (!dev->d_DMA && (1 == count || !SDMULTI)) {
 		for(unsigned k=0; k<count; k++) {
 			st = sdio_read_block(dev, sector+k,
 						(uint32_t *)(&buf[k*512]));
@@ -1333,7 +1341,7 @@ int	sdio_read(SDIODRV *dev, const unsigned sector,
 			dev->d_dev->sd_data = sector;
 		else
 			dev->d_dev->sd_data = sector*512;
-		if (SDDMA) {
+		if (dev->d_DMA) {
 			// Activate the SDIO DMA
 			// {{{
 			dev->d_dev->sd_dma_addr = buf;

@@ -130,23 +130,24 @@ actions required of the IP.  Chapt.~\ref{ch:arch} will also discuss the
 components of the verification architecture.
 
 I am aware that there is an official SDIO controller register set standard.
-This IP does not support it, but rather uses its own register set configuration.
-One reason for this is simplicity.  The official register set standard
-appeared, upon inspection, more complicated than necessary.  Second, since
-the SDSPI register set worked so well, there didn't seem to be a need to
+This IP does not support that standard, but rather uses its own register set
+configuration.  One reason for this is simplicity.  The official register set
+standard appeared, upon inspection, more complicated than necessary.  Second,
+since the SDSPI register set worked so well, there didn't seem to be a need to
 generate something new.
 
 As a result, most of the registers from the SDSPI controller have been
 replicated here, save that they support SDIO control instead of SPI control.
 Like the SDSPI controller, this IP has CMD, DATA/ARG, and two FIFO registers.
 Unlike the SDSPI controller, a fifth register has been added for PHY
-configuration.  This directly exposes what once was the internal configuration
-register of the SDSPI controller.  Finally, this IP now supports an optional
-internal DMA capability, and so three additional registers are now assigned
-to support both the DMA address and transfer length.  Chapt~\ref{ch:ops}
-discusses how these registers can be used to accomplish the basic operations
-of the card, while Chapt.~\ref{ch:regs} goes through the definition of each
-register in detail.
+configuration.  This register directly exposes what once was the internal
+configuration register of the SDSPI controller.  Finally, this IP now supports
+an optional internal DMA capability, and so three additional registers are now
+assigned to support both the DMA address and transfer length--registers not
+present in the original SDSPI controller.  Chapt~\ref{ch:ops} discusses how
+all of these registers can be used to accomplish the basic operations required
+of any interaction with an external card/chip, while Chapt.~\ref{ch:regs} goes
+through the definition of each register in detail.
 
 Finally, this is an Open Source project.  The project was initially
 developed using a combination of external funding and internal research and
@@ -157,10 +158,10 @@ others to examine and learn from.  My second goal is to use this as a
 background when providing services to my customers.  My typical contract is
 for an hourly rate only, yet it comes with full access to any IP I have
 developed.  As such, additional work on this IP may be done on a pay-per-hour
-basis.  Where this project supports another project of mine, I will bill
-that project for any required maintenance.  Likewise, if you find this IP
-almost meets your needs, then feel free to contract with me for any
-maintenance adjustments or upgrades you might need.
+basis.  Where this project supports another project of mine, I will bill that
+project for any required maintenance.  Likewise, if you find this IP almost
+meets your needs, then feel free to contract with me for any maintenance
+adjustments or upgrades you might need.
 %% }}}
 \chapter{Features}\label{ch:features}
 %% {{{
@@ -231,15 +232,16 @@ specific requirements:
 	An optional AXI--Lite interface also exists.
 
 \item An optional DMA interface exists.  This DMA interface can be used to
-	transfer many blocks of data at once.
+	transfer many blocks of data sequentially as part of a single command.
 
 	At present, the DMA interface supports the Wishbone bus only.
 
 \end{itemize}
 
-Many, although not all, of these features have been tested as part of the 10Gb
-Ethernet switch KlusterLab project.  It is in this project that the software
-has been tested and proven, and where its utility has been demonstrated.
+Many, although not all, of these features have been tested as part of the
+\zhref{https://github.com/ZipCPU/eth10g}{10Gb Ethernet switch KlusterLab
+project}.  It is in this project that the software has been tested and proven,
+and where its utility has been demonstrated.
 
 \section{Limitations}
 
@@ -268,8 +270,8 @@ development.
 	better PCB design, but for the time being this statement outlines
 	hardware testing success to date.
 
-	Please check the \zhref{doc/hwteststat.png}{hwteststat.png} file in
-	the \zhref{doc/}{doc/} directory for the current status of any hardware
+	Please check the \zhref{hwteststat.png}{hwteststat.png} file in
+	the \zhref{doc/}{./} directory for the current status of any hardware
 	testing and any updates on this issue.
 
 \item The verification model depends upon an internal memory buffer which can
@@ -291,8 +293,8 @@ development.
 	This also means there's no support for either CRC acknowledgement
 	or negative acknowledgement tokens.
 
-	Boot support may be added in the future.  As with the DMA feature,
-	I have no requirement for this capability at present.
+	Boot support may be added in the future, once I have a requirement
+	for it.  For now, I have no requirement for this capability.
 
 \item The model doesn't (yet) support all SDIO commands.
 
@@ -326,13 +328,13 @@ The basic SDIO/eMMC RTL architecture is shown in Fig.~\ref{fig:sdioblocks}.
 \caption{SDIO/eMMC Controller RTL Architecture}\label{fig:sdioblocks}
 \end{center}\end{figure}
 The design is broken up into two parts at the top level: a hardware independent,
-all digital logic component whose top level is \zhref{rtl/sdio.v}{\tt sdio.v},
+all digital logic component whose top level is \zhref{../rtl/sdio.v}{\tt sdio.v},
 and a hardware dependent front end component whose top level is found in
-\zhref{rtl/sdfrontend.v}{\tt sdfrontend.v}.
+\zhref{../rtl/sdfrontend.v}{\tt sdfrontend.v}.
 
-The core controller, found in \zhref{rtl/sdio.v}{\tt sdio.v}, itself is
+The core controller, found in \zhref{../rtl/sdio.v}{\tt sdio.v}, itself is
 composed of five separate components.  The first,
-\zhref{rtl/sdwb.v}{\tt sdwb.v}, is the controller.  This component is
+\zhref{../rtl/sdwb.v}{\tt sdwb.v}, is the controller.  This component is
 a wishbone slave.  All user interaction goes through this controller.
 Requests for transfers are made here.  Data to be transferred is stored here
 in one of two FIFOs for transmission to the front end.  Data to be received
@@ -341,12 +343,12 @@ CPU.  Even when using the DMA, data will first be stored in the FIFO's within
 the controller before going to the card, or after coming from the card.
 
 A second, alternative, controller implementation exists in
-\zhref{rtl/sdaxil.v}{\tt sdaxil.v}.  This controller is nearly line for line
-identical to the \zhref{rtl/sdwb.v}{\tt sdwb.v} controller, save that
+\zhref{../rtl/sdaxil.v}{\tt sdaxil.v}.  This controller is nearly line for line
+identical to the \zhref{../rtl/sdwb.v}{\tt sdwb.v} controller, save that
 interaction with this controller takes place over AXI-Lite instead of Wishbone.
 
 The controller maintains a PHY register for configuring the front end.  This
-register also controls the clock generator, \zhref{rtl/sdckgen.v}{\tt sdckgen.v}.  This clock
+register also controls the clock generator, \zhref{../rtl/sdckgen.v}{\tt sdckgen.v}.  This clock
 generator is responsible for generating the clock used throughout the
 interface.  That clock is internally represented as an 8-bit vector, allowing
 it to specify zero, one, or up to two clock periods, each either aligned with
@@ -359,7 +361,7 @@ within the design.)  Turning off the clock may be required when working with
 the multiblock read command, to ensure that the FIFO is properly cleared before
 subsequent blocks are read.
 
-Commands issued to the controller will be forwarded to the \zhref{rtl/sdcmd.v}{\tt sdcmd.v}
+Commands issued to the controller will be forwarded to the \zhref{../rtl/sdcmd.v}{\tt sdcmd.v}
 module.  This module is responsible for all interactions taking place over
 the CMD wire.  The module can generate 48-bit commands, beginning with a
 start bit and ending with a CRC and a stop bit.  It can then recognize
@@ -375,28 +377,28 @@ Fig.~\ref{fig:sdcmdflow}
 \caption{SDIO/eMMC CMD pin data flow}\label{fig:sdcmdflow}
 \end{center}\end{figure}
 shows both the basic command flow, and the two possible response flows.
-For commands, a data register within \zhref{rtl/sdwb.v}{\tt sdwb.v} is first set, then the
-command is issued.  The \zhref{rtl/sdcmd.v}{\tt sdcmd.v} module organizes both into a 48-bit
-word to be transmitted.  The \zhref{rtl/sdcmd.v}{\tt sdcmd.v} module then looks for one of
+For commands, a data register within \zhref{../rtl/sdwb.v}{\tt sdwb.v} is first set, then the
+command is issued.  The \zhref{../rtl/sdcmd.v}{\tt sdcmd.v} module organizes both into a 48-bit
+word to be transmitted.  The \zhref{../rtl/sdcmd.v}{\tt sdcmd.v} module then looks for one of
 two responses, either a 48--bit response which would place the 32-bit
 argument back in a data register, or a 136--bit response which would be
-placed into one of the two FIFOs in \zhref{rtl/sdwb.v}{\tt sdwb.v}.
+placed into one of the two FIFOs in \zhref{../rtl/sdwb.v}{\tt sdwb.v}.
 
 One type of controller command is a memory command.  These commands send a
 48-bit command to the device, followed by sending data to or receiving data
 from the device.
 
-The \zhref{rtl/sdrxframe.v}{\tt sdrxframe.v} component is activated when data is expected from the
+The \zhref{../rtl/sdrxframe.v}{\tt sdrxframe.v} component is activated when data is expected from the
 device on the data wires.  It's purpose is to collect the data returned from
 the front end controller, and re-form that data into commands to write to
-one of the FIFOs in \zhref{rtl/sdwb.v}{\tt sdwb.v}.  If a full frame, as defined by the
+one of the FIFOs in \zhref{../rtl/sdwb.v}{\tt sdwb.v}.  If a full frame, as defined by the
 controller, is not received prior to a timeout, or if a CRC error is detected
 within that frame, the receive component will report an error and give up
 in order to wait for its next command.
 
-Similarly, the \zhref{rtl/sdtxframe.v}{\tt sdtxframe.v} command is activated when data is to be
+Similarly, the \zhref{../rtl/sdtxframe.v}{\tt sdtxframe.v} command is activated when data is to be
 sent over the data wires to the device.  In this case, data flows from one
-of the FIFOs in \zhref{rtl/sdwb.v}{\tt sdwb.v} to \zhref{rtl/sdtxframe.v}{\tt sdtxframe.v}, gets formatted for the
+of the FIFOs in \zhref{../rtl/sdwb.v}{\tt sdwb.v} to \zhref{../rtl/sdtxframe.v}{\tt sdtxframe.v}, gets formatted for the
 front end to output, a start bit, CRC, and stop bit are added, and all get
 sent to the front end.  This basic flow is shown in Fig.~\ref{fig:sdiotxflow}.
 \begin{figure}\begin{center}
@@ -422,7 +424,7 @@ controlled digital delay, allowing sample alignment with clock precision
 of one eighth of a system clock.  Hence, even without the full speed HS200
 support, this subsample re-alignment may still be quite valuable when supporting
 higher speeds.  All Xilinx specific SERDES interactions are captured in an
-\zhref{rtl/xsdserdes8x.v}{\tt xsdserdes8x.v} module.
+\zhref{../rtl/xsdserdes8x.v}{\tt xsdserdes8x.v} module.
 
 Logic resources throughout the design may be reduced, however, by switching
 to a simpler front end architecture.  Two other architectures are available:
@@ -435,7 +437,7 @@ architecture, save the DDR IO elements are used to generate both clock and
 data instead of the SERDES elements.  This should make it possible to drive
 the IO pins at the full clock speed using SDR, or at half the clock speed
 using DDR.  In this case, all Xilinx specific IDDR and ODDR interactions are
-captured in an \zhref{rtl/xsdddr.v}{\tt xsdddr.v} module.
+captured in an \zhref{../rtl/xsdddr.v}{\tt xsdddr.v} module.
 
 The no macro architecture was built in order to support an architecture
 where the {\tt SD\_CK} pin was routed through the Xilinx {\tt CCK} pin,
@@ -450,10 +452,10 @@ independent and hardware dependent.
 \section{DMA Architecture}\label{sec:arch-dma}
 %% {{{
 The DMA is built from several parts.  The first key component to the DMA is
-found in the control module, \zhref{rtl/sdwb.v}{\tt sdwb.v}.  The controller
+found in the control module, \zhref{../rtl/sdwb.v}{\tt sdwb.v}.  The controller
 is responsible for sectioning transfers into per-block requests, and forwarding
 data to and from the DMA module itself.  The rest of the DMA logic is found
-in the DMA module, \zhref{rtl/sddma.v}{\tt sddma.v}.  This module is shown
+in the DMA module, \zhref{../rtl/sddma.v}{\tt sddma.v}.  This module is shown
 in Fig.~\ref{fig:dmablocks}.
 \begin{figure}\begin{center}
 \includegraphics[height=2.5in]{gfx/dmablocks.eps}
@@ -483,7 +485,7 @@ Data arrives in the DMA module from one of three sources.  First, if
 both {\tt OPT\_ISTREAM} and the MSB of the DMA address are set, data may
 arrive from an AXI stream.  If used, this most-significant bit is one wider
 than the address width of the devices bus.  Alternatively, data may be read
-from memory using the \zhref{rtl/sddma\_zipmms.v}{\tt sddma\_zipmms.v}
+from memory using the \zhref{../rtl/sddma\_zipmms.v}{\tt sddma\_zipmms.v}
 component.  Finally, when reading from the card, data will arrive first in the
 controller module, and then be forwaded from it once the respective buffer
 is full.
@@ -492,7 +494,7 @@ These sources may have different data widths.  Data arriving from memory will
 arrive packed in bits that may be up to the full bus width in size.  Data
 arriving from the controller will be 32b wide.  Data arriving from the
 stream port may be either one of these widths.  The receiving gearbox,
-\zhref{rtl/sddma\_rxgears.v}{\tt sddma\_rxgears.v}, will therefore take this
+\zhref{../rtl/sddma\_rxgears.v}{\tt sddma\_rxgears.v}, will therefore take this
 data stream and pack it into beats at the widest of these widths.
 
 From here, data enters into a FIFO.  This guarantees that the memory source
@@ -501,7 +503,7 @@ not supported by the Wishbone interface.  The FIFO also allows data to arrive
 at wide widths, only to be read at slower (32b) rates if necessary.
 
 From the FIFO, the data width is adjusted in the transmit, or outgoing,
-gearbox, \zhref{rtl/sddma\_txgears.v}{\tt sddma\_txgears.v}.  This component
+gearbox, \zhref{../rtl/sddma\_txgears.v}{\tt sddma\_txgears.v}.  This component
 optionally adjusts the data width back down to 32b if required.  Either the
 stream output, or the controller interface may require this width.  If going
 back to memory, the width will be left at the full size of the bus.
@@ -513,7 +515,7 @@ data may either be written to memory or to the AXI stream interface.  The AXI
 stream interface will be used when/if both {\tt OPT\_OSTREAM} is set and
 the most significant address bit are set.
 
-A small amount of logic exists in the \zhref{rtl/sddma.v}{\tt sddma.v}
+A small amount of logic exists in the \zhref{../rtl/sddma.v}{\tt sddma.v}
 module to control the switching between sources and outputs, as well as to
 make sure block boundaries are respected.
 %% }}}
@@ -533,7 +535,7 @@ Further, these three submodules have been built to be independent of whether
 the controller is modeling an SDIO or an eMMC interface.
 
 The smarts of this Verfication IP (VIP) are found in the finite state machine
-(FSM) at the top level of \zhref{bench/verilog/mdl\_sdio.v}{\tt mdl\_sdio.v}.
+(FSM) at the top level of \zhref{../bench/verilog/mdl\_sdio.v}{\tt mdl\_sdio.v}.
 This state machine responds to commands, and generates responses to them.  A
 data transfer buffer exists for sending or receiving data across the interface.
 A second memory within the VIP, shown as {\tt MEM} in Fig.~\ref{fig:mdlsdio},
@@ -560,9 +562,9 @@ which can be called by the test script itself.
 
 Two versions of this top-level interface exist.  The first supports
 all Wishbone interactions.  It can be found in
-\zhref{bench/verilog/tb\_wb.v}{\tt tb\_wb.v}.  A second top level exists for
+\zhref{../bench/verilog/tb\_wb.v}{\tt tb\_wb.v}.  A second top level exists for
 testing AXI interactions.  This is found in
-\zhref{bench/verilog/tb\_axi.v}{\tt tb\_axi.v}.
+\zhref{../bench/verilog/tb\_axi.v}{\tt tb\_axi.v}.
 
 A third test bench infrastructure, shown in Fig.~\ref{fig:cputb},
 \begin{figure}\begin{center}
@@ -583,30 +585,30 @@ case, that softcore CPU will be the ZipCPU.
 %% {{{
 
 At present, there exist three software drivers and one glue layer for each.
-The three drivers are found in the \zhref{sw/}{\tt sw/} directory.  These
+The three drivers are found in the \zhref{../sw/}{\tt sw/} directory.  These
 respective drivers are:
 \begin{itemize}
-\item \zhref{sw/sdspidrv.c}{\tt sdspidrv.c}: A software driver for the SPI
+\item \zhref{../sw/sdspidrv.c}{\tt sdspidrv.c}: A software driver for the SPI
 	version of this controller.  The SPI version of this controller is
 	described in the SDSPI user guide.
-\item \zhref{sw/sdspidrv.c}{\tt sdiodrv.c}: A software driver for the SDIO
+\item \zhref{../sw/sdiodrv.c}{\tt sdiodrv.c}: A software driver for the SDIO
 	controller, described in this user guide.  This controller is designed
 	to interact with an SD Card.
-\item \zhref{sw/emmcdrv.c}{\tt emmcdrv.c}: A software driver for the eMMC
+\item \zhref{../sw/emmcdrv.c}{\tt emmcdrv.c}: A software driver for the eMMC
 	controller.  This is designed to interact with the same SDIO/eMMC
 	controller discussed in this user guide.  However, the SDIO and eMMC
 	protocols require different commands to interact with their respective
 	devices.  As a result, in spite of any similarities, the eMMC software
 	driver differs significantly from the SDIO software driver.
-\item \zhref{sw/diskiodrvr.c}{\tt diskiodrvr.h} provides a common definition
+\item \zhref{../sw/diskiodrvr.c}{\tt diskiodrvr.h} provides a common definition
 	of a device ``driver'', which can be used across all of the device
 	drivers listed above.
 
 	More on this in a moment.
-\item \zhref{sw/diskio.c}{\tt diskio.c} is a shared/common dispatch glue layer.
-	Commands from the \zhref{http://elm-chan.org/fsw/ff/}{FATFS} subsystem
-	naturally land here, where they are then dispatched to the appropriate
-	controller.
+\item \zhref{../sw/diskio.c}{\tt diskio.c} is a shared/common dispatch glue
+	layer.  Commands from the \zhref{http://elm-chan.org/fsw/ff/}{FATFS}
+	subsystem naturally land here, where they are then dispatched to the
+	appropriate controller.
 \end{itemize}
 
 Put together, this IO subsystem has the various layers shown in
@@ -634,7 +636,7 @@ At its most basic level, interacting with the controller simply involves
 configuring the PHY, setting the data you wish to send, and then sending a
 command to the controller.  This needs to take place, however, in many
 different contexts.  Some commands don't expect responses, whereas others
-return 48 or even 136--bits.  Some commands include data transmission,
+return 48 or even 136--bits.  Some commands are followed by data transmission,
 whereas others do not.  This section therefore walks through several
 examples of commands, illustrating the range of commands and responses
 that can be issued using this controller.

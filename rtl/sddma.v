@@ -530,7 +530,7 @@ module	sddma #(
 	// s2sd_busy
 	// {{{
 	always @(posedge i_clk)
-	if (i_reset)
+	if (i_reset || s2mm_err)
 		s2sd_busy <= 1'b0;
 	else if (i_dma_s2sd)
 		s2sd_busy <= 1'b1;
@@ -541,7 +541,7 @@ module	sddma #(
 	// sd2s_busy
 	// {{{
 	always @(posedge i_clk)
-	if (i_reset)
+	if (i_reset || mm2s_err)
 		sd2s_busy <= 1'b0;
 	else if (i_dma_sd2s)
 		sd2s_busy <= 1'b1;

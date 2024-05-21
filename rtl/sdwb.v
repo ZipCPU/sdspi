@@ -1135,11 +1135,6 @@ module	sdwb #(
 
 	// o_cfg_ds: Enable return data strobe support
 	// {{{
-	always @(posedge i_clk)
-	if (bus_phy_stb && (|bus_wstrb))
-		$display("PHY-WRITE: %08x/%01x (was %08x)",
-					bus_wdata, bus_wstrb, w_phy_ctrl);
-
 	generate if (OPT_DS && OPT_EMMC)
 	begin : GEN_DS_CONTROL
 		reg	r_cfg_ds, r_cfg_dscmd;
@@ -1728,7 +1723,7 @@ module	sdwb #(
 
 		always @(*)
 		begin
-			w_release_dma= r_dma_zero_len || r_abort || r_dma_err;
+			w_release_dma= r_dma_zero_len || r_dma_err;
 			if(r_mem_busy || i_dma_busy || o_dma_s2sd || o_dma_sd2s)
 				w_release_dma = 1'b0;
 			if (cmd_busy || !r_dma_stopped)
@@ -1737,6 +1732,7 @@ module	sdwb #(
 				w_release_dma = 1'b0;
 		end
 
+		initial	{ r_dma, dma_s2sd, dma_sd2s } = 3'h0;
 		always @(posedge i_clk)
 		if (i_reset)
 		begin
@@ -1772,7 +1768,7 @@ module	sdwb #(
 		begin
 			{ dma_s2sd, dma_sd2s } <= 2'b00;
 
-			if (r_dma_zero_len || (r_abort || r_dma_err))
+			if (r_dma_zero_len || r_dma_err)
 			begin
 				if (w_release_dma)
 					// If we've finished, shut down
@@ -1872,7 +1868,7 @@ module	sdwb #(
 					assert(r_dma_fifo != r_fifo
 					|| (!o_dma_s2sd && !i_dma_busy));
 
-					assert(r_dma_loaded[r_fifo]);
+					assert(r_dma_loaded[r_fifo] || dma_error);
 				end else begin
 					// assert(!r_dma_loaded[r_fifo]);
 					// assert(!o_dma_s2sd || dma_fifo != r_fifo);
@@ -2011,14 +2007,14 @@ module	sdwb #(
 		wire	[LGFIFOW-1:0]	f_dma_rdaddr;
 
 		always @(*)
-		if (!i_reset && dma_busy && r_dma_loaded[dma_fifo] == r_tx)
+		if (!i_reset && dma_busy && r_dma_loaded[dma_fifo] == r_tx && !dma_error)
 		begin
 			assert(!r_dma_last);
 			assert(r_subblock == blk_words);
 		end
 
 		always @(*)
-		if (!i_reset && dma_busy)
+		if (!i_reset && dma_busy && !dma_error)
 		begin
 			assert(r_dma_last == (r_subblock == 0));
 			assert(r_subblock <= f_blocksz-1);
@@ -2029,7 +2025,7 @@ module	sdwb #(
 		assign	f_dma_rdaddr = f_blocksz-1 + (pre_dma_valid ? 1:0)
 					+ (r_sd2s_valid ? 1:0) - r_subblock;
 		always @(*)
-		if (!i_reset && dma_busy)
+		if (!i_reset && dma_busy && !dma_error)
 		begin
 			if (r_tx)
 			begin
@@ -2081,7 +2077,7 @@ module	sdwb #(
 		// sent to the SD card?  When reading, ... when is the FIFO
 		// unloaded and ready to be filled again?
 		always @(posedge i_clk)
-		if (i_reset || o_soft_reset || !dma_busy || r_abort)
+		if (i_reset || o_soft_reset || !dma_busy || dma_error)
 			r_dma_loaded <= 2'b0;
 		else if (r_tx)
 		begin
@@ -2164,6 +2160,12 @@ module	sdwb #(
 		always @(*)
 		if (!i_reset)
 			assert(dma_zero_len == (r_block_count == 0));
+		always @(*)
+		if (f_past_valid && dma_zero_len && r_tx)
+		begin
+			assume(!i_dma_busy);
+			assert(!o_dma_s2sd);
+		end
 `endif
 		// }}}
 
@@ -2206,12 +2208,13 @@ module	sdwb #(
 			// FIXME: Reads can be stopped before the DMA transfer
 			//  stops, writes cannot.  Below waits for DMA reads
 			//  to complete entirely, a bit of an overkill.
-			if ((r_abort || r_dma_err || dma_zero_len)
-				&& (!r_tx || r_dma_loaded == 0))
+			if (r_dma_err || (dma_zero_len
+				&& (!r_tx || r_dma_loaded == 0)))
 			begin // Send STOP_TRANSMISSION
 				// {{{
-				if (!r_dma_stopped && !cmd_busy && (!r_tx
-					||(!i_dma_busy&& !o_tx_en && r_dma_loaded == 2'b0)))
+				if (!cmd_busy && (!r_tx
+					||(!i_dma_busy&& !o_tx_en
+						&& (r_dma_err || r_dma_loaded == 2'b0))))
 				begin
 					r_dma_write <= 1'b1;
 					// STOP_TRANSMISSION
@@ -2245,8 +2248,8 @@ module	sdwb #(
 			else
 				r_dma_command <= DMA_NULL_READ;
 
-			if ((r_abort || r_dma_err || dma_zero_len)
-				&&(!r_tx ||(!i_dma_busy&& r_dma_loaded== 2'b0)))
+			if (r_dma_err || (dma_zero_len
+					&&(!r_tx || r_dma_loaded== 2'b0)))
 			begin
 				r_dma_command <= DMA_STOP_TRANSMISSION;
 			end
@@ -2374,18 +2377,23 @@ module	sdwb #(
 			assert(!i_dma_busy);
 
 		always @(posedge i_clk)
-		if ($past(i_reset) || $past(o_soft_reset) || $past(o_dma_abort))
+		if (i_reset || $past(i_reset)
+				|| $past(o_soft_reset) || $past(o_dma_abort))
+		begin
 			assume(!i_dma_busy);
-		else if ($past(i_s2sd_valid && o_s2sd_ready && dma_last))
-			// Busy always falls after last on TX
+		end else if ($past(i_s2sd_valid && o_s2sd_ready && dma_last))
+		begin // Busy always falls after last on TX
 			assume($fell(i_dma_busy));
-		else if ($past(o_sd2s_valid && i_sd2s_ready && dma_last))
-			// Busy always falls after last on RX
+		end else if ($past(o_sd2s_valid && i_sd2s_ready && dma_last))
+		begin // Busy always falls after last on RX
 			assume($fell(i_dma_busy));
-		else if ($past(o_dma_s2sd) || $past(o_dma_sd2s))
-			// Busy always rises on request
+		end else if ($past(o_dma_s2sd) || $past(o_dma_sd2s))
+		begin // Busy always rises on request
 			assume(i_dma_busy);
-		else
+		end else if ($past(i_dma_err))
+		begin // Busy always falls following an error
+			assume(!i_dma_busy);
+		end else
 			assume($stable(i_dma_busy));
 
 	//	always @(posedge i_clk)
@@ -2397,10 +2405,6 @@ module	sdwb #(
 			// Valid only rises if the DMA is busy
 			assume(!i_s2sd_valid);
 		// }}}
-
-		always @(*)
-		if (!dma_busy)
-			assume(!i_dma_err);
 
 		// f_cfg_* configuration copy
 		// {{{
@@ -2466,8 +2470,22 @@ module	sdwb #(
 		// DMA Error/Abort properties
 		// {{{
 		always @(posedge i_clk)
+		if (!i_reset && !$past(dma_busy))
+			assume(!i_dma_err);
+
+		always @(posedge i_clk)
+		if (i_reset || $past(i_reset))
+			assume(!i_dma_err);
+		else if (!$past(i_dma_busy))
+			assume(!i_dma_err);
+
+		always @(posedge i_clk)
 		if (!i_reset && $past(r_abort))
 			assert(!r_abort);
+
+		always @(posedge i_clk)
+		if (!i_reset && r_abort && !$past(o_soft_reset))
+			assert(r_dma_err);
 
 		always @(posedge i_clk)
 		if (!i_reset && !$rose(r_dma_err) && !$past(o_soft_reset))
@@ -2497,8 +2515,23 @@ module	sdwb #(
 		end
 		// }}}
 
+		always @(posedge i_clk)
+		if (!f_past_valid || $past(i_reset)
+				|| $past(o_soft_reset) || $past(!o_hwreset_n))
+		begin
+			assert(!r_dma);
+		end else if ($past(w_release_dma))
+		begin
+			assert(!r_dma);
+		end else if (dma_error && $past(dma_error)
+			&& !$past(cmd_busy || r_mem_busy || r_abort) && !dma_write)
+		begin
+			if (!i_dma_busy && !r_mem_busy && !cmd_busy && !r_abort)
+				assert(!r_dma);
+		end
+
 		always @(*)
-		if (!i_reset && dma_busy)
+		if (!i_reset && dma_busy && !dma_error)
 		begin
 			if (r_tx)
 			begin
@@ -2540,7 +2573,7 @@ module	sdwb #(
 		end
 
 		always @(*)
-		if (!i_reset && dma_busy)
+		if (!i_reset && dma_busy && !dma_error)
 		begin
 			assert(f_rx_blocks   <= f_cfg_len);
 			assert(f_tx_blocks   <= f_cfg_len);
@@ -2708,8 +2741,10 @@ module	sdwb #(
 		ADDR_PHY: pre_data[31:0] <= w_phy_ctrl;
 		// 3'h3: pre_data <= w_ffta_word;
 		// 3'h4: pre_data <= w_fftb_word;
-		3'h5: pre_data[31:0] <= (OPT_LITTLE_ENDIAN) ? dma_addr_return[31:0] : dma_addr_return[63:32];
-		3'h6: pre_data[31:0] <= (OPT_LITTLE_ENDIAN) ? dma_addr_return[63:32] : dma_addr_return[31:0];
+		3'h5: pre_data[31:0] <= (OPT_LITTLE_ENDIAN)
+			? dma_addr_return[31:0] : dma_addr_return[63:32];
+		3'h6: pre_data[31:0] <= (OPT_LITTLE_ENDIAN)
+			? dma_addr_return[63:32] : dma_addr_return[31:0];
 		3'h7: pre_data[31:0] <= dma_len_return;
 		default: begin end
 		endcase

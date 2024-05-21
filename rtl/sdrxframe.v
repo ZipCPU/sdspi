@@ -628,7 +628,7 @@ module	sdrxframe #(
 		o_ercode <= !r_watchdog;
 	end
 
-	function automatic [NCRC-1:0]	STEPCRC(reg[NCRC-1:0] prior,
+	function automatic [NCRC-1:0]	STEPCRC(input [NCRC-1:0] prior,
 						input i_crc_data);
 	begin
 		if (prior[NCRC-1] ^ i_crc_data)

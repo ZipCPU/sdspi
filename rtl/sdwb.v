@@ -1690,8 +1690,8 @@ module	sdwb #(
 		// {{{
 		// Local declarations
 		// {{{
-		localparam	DMA_ADDR_LO = 3'h5,
-				DMA_ADDR_HI = 3'h6,
+		localparam	DMA_ADDR_LO = (OPT_LITTLE_ENDIAN) ? 3'h5 : 3'h6,
+				DMA_ADDR_HI = (OPT_LITTLE_ENDIAN) ? 3'h6 : 3'h5,
 				DMA_ADDR_LN = 3'h7;
 		localparam [31:0]	DMA_STOP_TRANSMISSION = 32'h814c,
 					DMA_NULL_READ = 32'h8800,

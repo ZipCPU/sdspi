@@ -567,7 +567,8 @@ module	mdl_sdio #(
 
 	initial	internal_card_busy = 1'b0;
 	always @(posedge sd_clk)
-	if (cmd_valid && !cmd_crc_err && { cmd_alt, cmd[5:0] } == 7'hc)
+	if (cmd_valid && !cmd_crc_err && { cmd_alt, cmd[5:0] } == 7'd12
+						&& card_selected)
 	begin // STOP_TRANSMISSION
 		write_en <= 1'b0;
 		tx_valid <= 1'b0;

@@ -1354,6 +1354,15 @@ $display("Exiting boot mode");
 		tx_valid <= 1'b0;
 		tx_addr <= 0;
 		tx_last <= 0;
+	end else if (cmd_valid && !cmd_crc_err && card_state != EMMC_IDLE
+			&& { cmd_alt, cmd[5:0] } == 7'd12
+			&& cmd_arg[31:16] == RCA)
+	begin
+		pending_write <= 1'b0;
+		write_en <= (card_state == EMMC_SEND_DATA);
+		tx_valid <= (card_state == EMMC_SEND_DATA);
+		tx_data  <= 0;
+		tx_last  <= 0;
 	end else if (pending_write && !reply_valid && !reply_busy)
 	begin
 		// We can place a delay here, to simulate read access time
@@ -1413,7 +1422,8 @@ $display("TX-DATA set to %08x", mem_buf[0]);
 		if (tx_last)
 		begin
 			tx_valid <= 1'b0;
-			write_en <= 1'b0;
+			// Need to keep write_en high until we're done
+			// write_en <= 1'b0;
 			write_ext_csd <= 1'b0;
 			if (multi_block && card_state == EMMC_SEND_DATA)
 				pending_write <= #WRITE_TIME 1'b1;
@@ -1432,6 +1442,9 @@ $display("TX-DATA set to %08x", mem_buf[0]);
 			tx_last <= tx_last
 				|| (tx_addr == (block_len+3)/4-1);
 		end
+	end else if (write_en && !tx_valid && tx_ready)
+	begin
+		write_en <= 1'b0;
 	end else if (!write_en)
 	begin
 		tx_valid <= 0;

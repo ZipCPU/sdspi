@@ -1735,7 +1735,7 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 	if (count == 0)
 		return RES_OK;
 
-	if (0 && (1 == count || !EMMCMULTI)) {
+	if (!EMMCMULTI) {
 		for(unsigned k=0; k<count; k++) {
 			st = emmc_read_block(dev, sector+k,
 						(uint32_t *)(&buf[k*512]));

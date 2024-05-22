@@ -105,9 +105,7 @@ this controller will be a completed product:
 
   Multiblock commands form the basis for the DMA's operation.
 
-- **OPT_DMA**: An optional DMA is now passing both formal proofs and simulation
-  tests.  The DMA has yet to be tested in hardware, but is in all other
-  respects fully verified.
+- **OPT\_DMA**: An optional DMA is now available, and passing tests in silicon.
 
   Only the Wishbone version of the DMA controller exists at present.  Although
   some components exist in my [wb2axip
@@ -147,6 +145,9 @@ this controller will be a completed product:
   external project (i.e. the [ZipCPU](https://zipcpu.com/about/zipcpu.html),
   further work is on hold pending a decision on how to integrate multiple
   dissimilar design components together for this purpose.
+
+- **AXI Support**: A version exists in the dev branch that supports an AXI-Lite
+  interface.
 
 - **eMMC Boot mode**: No plan exists to support eMMC boot mode (at present).
   This decision will likely be revisited in the future.

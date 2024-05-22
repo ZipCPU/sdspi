@@ -1269,7 +1269,8 @@ R$_{\mbox{\tiny ST}}$&1& Hardware reset.  Set to one to assert (lower) the
 	1$\mu s$ (i.e. 100 clock) reset duration.  This feature is only
 	enabled if {\tt OPT\_HWRESET} is set.\\
 D$_{\mbox{\tiny E}}$&1& DMA Bus Error.  True if the DMA encounters a bus error
-	while transferring data. \\
+	while transferring data.  This will also be set if the DMA address
+	wraps during the operation. \\
 C$_r$&1& Receive error code.  On any receive error, indicates the cause of
 	the error. \\
 E$_r$&1& Receive error.  Set if the E bit is set due to a data reception error.
@@ -1302,7 +1303,7 @@ D & 1 & DMA Enable.  Set this bit to enable a DMA operation as part of an
 	issued command. \\
 I & 1 & FIFO selection.  Keep clear to use FIFO A.  Set to use FIFO B.
 	When using the DMA, the DMA will begin with the selected FIFO, but then
-	alternate FIFOs on a block by block basis.  \\
+	alternate between FIFOs on a block by block basis.  \\\hline
 \end{tabular}
 %% }}}
 \caption{CMD Register field descriptions, part one}\label{tbl:CMD1}

@@ -328,7 +328,7 @@ module spirxdata #(
 	// {{{
 	always @(*)
 	begin
-		first_crc_data = crc_data << 1;;
+		first_crc_data = crc_data << 1;
 
 		if (crc_data[15] ^ crc_gearbox[7])
 			first_crc_data = first_crc_data ^ CRC_POLYNOMIAL;

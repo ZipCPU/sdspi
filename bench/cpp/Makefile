@@ -87,7 +87,7 @@ sdcard.img:
 
 ## test
 ## {{{
-test: tb_sdspi
+test: tb_sdspi sdcard.img
 	./tb_sdspi
 ## }}}
 

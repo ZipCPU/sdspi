@@ -2,7 +2,7 @@
 ##
 ## Filename:	bench/cpp/Makefile
 ## {{{
-## Project:	SDIO SD-Card controller
+## Project:	SD-Card controller
 ##
 ## Purpose:	Nothing currently.  Eventually, if I create a proper bench
 ##		test, rather than just running this on real hardware as part of
@@ -14,7 +14,7 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2019-2024, Gisselquist Technology, LLC
+## Copyright (C) 2016-2024, Gisselquist Technology, LLC
 ## {{{
 ## This program is free software (firmware): you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as published

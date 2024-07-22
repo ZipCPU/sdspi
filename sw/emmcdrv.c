@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	emmcdrv.c
+// Filename:	sw/emmcdrv.c
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	
 //
@@ -11,7 +11,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2023, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -104,6 +104,7 @@ static	const	uint32_t
 		SDIO_RXCRCERR = 0x00800000,	// RX Error code
 		SDIO_REMOVED  = 0x00040000,
 		SDIO_PRESENTN = 0x00080000,
+		SDIO_ACK      = 0x04000000,	// Expect a CRC ACK token
 		// PHY enumerations
 		SDIO_DDR      = 0x00004100,	// Requires CK90
 		SDIO_DS       = 0x00004300,	// Requires DDR & CK90
@@ -149,6 +150,7 @@ static	const	uint32_t
 		SDIO_READREG  = SDIO_CMD | SDIO_R1 | SDIO_ERR,
 		SDIO_READR2  = (SDIO_CMD | SDIO_R2),
 		SDIO_WRITEBLK = (SDIO_CMD | SDIO_R1 | SDIO_ERR
+				// | SDIO_ACK
 				| SDIO_WRITE | SDIO_MEM) + 24,
 		SDIO_READBLK  = (SDIO_CMD | SDIO_R1 | SDIO_ERR
 					| SDIO_MEM) + 17,

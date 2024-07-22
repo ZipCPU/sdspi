@@ -2,7 +2,7 @@
 ##
 ## Filename:	bench/verilog/dev_testcases.txt
 ## {{{
-## Project:	SDIO SD-Card controller
+## Project:	SD-Card controller
 ##
 ## Purpose:	Defines a set of tests to be applied to the SDIO (not the eMMC)
 ##		controller and simulation model.
@@ -12,7 +12,7 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2023-2024, Gisselquist Technology, LLC
+## Copyright (C) 2016-2024, Gisselquist Technology, LLC
 ## {{{
 ## This program is free software (firmware): you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as published
@@ -44,14 +44,13 @@
 ##		This is an all-Verilog TB.  The test script is a Verilog file
 ##		containing instructions for the Wishbone bus-functional model
 ##		(BFM).
-##	EMMC	Uses tb_axi.v as the top level.
+##	AXI	Uses tb_axi.v as the top level.
 ##		Also an all-Verilog TB, with a Verilog test script just like
 ##		the SDIO configuration.
-##	SPI	Also an all-Verilog TB.  This time the top level is tb_sdspi.v.
-##		(Or will be, once tb_sdspi.v is written ...)
-##	CPU	Uses tb_cpu.v as the top level.
-##		This top level contains a ZipCPU, and it's test script is a
-##		hex file specifying the software load for the test.
+##	CPU	(Note yet built ...) Would use tb_cpu.v as the top level.  This
+##		top level (will eventually) contain a ZipCPU, and it's test
+##		script would be a hex file specifying the software load for
+##		the test.
 ## }}}
 sdioio		WB  sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=0
 sdioddr		WB  sdiostart	OPT_SERDES=0 OPT_DDR=1
@@ -69,7 +68,7 @@ axemmc8x	AXI emmcstart	OPT_SERDES=1 OPT_DDR=1 OPT_VCD=0 -DSDIO_AXI
 #
 # The SDSPI tests aren't yet fully implemented in all Verilog yet
 #	They currently exist as part of an integrated C++/Verilog test bench,
-#	run under Verilator.
+#	run from the bench/cpp directory under Verilator.
 #
 # The CPU tests aren't yet fully implemented ...
 # cpusdio	WBCPU sdcheck.hex	OPT_SERDES=0 OPT_DDR=0

@@ -2,7 +2,7 @@
 //
 // Filename:	bench/testscript/emmcstart.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Test script to start up an eMMC chip, and get it configured for
 //		use.

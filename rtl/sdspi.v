@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdspi.v
+// Filename:	rtl/sdspi.v
 // {{{
-// Project:	SPI-based SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	SD Card controller, using SPI interface with the card and
 //		WB interface with the rest of the system.  This is the top

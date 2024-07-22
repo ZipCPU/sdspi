@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdio.v
+// Filename:	rtl/sdio.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Top level module (minus the front end) for the SDIO controller.
 //		Contains submodules, but very little logic.
@@ -19,7 +19,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2018-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -75,6 +75,7 @@ module	sdio #(
 		parameter [0:0]	OPT_HWRESET = OPT_EMMC,
 		parameter [0:0]	OPT_1P8V= 1'b0,
 		parameter [0:0]	OPT_CARD_DETECT = !OPT_EMMC,
+		parameter [0:0]	OPT_CRCTOKEN = OPT_EMMC,
 		parameter	LGTIMEOUT = 23,
 		parameter [0:0]	OPT_ISTREAM = 0, OPT_OSTREAM = 0,
 		parameter	SW = 32
@@ -224,6 +225,7 @@ module	sdio #(
 		input	wire		i_card_busy,
 		input	wire	[1:0]	i_rx_strb,
 		input	wire	[15:0]	i_rx_data,
+		input	wire		i_crcack, i_crcnak,
 		//
 		input	wire		S_AC_VALID,
 		input	wire	[1:0]	S_AC_DATA,
@@ -237,7 +239,7 @@ module	sdio #(
 	// {{{
 	wire			soft_reset;
 
-	wire			cfg_clk90, cfg_clk_shutdown;
+	wire			cfg_clk90, cfg_clk_shutdown, cfg_expect_ack;
 	wire	[7:0]		cfg_ckspeed;
 	wire	[1:0]		cfg_width;
 
@@ -266,6 +268,7 @@ module	sdio #(
 	wire	[MW/8-1:0]	rx_mem_strb;
 	wire	[MW-1:0]	rx_mem_data;
 	wire			rx_done, rx_err, rx_ercode, rx_active, rx_en;
+	wire			tx_done, tx_err, tx_ercode;
 
 	// DMA declarations
 	// {{{
@@ -294,7 +297,8 @@ module	sdio #(
 		.OPT_HWRESET(OPT_HWRESET),
 		.OPT_1P8V(OPT_1P8V),
 		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN),
-		.OPT_EMMC(OPT_EMMC)
+		.OPT_EMMC(OPT_EMMC),
+		.OPT_CRCTOKEN(OPT_CRCTOKEN)
 		// }}}
 	) u_control (
 		// {{{
@@ -333,6 +337,7 @@ module	sdio #(
 			.o_cfg_dscmd(o_cfg_dscmd), .o_cfg_ddr(o_cfg_ddr),
 		.o_pp_cmd(o_pp_cmd), .o_pp_data(o_pp_data),
 		.o_cfg_sample_shift(o_cfg_sample_shift),
+		.o_cfg_expect_ack(cfg_expect_ack),
 		.i_ckspd(clk_ckspd),
 		// }}}
 		.o_soft_reset(soft_reset),
@@ -379,6 +384,7 @@ module	sdio #(
 			.i_tx_mem_ready(tx_mem_ready && tx_en),
 		.o_tx_mem_data(tx_mem_data), .o_tx_mem_last(tx_mem_last),
 		.i_tx_busy(o_data_en),
+		.i_tx_done(tx_done), .i_tx_err(tx_err), .i_tx_ercode(tx_ercode),
 		// }}}
 		// RX interface
 		// {{{
@@ -409,7 +415,8 @@ module	sdio #(
 		.DMA_AW(ADDRESS_WIDTH + ((OPT_ISTREAM||OPT_OSTREAM) ? 1:0)),
 		.OPT_HWRESET(OPT_HWRESET),
 		.OPT_1P8V(OPT_1P8V),
-		.OPT_EMMC(OPT_EMMC)
+		.OPT_EMMC(OPT_EMMC),
+		.OPT_CRCTOKEN(OPT_CRCTOKEN)
 		// }}}
 	) u_control (
 		// {{{
@@ -431,6 +438,7 @@ module	sdio #(
 			.o_cfg_dscmd(o_cfg_dscmd), .o_cfg_ddr(o_cfg_ddr),
 		.o_pp_cmd(o_pp_cmd), .o_pp_data(o_pp_data),
 		.o_cfg_sample_shift(o_cfg_sample_shift),
+		.o_cfg_expect_ack(cfg_expect_ack),
 		.i_ckspd(clk_ckspd),
 		// }}}
 		.o_soft_reset(soft_reset),
@@ -477,6 +485,7 @@ module	sdio #(
 			.i_tx_mem_ready(tx_mem_ready && tx_en),
 		.o_tx_mem_data(tx_mem_data), .o_tx_mem_last(tx_mem_last),
 		.i_tx_busy(o_data_en),
+		.i_tx_done(tx_done), .i_tx_err(tx_err), .i_tx_ercode(tx_ercode),
 		// }}}
 		// RX interface
 		// {{{
@@ -544,7 +553,8 @@ module	sdio #(
 	);
 
 	sdtxframe #(
-		.OPT_SERDES(OPT_SERDES || OPT_DDR)
+		.OPT_SERDES(OPT_SERDES || OPT_DDR),
+		.OPT_CRCTOKEN(OPT_CRCTOKEN)
 		// .MW(MW)
 	) u_txframe (
 		// {{{
@@ -553,13 +563,16 @@ module	sdio #(
 		.i_cfg_spd(cfg_ckspeed),
 		.i_cfg_width(cfg_width),
 		.i_cfg_ddr(o_cfg_ddr),
+		.i_cfg_expect_ack(cfg_expect_ack),
 		//
 		.i_en(tx_en), .i_ckstb(clk_stb), .i_hlfck(clk_half),
 		//
 		.S_VALID(tx_en && tx_mem_valid), .S_READY(tx_mem_ready),
 		.S_DATA(tx_mem_data), .S_LAST(tx_mem_last),
 		//
-		.tx_valid(o_data_en), .tx_data(o_tx_data)
+		.tx_valid(o_data_en), .tx_data(o_tx_data),
+		.i_crcack(i_crcack), .i_crcnak(i_crcnak),
+		.o_done(tx_done), .o_err(tx_err), .o_ercode(tx_ercode)
 		// }}}
 	);
 

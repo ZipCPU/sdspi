@@ -2,7 +2,7 @@
 //
 // Filename:	bench/verilog/mdl_sdtx.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Model the IO associated with transmitting data from an SD card
 //		via the SDIO interface.

@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdio_top.v
+// Filename:	rtl/sdio_top.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	A top level file for both eMMC and SDIO controllers.  This
 //		file references both architecture specific modules in
@@ -138,6 +138,7 @@ module sdio_top #(
 		parameter [0:0]	OPT_DS=OPT_SERDES && OPT_EMMC,
 		// }}}
 		parameter [0:0]	OPT_CARD_DETECT=!OPT_EMMC,
+		parameter [0:0]	OPT_CRCTOKEN=OPT_EMMC,
 		// OPT_HWRESET
 		// {{{
 		// eMMC cards can have hardware resets.  SD Cards do not.  Set
@@ -329,6 +330,7 @@ module sdio_top #(
 	wire		cfg_ddr, cfg_ds, cfg_dscmd;
 	wire	[4:0]	cfg_sample_shift;
 	wire	[7:0]	sdclk;
+	wire		w_crcack, w_crcnak;
 		//
 	wire		cmd_en, pp_cmd, cmd_collision;
 	wire	[1:0]	cmd_data;
@@ -364,6 +366,7 @@ module sdio_top #(
 		.OPT_DS(OPT_DS),
 		.OPT_CARD_DETECT(OPT_CARD_DETECT),
 		.OPT_EMMC(OPT_EMMC),
+		.OPT_CRCTOKEN(OPT_CRCTOKEN),
 		.OPT_HWRESET(OPT_HWRESET),
 		.OPT_1P8V(OPT_1P8V),
 		.LGTIMEOUT(LGTIMEOUT)
@@ -504,6 +507,7 @@ module sdio_top #(
 		.i_card_busy(card_busy),
 		.i_rx_strb(rx_strb),
 		.i_rx_data(rx_data),
+		.i_crcack(w_crcack), .i_crcnak(w_crcnak),
 		//
 		.S_AC_VALID(AC_VALID), .S_AC_DATA(AC_DATA),
 		.S_AD_VALID(AD_VALID), .S_AD_DATA(AD_DATA)
@@ -513,7 +517,8 @@ module sdio_top #(
 
 	sdfrontend #(
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR), .NUMIO(NUMIO),
-		.OPT_DS(OPT_DS), .OPT_COLLISION(OPT_COLLISION)
+		.OPT_DS(OPT_DS), .OPT_COLLISION(OPT_COLLISION),
+		.OPT_CRCTOKEN(OPT_CRCTOKEN)
 	) u_sdfrontend (
 		// {{{
 		.i_clk(i_clk), .i_hsclk(i_hsclk), .i_reset(i_reset),
@@ -534,6 +539,8 @@ module sdio_top #(
 		.o_cmd_strb(rply_strb),
 		.o_cmd_data(rply_data),
 		.o_cmd_collision(cmd_collision),
+		//
+		.o_crcack(w_crcack), .o_crcnak(w_crcnak),
 		//
 		.o_rx_strb(rx_strb),
 		.o_rx_data(rx_data),

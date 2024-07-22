@@ -2,7 +2,7 @@
 //
 // Filename:	bench/testscript/sdiostart.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	
 //

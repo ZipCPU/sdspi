@@ -2,7 +2,7 @@
 //
 // Filename:	bench/testscript/sdiolib.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Contains a library of routines to be used when writing test
 //		scripts for the SDIO controller.

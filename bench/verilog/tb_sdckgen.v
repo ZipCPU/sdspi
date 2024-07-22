@@ -2,7 +2,7 @@
 //
 // Filename:	bench/verilog/tb_sdckgen.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	An ad-hoc test of the clock generator.  Pass-fail is judged
 //		by looking at the trace and not automatically.

@@ -1,8 +1,8 @@
 ################################################################################
 ##
-## Filename: 	Makefile
+## Filename:	doc/Makefile
 ## {{{
-## Project:	SD-Card controller, using a shared SPI interface
+## Project:	SD-Card controller
 ##
 ## Purpose:	To coordinate the build of documentation PDFs from their
 ##		LaTeX sources.
@@ -19,7 +19,7 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2016-2023, Gisselquist Technology, LLC
+## Copyright (C) 2016-2024, Gisselquist Technology, LLC
 ## {{{
 ## This program is free software (firmware): you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as published
@@ -32,14 +32,13 @@
 ## for more details.
 ##
 ## You should have received a copy of the GNU General Public License along
-## with this program.  (It's in the $(ROOT)/doc directory, run make with no
+## with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 ## target there if the PDF file isn't present.)  If not, see
 ## <http://www.gnu.org/licenses/> for a copy.
 ## }}}
 ## License:	GPL, v3, as defined and found on www.gnu.org,
 ## {{{
 ##		http://www.gnu.org/licenses/gpl.html
-##
 ##
 ################################################################################
 ##

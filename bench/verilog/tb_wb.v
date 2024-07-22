@@ -2,7 +2,7 @@
 //
 // Filename:	bench/verilog/tb_wb.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	
 //
@@ -384,11 +384,11 @@ module	tb_wb
 		.o_wack(sdiow_ack), .o_wdata(sdiow_idata), 
 			.o_werr(sdiow_err), 
 		//
-		.o_cyc(sdio_cyc), .o_stb(sdio_stb), .o_we(sdio_we), 
-		.o_addr(sdio_addr), .o_data(sdio_data), 
-			.o_sel(sdio_sel), 
-		.i_stall(sdio_stall), .i_ack(sdio_ack), .i_data(sdio_idata), 
-			.i_err(sdio_err)
+		.o_scyc(sdio_cyc), .o_sstb(sdio_stb), .o_swe(sdio_we), 
+		.o_saddr(sdio_addr), .o_sdata(sdio_data), 
+			.o_ssel(sdio_sel), 
+		.i_sstall(sdio_stall), .i_sack(sdio_ack), .i_sdata(sdio_idata), 
+			.i_serr(sdio_err)
 		// }}}
 	);
 
@@ -406,11 +406,11 @@ module	tb_wb
 		.o_wack(emmcw_ack), .o_wdata(emmcw_idata), 
 			.o_werr(emmcw_err), 
 		//
-		.o_cyc(emmc_cyc), .o_stb(emmc_stb), .o_we(emmc_we), 
-		.o_addr(emmc_addr), .o_data(emmc_data), 
-			.o_sel(emmc_sel), 
-		.i_stall(emmc_stall), .i_ack(emmc_ack), .i_data(emmc_idata), 
-			.i_err(emmc_err)
+		.o_scyc(emmc_cyc), .o_sstb(emmc_stb), .o_swe(emmc_we), 
+		.o_saddr(emmc_addr), .o_sdata(emmc_data), 
+			.o_ssel(emmc_sel), 
+		.i_sstall(emmc_stall), .i_sack(emmc_ack), .i_sdata(emmc_idata), 
+			.i_serr(emmc_err)
 		// }}}
 	);
 	// }}}

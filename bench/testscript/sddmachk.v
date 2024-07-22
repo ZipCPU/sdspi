@@ -2,7 +2,7 @@
 //
 // Filename:	bench/testscript/sddmachk.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Drive and demonstrate the DMA controller.
 //

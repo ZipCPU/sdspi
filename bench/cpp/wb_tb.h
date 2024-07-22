@@ -2,7 +2,7 @@
 //
 // Filename:	bench/cpp/wb_tb.h
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	
 //

@@ -2,7 +2,7 @@
 //
 // Filename:	bench/cpp/tb_sdspi.cpp
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Exercise all of the functionality contained within the Verilog
 //		core, from bring up through read to write and read-back.

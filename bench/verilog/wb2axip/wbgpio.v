@@ -2,7 +2,7 @@
 //
 // Filename:	bench/verilog/wb2axip/wbgpio.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	This extremely simple GPIO controller, although minimally
 //		featured, is designed to control up to sixteen general purpose
@@ -34,7 +34,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2023-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published

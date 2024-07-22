@@ -24,7 +24,7 @@
 %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% }}}
-%% Copyright (C) 2016-2023, Gisselquist Technology, LLC
+%% Copyright (C) 2016-2024, Gisselquist Technology, LLC
 %% {{{
 %% This program is free software (firmware): you can redistribute it and/or
 %% modify it under the terms of the GNU General Public License as published
@@ -65,7 +65,7 @@
 %
 % Revision level.  If you change this, be sure to change the revision history
 % to match it
-\revision{Rev.~1.0}
+\revision{Rev.~1.92}
 \begin{document}
 \pagestyle{gqtekspecplain}
 \titlepage
@@ -91,6 +91,7 @@ with this program.  If not, see \texttt{http://www.gnu.org/licenses/} for a copy
 1.9 & 2/24/2024 & Gisselquist & Pre-release updates, with a new (optional)
 		Wishbone DMA feature\\\hline
 1.91 & 4/25/2024 & Gisselquist & New hardware reset feature added\\\hline
+1.92 & 7/22/2024 & Gisselquist & New CRC token handling feature added\\\hline
 \end{revisionhistory}
 % Revision History
 % Table of Contents, named Contents
@@ -1232,7 +1233,8 @@ Fig.~\ref{fig:CMD}.
 %% {{{
 \begin{bytefield}[endianness=big,bitwidth=0.03\linewidth]{32}
 \bitheader{0-31}\\
-\bitbox{6}{(Rsrvd)}
+\bitbox{5}{(Rsrvd)}
+\bitbox{1}{C$_{\mbox{\tiny RC}}$}		% CRC token enabling
 \bitbox{1}{R$_{\mbox{\tiny ST}}$}		% Hardware reset request
 \bitbox{1}{B$_{\mbox{\tiny E}}$}	% DMA Bus error
 
@@ -1264,6 +1266,11 @@ The various fields of this register are explained in Tbls.~\ref{tbl:CMD1}
 %% {{{
 \begin{tabular}{|p{1.2in}|p{0.5in}|p{4.0in}|}\hline
 	\rowcolor[gray]{0.85} Name & Width & Description\\\hline\hline
+C$_{\mbox{\tiny RC}}$&1& Expect CRC token.  The eMMC protocol uses CRC
+	acknoledgments and negative acknowledgments following the transmission
+	of data sectors.  If set, this bit looks for and expects these tokens.
+	If not present, an error will be declared.
+	\\
 R$_{\mbox{\tiny ST}}$&1& Hardware reset.  Set to one to assert (lower) the
 	{\tt o\_hwreset\_n} wire.  Internal logic will insist on a minimum
 	1$\mu s$ (i.e. 100 clock) reset duration.  This feature is only
@@ -1272,8 +1279,11 @@ D$_{\mbox{\tiny E}}$&1& DMA Bus Error.  True if the DMA encounters a bus error
 	while transferring data.  This will also be set if the DMA address
 	wraps during the operation. \\
 C$_r$&1& Receive error code.  On any receive error, indicates the cause of
-	the error. \\
+	the error.  Also set on transmit, if C$_{\mbox{\tiny RC}}$ is set and
+	a negative acknowledgment token is received.\\
 E$_r$&1& Receive error.  Set if the E bit is set due to a data reception error.
+	Also set on transmit, if C$_{\mbox{\tiny RC}}$ is set and no
+	acknowledgment token is received.
 	\\
 E$_c$&1& Command error.  Set if the E bit is set due to an error in command
 	wire processing.  \\

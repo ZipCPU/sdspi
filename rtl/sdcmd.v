@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdcmd.v
+// Filename:	rtl/sdcmd.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Bi-directional command line processor.  This generates the
 //		command line inputs to the PHY, and receives its outputs.
@@ -14,7 +14,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2023-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -1072,7 +1072,7 @@ module	sdcmd #(
 
 	always @(posedge i_clk)
 	if (!i_reset && o_done)
-		cover(i_cmd_type == R_NONE);		// !!!
+		cover(i_cmd_type == R_NONE);
 
 	always @(posedge i_clk)
 	if (!i_reset && o_done)

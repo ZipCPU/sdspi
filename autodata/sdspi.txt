@@ -1,8 +1,8 @@
 ################################################################################
 ##
-## Filename: 	sdspi.txt
+## Filename:	autodata/sdspi.txt
 ## {{{
-## Project:	SD-Card controller, using a shared SPI interface
+## Project:	SD-Card controller
 ##
 ## Purpose:	Describes how to connect an SD-SPI peripheral to a wishbone
 ##		bus, as used by autofpga.  Note how the description requires
@@ -18,7 +18,7 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2017-2024, Gisselquist Technology, LLC
+## Copyright (C) 2016-2024, Gisselquist Technology, LLC
 ## {{{
 ## This program is free software (firmware): you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as published

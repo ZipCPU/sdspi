@@ -3,7 +3,7 @@
 ##
 ## Filename:	bench/verilog/sim_run.pl
 ## {{{
-## Project:	SDIO SD-Card controller
+## Project:	SD-Card controller
 ##
 ## Purpose:	Runs one or more of the test cases described in
 ##		dev_testcases.txt.
@@ -13,7 +13,7 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2023-2024, Gisselquist Technology, LLC
+## Copyright (C) 2016-2024, Gisselquist Technology, LLC
 ## {{{
 ## This program is free software (firmware): you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as published

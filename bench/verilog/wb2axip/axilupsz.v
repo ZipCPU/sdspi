@@ -2,7 +2,7 @@
 //
 // Filename:	bench/verilog/wb2axip/axilupsz.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Converts AXI4-lite traffic of one data width to a similar
 //		AXI4-lite interface with a larger data path.
@@ -12,7 +12,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -107,8 +107,8 @@ module	axilupsz #(
 		// }}}
 	);
 
-	localparam	SLSB = $clog2(SDW/8);
-	localparam	MLSB = $clog2(MDW/8);
+	localparam	MLSB = $clog2(C_M_AXIL_DATA_WIDTH/8);
+	localparam	SLSB = $clog2(C_S_AXIL_DATA_WIDTH/8);
 	localparam	RPTS = MDW/SDW;
 
 	generate if (SDW == MDW)

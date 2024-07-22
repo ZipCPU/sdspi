@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdiodrv.c
+// Filename:	sw/sdiodrv.c
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SD-Card controller
 //
 // Purpose:	This is the software driver for the SDIO controller, used for
 //		interacting with an SD Card in SDIO (4b) mode.

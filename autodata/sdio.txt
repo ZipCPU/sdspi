@@ -1,8 +1,8 @@
 ################################################################################
 ##
-## Filename: 	sdio.txt
+## Filename:	autodata/sdio.txt
 ## {{{
-## Project:	SD-Card controller, using a shared SPI interface
+## Project:	SD-Card controller
 ##
 ## Purpose:	Describes how to connect an SDIO peripheral to a wishbone
 ##		bus, as used by autofpga.
@@ -12,7 +12,7 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2023-2024, Gisselquist Technology, LLC
+## Copyright (C) 2016-2024, Gisselquist Technology, LLC
 ## {{{
 ## This program is free software (firmware): you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as published

@@ -2,7 +2,7 @@
 //
 // Filename:	bench/verilog/wb2axip/memdev.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	This file is really simple: it creates an on-chip memory,
 //		accessible via the wishbone bus, that can be used in this

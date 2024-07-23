@@ -2,7 +2,7 @@
 //
 // Filename:	bench/verilog/mdl_sdio.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	
 //
@@ -11,7 +11,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2023-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -197,7 +197,7 @@ module	mdl_sdio #(
 		integer	read_ik;
 	begin
 		for(read_ik=0; read_ik<512/4; read_ik=read_ik+1)
-			mem_buf[read_ik] = mem[read_ik+read_posn];
+			mem_buf[read_ik] = mem[read_ik+posn];
 	end endtask
 	// }}}
 
@@ -536,7 +536,11 @@ module	mdl_sdio #(
 		reply_valid <= 1'b0;
 
 	always @(posedge sd_clk)
-	if (!reply_busy && pending_read)
+	if (stop_transmission && !cmd_valid)
+	begin
+		pending_read <= 0;
+		read_en <= 0;
+	end else if (!reply_busy && pending_read)
 	begin
 		if (!internal_card_busy)
 		begin

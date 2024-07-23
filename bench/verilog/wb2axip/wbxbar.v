@@ -2,7 +2,7 @@
 //
 // Filename:	bench/verilog/wb2axip/wbxbar.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	A Configurable wishbone cross-bar interconnect, conforming
 //		to the WB-B4 pipeline specification, as described on the
@@ -52,7 +52,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2019-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -78,7 +78,6 @@
 `default_nettype none
 // }}}
 module	wbxbar #(
-		// i_sstall, i_sack, i_sdata, i_serr);
 		// {{{
 		parameter	NM = 4, NS=8,
 		parameter	AW = 32, DW=32,
@@ -565,6 +564,7 @@ module	wbxbar #(
 
 			// r_reindex
 			// {{{
+			// Verilator lint_off BLKSEQ
 			always @(r_regrant, regrant)
 			begin
 				r_reindex = 0;
@@ -574,6 +574,7 @@ module	wbxbar #(
 				if (regrant == 0)
 					r_reindex = r_mindex;
 			end
+			// Verilator lint_on  BLKSEQ
 			// }}}
 
 			always @(posedge i_clk)
@@ -813,7 +814,8 @@ module	wbxbar #(
 			end
 		end
 		// }}}
-	end else for(M=0; M<NS; M=M+1)
+	end else begin : J
+	for(M=0; M<NS; M=M+1)
 	begin : GEN_DOWNSTREAM
 		// {{{
 		always @(posedge i_clk)
@@ -836,7 +838,7 @@ module	wbxbar #(
 
 		end
 		// }}}
-	end endgenerate
+	end end endgenerate
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -845,12 +847,6 @@ module	wbxbar #(
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
-(* keep *) wire [NS:0] check1, check2, req1, req2;
-assign	check1 = grant[0];
-assign	check2 = grant[1];
-assign	req1 = request[0];
-assign	req2 = request[1];
-
 	generate if (OPT_DBLBUFFER)
 	begin : DOUBLE_BUFFERRED_STALL
 		// {{{

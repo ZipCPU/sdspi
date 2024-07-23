@@ -2,7 +2,7 @@
 //
 // Filename:	bench/cpp/sdiosim.cpp
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	
 //

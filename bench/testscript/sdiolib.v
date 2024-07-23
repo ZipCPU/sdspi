@@ -2,7 +2,7 @@
 //
 // Filename:	bench/testscript/sdiolib.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Contains a library of routines to be used when writing test
 //		scripts for the SDIO controller.
@@ -42,7 +42,7 @@ localparam	[ADDRESS_WIDTH-1:0]
 				ADDR_FIFOA  = SDIO_ADDR + 8,
 				ADDR_FIFOB  = SDIO_ADDR +12,
 				ADDR_SDPHY  = SDIO_ADDR +16,
-				ADDR_DMABUS = SDIO_ADDR +20,
+				ADDR_DMABUS = SDIO_ADDR +24,
 				ADDR_DMALEN = SDIO_ADDR +28;
 
 localparam [31:0]	SDIO_RNONE    = 32'h000000,

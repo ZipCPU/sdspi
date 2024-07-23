@@ -1,8 +1,8 @@
 ################################################################################
 ##
-## Filename: 	Makefile
+## Filename:	Makefile
 ## {{{
-## Project:	SD-Card controller, using a shared SPI interface
+## Project:	SD-Card controller
 ##
 ## Purpose:	Coordinate building the specification for this core, the
 ##		Verilator Verilog check, and any bench software.
@@ -25,7 +25,7 @@
 ## for more details.
 ##
 ## You should have received a copy of the GNU General Public License along
-## with this program.  (It's in the $(ROOT)/doc directory, run make with no
+## with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 ## target there if the PDF file isn't present.)  If not, see
 ## <http://www.gnu.org/licenses/> for a copy.
 ## }}}

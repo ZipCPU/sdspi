@@ -2,7 +2,7 @@
 //
 // Filename:	bench/verilog/tb_axi.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	
 //

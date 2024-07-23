@@ -2,7 +2,7 @@
 //
 // Filename:	bench/verilog/mdl_sdrx.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Model the receive half of the SDIO card.  This half will receive
 //		data from the (FPGA) SD Controller, check it's CRCs, and write
@@ -13,7 +13,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2023-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published

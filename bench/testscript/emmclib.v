@@ -2,7 +2,7 @@
 //
 // Filename:	bench/testscript/emmclib.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Contains a library of routines to be used when writing test
 //		scripts for the SDIO controller, when driving an eMMC chip.
@@ -42,16 +42,17 @@ localparam	[AW+$clog2(DW/8)-1:0]	ADDR_SDCARD = EMMC_ADDR +  0,
 					ADDR_FIFOB  = EMMC_ADDR + 12,
 					ADDR_SDPHY  = EMMC_ADDR + 16;
 
-localparam [31:0]	EMMC_RNONE = 32'h000000,
-			EMMC_R1    = 32'h000100,
-			EMMC_R2    = 32'h000200,
-			EMMC_R1b   = 32'h000300,
-			EMMC_WRITE = 32'h000400,
-			EMMC_MEM   = 32'h000800,
-			EMMC_FIFO  = 32'h001000,
-			EMMC_DMA   = 32'h002000,
-			EMMC_BUSY  = 32'h104800,
-			EMMC_ERR   = 32'h008000;
+localparam [31:0]	EMMC_RNONE = 32'h0000000,
+			EMMC_R1    = 32'h0000100,
+			EMMC_R2    = 32'h0000200,
+			EMMC_R1b   = 32'h0000300,
+			EMMC_WRITE = 32'h0000400,
+			EMMC_MEM   = 32'h0000800,
+			EMMC_FIFO  = 32'h0001000,
+			EMMC_DMA   = 32'h0002000,
+			EMMC_BUSY  = 32'h0104800,
+			EMMC_ERR   = 32'h0008000,
+			EMMC_ACK   = 32'h4000000;
 
 localparam [31:0]	EMMC_DS    = 32'h000100,
 			EMMC_DDR   = 32'h004200,
@@ -94,7 +95,8 @@ localparam [31:0]	SECTOR_16B  = 32'h0400_0000,
 localparam [31:0]	EMMC_CMD      = 32'h0000_0040,
 			EMMC_READREG  = EMMC_CMD | EMMC_R1 | EMMC_ERR,
 			EMMC_WRITEBLK = (EMMC_CMD | EMMC_R1b | EMMC_ERR
-						| EMMC_WRITE | EMMC_MEM)+24,
+					// | EMMC_ACK
+					| EMMC_WRITE | EMMC_MEM)+24,
 			EMMC_READBLK = (EMMC_CMD | EMMC_R1 | EMMC_ERR
 						| EMMC_MEM)+17,
 			EMMC_ALLCID = (EMMC_CMD | EMMC_R2 | EMMC_ERR)+2;

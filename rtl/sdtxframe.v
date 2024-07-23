@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdtxframe.v
+// Filename:	rtl/sdtxframe.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Given a frame of data from memory, formats it for sending to
 //		the front end.
@@ -19,7 +19,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2018-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -48,6 +48,7 @@
 module	sdtxframe #(
 		parameter		NCRC = 16,
 		parameter [0:0]		OPT_SERDES = 1'b1,
+		parameter [0:0]		OPT_CRCTOKEN = 1'b0,
 		parameter [NCRC-1:0]	CRC_POLYNOMIAL  = 16'h1021
 	) (
 		// {{{
@@ -56,6 +57,7 @@ module	sdtxframe #(
 		input	wire	[7:0]		i_cfg_spd,
 		input	wire	[1:0]		i_cfg_width,
 		input	wire			i_cfg_ddr,
+		input	wire			i_cfg_expect_ack,
 		//
 		input	wire			i_en, i_ckstb, i_hlfck,
 		//
@@ -66,7 +68,13 @@ module	sdtxframe #(
 		//
 		output	wire			tx_valid,
 		// input wire			tx_ready,
-		output	wire	[31:0]		tx_data
+		output	wire	[31:0]		tx_data,
+		//
+		input	wire			i_crcack,
+		input	wire			i_crcnak,
+		output	wire			o_done,
+		output	wire			o_err,
+		output	wire			o_ercode
 		// }}}
 	);
 
@@ -107,6 +115,10 @@ module	sdtxframe #(
 	reg		ck_valid;
 	reg	[4:0]	ck_counts;
 	reg	[31:0]	ck_data, ck_sreg;
+
+	reg		r_done;
+	reg	[3:0]	r_timeout;
+
 	// }}}
 	// Steps: #1, Packetizer: breaks incoming signal into wires
 	// 	#2, add CRC
@@ -384,7 +396,7 @@ module	sdtxframe #(
 	end
 	// }}}
 
-	function automatic [NCRC-1:0] STEPCRC(reg [NCRC-1:0] prior,
+	function automatic [NCRC-1:0] STEPCRC(input [NCRC-1:0] prior,
 		// {{{
 				input i_bit);
 	begin
@@ -395,7 +407,7 @@ module	sdtxframe #(
 	end endfunction
 	// }}}
 
-	function automatic [NCRC-1:0] APPLYCRC32(reg [NCRC-1:0] prior,
+	function automatic [NCRC-1:0] APPLYCRC32(input [NCRC-1:0] prior,
 		// {{{
 			input [31:0] i_crc_data);
 		integer		ck;
@@ -422,7 +434,7 @@ module	sdtxframe #(
 	end endfunction
 	// }}}
 
-	function automatic [NCRC-1:0] APPLYCRC8(reg [NCRC-1:0] prior,
+	function automatic [NCRC-1:0] APPLYCRC8(input [NCRC-1:0] prior,
 		// {{{
 			input [7:0] i_crc_data);
 		integer		ck;
@@ -435,7 +447,7 @@ module	sdtxframe #(
 	end endfunction
 	// }}}
 
-	function automatic [NCRC-1:0] APPLYCRC4(reg [NCRC-1:0] prior,
+	function automatic [NCRC-1:0] APPLYCRC4(input [NCRC-1:0] prior,
 		// {{{
 			input [3:0] i_crc_data);
 		integer		ck;
@@ -448,7 +460,7 @@ module	sdtxframe #(
 	end endfunction
 	// }}}
 
-	function automatic [NCRC-1:0] APPLYCRC2(reg [NCRC-1:0] prior,
+	function automatic [NCRC-1:0] APPLYCRC2(input [NCRC-1:0] prior,
 		// {{{
 			input [1:0] i_crc_data);
 		integer		ck;
@@ -702,6 +714,73 @@ module	sdtxframe #(
 	assign	tx_valid = ck_valid;
 	// assign ck_ready = (i_ckstb || (i_hlfck && cfg_ddr)); // && tx_ready;
 	assign	tx_data  = ck_data;
+	// }}}
+
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Status feedback
+	// {{{
+
+	// r_timeout
+	// {{{
+	// Insist on at least 10 clocks (2 + CRC) after any transmission before
+	// declaring ourselves done.  The eMMC specification requires at least
+	// 2 such clocks, together with the number of clocks required for an
+	// ACK/NACK sequence (5).  Here, we round that number up to 15 for good
+	// measure.
+	initial	r_timeout = 4'd15;
+	always @(posedge i_clk)
+	if (i_reset || (i_en && S_VALID) || tx_valid || !i_en)
+	begin
+		r_timeout <= 15;
+	end else if (i_ckstb && (r_timeout != 0))
+		r_timeout <= r_timeout - 1;
+	// }}}
+
+	// o_done
+	// {{{
+	initial	r_done = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset || (i_en && S_VALID) || tx_valid || !i_en)
+		r_done <= 1'b0;
+	else if (!r_done && i_ckstb && (r_timeout <= 1))
+		r_done <= 1'b1;
+
+	assign	o_done = r_done;
+	// }}}
+
+	// o_err, o_ercode
+	// {{{
+	generate if (OPT_CRCTOKEN)
+	begin : GEN_CRCERR
+		reg	r_ackd, r_err, r_ercode;
+
+		initial	r_ackd = 1'b0;
+		always @(posedge i_clk)
+		if (i_reset || (i_en && S_VALID) || tx_valid || !i_en)
+			r_ackd <= 1'b0;
+		else if (!r_done && i_crcack)
+			r_ackd <= 1'b1;
+
+		initial	{ r_err, r_ercode } = 2'b00;
+		always @(posedge i_clk)
+		if (i_reset || (i_en && S_VALID) || tx_valid || !i_en)
+		begin
+			{ r_err, r_ercode } <= 2'b00;
+		end else if (i_en && !r_done && !o_err)
+		begin
+			if (r_timeout <= 1 && i_cfg_expect_ack)
+				{ r_err, r_ercode } <= 2'b10;
+			if (i_crcnak && !i_crcack && !r_ackd)
+				{ r_err, r_ercode } <= 2'b11;
+		end
+
+		assign	{ o_err, o_ercode } = { r_err, r_ercode };
+	end else begin : NO_CRCTOKEN
+		assign	{ o_err, o_ercode } = 2'b00;
+	end endgenerate
+	// }}}
+
 	// }}}
 
 	//

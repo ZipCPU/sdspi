@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	sddma_s2mm.v
+// Filename:	rtl/sddma_s2mm.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	ZipDMA -- Writes data, having gone through the realignment
 //		pipeline, back to the bus.  This data will be written either
@@ -16,7 +16,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2022-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -281,7 +281,6 @@ module	sddma_s2mm #(
 		o_err  <= 1'b0;
 		{ o_wr_addr, subaddr } <= {(ADDRESS_WIDTH){1'b0}};
 		r_last <= 1'b0;
-		r_wrap <= 1'b0;
 		// }}}
 	end else if (!o_busy || o_err || (o_wr_cyc && i_wr_err))
 	begin
@@ -296,10 +295,9 @@ module	sddma_s2mm #(
 		if (o_wr_cyc && i_wr_err)
 			o_busy <= 1'b0;
 
-		o_wr_addr <= i_addr[ADDRESS_WIDTH-1:WBLSB];
-		subaddr   <= i_addr[WBLSB-1:0];
+		if (i_request)	// || !OPT_LOWPOWER
+			{ o_wr_addr, subaddr } <= i_addr;
 		r_last <= 1'b0;
-		r_wrap <= 1'b0;
 		// }}}
 	end else if (!o_wr_stb || !i_wr_stall)
 	begin
@@ -307,7 +305,7 @@ module	sddma_s2mm #(
 		o_wr_stb <= 1'b0;
 
 		if (o_wr_stb)
-			{ r_wrap, o_wr_addr, subaddr } <= next_addr[ADDRESS_WIDTH:0];
+			{ o_wr_addr, subaddr } <= next_addr[ADDRESS_WIDTH-1:0];
 
 		if (!wb_pipeline_full)
 		begin
@@ -333,6 +331,13 @@ module	sddma_s2mm #(
 			r_last <= S_LAST;
 		// }}}
 	end
+
+	initial	r_wrap = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset || !o_busy)
+		r_wrap <= 1'b0;
+	else if (o_wr_stb && !i_wr_stall)
+		r_wrap <= addr_overflow;
 
 `ifdef	FORMAL
 	always @(posedge i_clk)

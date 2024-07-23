@@ -2,7 +2,7 @@
 //
 // Filename:	bench/verilog/wb2axip/axilgpio.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	A simple and basic AXI-lite input and output module.
 //		Tristates are not supported internally, although output bits
@@ -64,7 +64,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2021-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -466,7 +466,7 @@ module	axilgpio #(
 		// Verilator lint_on  UNUSED
 		// }}}
 		// }}}
-	end else begin
+	end else begin : NO_INPUTS
 		// {{{
 		assign	ck_gpio     = 32'h0;
 		assign	ck_toggled  = 32'h0;

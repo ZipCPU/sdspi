@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdaxil.v
+// Filename:	rtl/sdaxil.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Bus handler.  Accepts and responds to Wishbone bus requests.
 //		Configures clock division, and IO speed and parameters.
@@ -36,7 +36,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2023-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -73,6 +73,7 @@ module	sdaxil #(
 		parameter [0:0]	OPT_DDR = 1'b0,
 		parameter [0:0]	OPT_CARD_DETECT = 1'b1,
 		parameter [0:0]	OPT_EMMC = 1'b1,
+		parameter [0:0]	OPT_CRCTOKEN = 1'b1,
 		localparam	LGFIFOW=LGFIFO-$clog2(MW/8),
 		parameter [0:0]	OPT_DMA = 1'b0,
 		parameter	DMA_AW = 30,
@@ -142,6 +143,7 @@ module	sdaxil #(
 		output	reg			o_cfg_ddr,
 		output	reg			o_pp_cmd, o_pp_data,
 		output	reg	[4:0]		o_cfg_sample_shift,
+		output	reg			o_cfg_expect_ack,
 		input	wire	[7:0]		i_ckspd,
 
 		output	reg			o_soft_reset,
@@ -195,7 +197,8 @@ module	sdaxil #(
 		input	wire			i_tx_mem_ready,
 		output	reg	[31:0]		o_tx_mem_data,
 		output	reg			o_tx_mem_last,
-		input	wire			i_tx_busy,
+		//
+		input	wire			i_tx_done, i_tx_err,i_tx_ercode,
 		// }}}
 		// RX interface
 		// {{{
@@ -233,7 +236,8 @@ module	sdaxil #(
 	localparam	[1:0]	RNO_REPLY = 2'b00,
 				R2_REPLY = 2'b10,
 				R1B_REPLY = 2'b11;
-	localparam		CARD_REMOVED_BIT = 18,
+	localparam		EXPECT_ACK_BIT   = 26,
+				CARD_REMOVED_BIT = 18,
 				ERR_BIT          = 15,
 				USE_DMA_BIT      = 13,
 				FIFO_ID_BIT      = 12,
@@ -270,8 +274,8 @@ module	sdaxil #(
 
 	wire		bus_cmd_stb, bus_phy_stb;
 	reg	[6:0]	r_cmd;
-	reg		r_tx_request, r_rx_request, r_tx_sent;
-	reg		r_fifo, r_cmd_err, r_rx_err, r_rx_ecode;
+	reg		r_tx_request, r_rx_request, r_tx_sent, r_ecode,
+			r_fifo, r_cmd_err, r_transfer_err;
 	reg	[1:0]	r_cmd_ecode;
 	reg	[31:0]	r_arg;
 	reg	[3:0]	lgblk;
@@ -395,7 +399,7 @@ module	sdaxil #(
 
 	assign	bus_cmd_stb = bus_write && bus_wraddr == ADDR_CMD
 			&& (dma_busy == dma_write)
-			&&((!dma_error && !r_cmd_err && !r_rx_err)
+			&&((!dma_error && !r_cmd_err && !r_transfer_err)
 					|| (bus_wstrb[1] && bus_wdata[15]));
 
 
@@ -426,7 +430,7 @@ module	sdaxil #(
 			r_mem_busy <= 1'b0;
 		if (cmd_busy && i_cmd_done && !o_rx_en && !o_tx_en)
 			r_mem_busy <= 1'b0;
-		if (o_tx_en && r_tx_sent && !i_tx_busy)
+		if (o_tx_mem_valid && i_tx_mem_ready && o_tx_mem_last)
 			r_mem_busy <= 1'b0;
 		if (o_rx_en && i_rx_done)
 			r_mem_busy <= 1'b0;
@@ -440,8 +444,8 @@ module	sdaxil #(
 
 	assign	f_blocksz = (14'h1 << (lgblk-2));
 
-	assign	f_mem_busy = (o_tx_en || r_tx_request || o_rx_en
-			|| r_rx_request) ||(cmd_busy && o_cmd_type == R2_REPLY);
+	assign	f_mem_busy = (o_tx_en && !r_tx_sent) || r_tx_request || o_rx_en
+			|| r_rx_request ||(cmd_busy && o_cmd_type == R2_REPLY);
 
 	always @(*)
 	if (!i_reset && !o_soft_reset && !o_hwreset_n)
@@ -450,6 +454,10 @@ module	sdaxil #(
 	always @(*)
 	if (!i_reset && !o_soft_reset && o_hwreset_n)
 		assert(r_mem_busy == f_mem_busy);
+
+	always @(*)
+	if (!i_reset && !o_tx_en)
+		assert(!o_tx_mem_valid);
 `endif
 	// }}}
 
@@ -508,7 +516,7 @@ module	sdaxil #(
 			new_dma_request  = 1'b0;
 			new_r2_request   = 1'b1;
 
-			if (cmd_busy || r_mem_busy || dma_busy || i_cmd_err)
+			if (cmd_busy || r_mem_busy || o_tx_en || dma_busy || i_cmd_err)
 			begin
 				new_cmd_request  = 1'b0;
 				new_data_request = 1'b0;
@@ -526,8 +534,8 @@ module	sdaxil #(
 			new_dma_request  = 1'b1;
 			new_r2_request   = 1'b0;
 
-			if (!OPT_DMA || dma_busy || r_mem_busy || dma_zero_len
-				|| i_cmd_err
+			if (!OPT_DMA || dma_busy || r_mem_busy || o_tx_en
+				|| dma_zero_len || i_cmd_err
 				||(cmd_busy && bus_wdata[7:6] == CMD_PREFIX))
 			begin
 				new_cmd_request  = 1'b0;
@@ -546,7 +554,7 @@ module	sdaxil #(
 			new_dma_request  = 1'b0;
 
 			if (r_mem_busy// || (OPT_DMA && dma_busy && !dma_write)
-				|| i_cmd_err
+				|| o_tx_en || i_cmd_err
 				||(cmd_busy && bus_wdata[7:6] == CMD_PREFIX))
 			begin
 				new_cmd_request  = 1'b0;
@@ -782,6 +790,22 @@ module	sdaxil #(
 			new_tx_request = 1'b0;
 	end
 
+
+	always @(posedge i_clk)
+	if (i_reset || o_soft_reset || !OPT_CRCTOKEN)
+		o_cfg_expect_ack <= 1'b0;
+	else if (new_tx_request && !dma_write && bus_wstrb[EXPECT_ACK_BIT/8])
+		o_cfg_expect_ack <= bus_wdata[EXPECT_ACK_BIT];
+`ifdef	FORMAL
+	always @(posedge i_clk)
+	if (i_reset || !OPT_CRCTOKEN)
+	begin
+	end else if ($past(i_reset || o_soft_reset))
+		assert(!o_cfg_expect_ack);
+	else if (!$rose(r_tx_request))
+		assert($stable(o_cfg_expect_ack));
+`endif
+
 	initial	r_tx_request = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset || i_cmd_err)
@@ -802,11 +826,15 @@ module	sdaxil #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset || (i_cmd_err && !o_tx_en))
 		o_tx_en <= 1'b0;
-	else if (o_tx_en && r_tx_sent && !i_tx_busy)
-		o_tx_en <= 1'b0;
-	else if (!cmd_busy && !o_cmd_request && !o_tx_en && !w_card_busy
-				&& r_tx_request)
-		o_tx_en <= r_tx_request;
+	else if (o_tx_en)
+	begin
+		if (r_tx_sent && i_tx_done)
+			o_tx_en <= 1'b0;
+	end else if (!o_tx_en)
+	begin
+		if (!cmd_busy && !o_cmd_request && !w_card_busy && r_tx_request)
+			o_tx_en <= r_tx_request;
+	end
 `ifdef	FORMAL
 	always @(*)
 	if (!i_reset && !o_soft_reset && !o_hwreset_n)
@@ -871,7 +899,8 @@ module	sdaxil #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		r_fifo <= 1'b0;
-	else if (!r_mem_busy && bus_cmd_stb && bus_wstrb[FIFO_ID_BIT/8])
+	else if (!r_mem_busy && !o_tx_en
+				&& bus_cmd_stb && bus_wstrb[FIFO_ID_BIT/8])
 		r_fifo <= bus_wdata[FIFO_ID_BIT];
 	// }}}
 
@@ -918,26 +947,34 @@ module	sdaxil #(
 `endif
 	// }}}
 
-	// r_rx_err
+	// r_transfer_err
 	// {{{
-	initial	r_rx_err = 1'b0;
+	initial	r_transfer_err = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
-		r_rx_err <= 1'b0;
-	// else if (new_cmd_request)
-	else if (o_rx_en && i_rx_err && (!dma_busy || !dma_stopped))
-		r_rx_err <= 1'b1;
-	else if (bus_cmd_stb && !dma_write)
-		r_rx_err <= 1'b0;
+		r_transfer_err <= 1'b0;
+	else begin
+		if (clear_err)
+			r_transfer_err <= 1'b0;
+		if (o_rx_en && i_rx_err && (!dma_busy || !dma_stopped))
+			r_transfer_err <= 1'b1;
+		if (o_tx_en && i_tx_err)
+			r_transfer_err <= 1'b1;
+	end
 
-	initial	r_rx_ecode = 1'b0;
+	initial	r_ecode = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
-		r_rx_ecode <= 1'b0;
-	else if (new_cmd_request)
-		r_rx_ecode <= 1'b0;
-	else if (!r_rx_err && i_rx_err && (!dma_busy || !dma_stopped))
-		r_rx_ecode <= i_rx_ercode;
+		r_ecode <= 1'b0;
+	else if (clear_err)
+		r_ecode <= 1'b0;
+	else if (!r_transfer_err)
+	begin
+		if (i_rx_err && (!dma_busy || !dma_stopped))
+			r_ecode <= i_rx_ercode;
+		if (i_tx_err)
+			r_ecode <= i_tx_ercode;
+	end
 `ifdef	FORMAL
 	always @(posedge i_clk)
 	if (f_past_valid && $past(o_soft_reset))
@@ -950,8 +987,8 @@ module	sdaxil #(
 	always @(*)
 	if (!i_reset && !o_soft_reset && !o_hwreset_n)
 	begin
-		assert(!r_rx_err);
-		assert(!r_rx_ecode);
+		assert(!r_transfer_err);
+		assert(!r_ecode);
 	end
 `endif
 	// }}}
@@ -959,16 +996,17 @@ module	sdaxil #(
 	always @(*)
 	begin
 		w_cmd_word = 32'h0;
+		w_cmd_word[26] = o_cfg_expect_ack;
 		w_cmd_word[25] = !o_hwreset_n;
 		w_cmd_word[24] = dma_error;
-		w_cmd_word[23] = r_rx_ecode;
-		w_cmd_word[22] = r_rx_err;
+		w_cmd_word[23] = r_ecode;
+		w_cmd_word[22] = r_transfer_err;
 		w_cmd_word[21] = r_cmd_err;
 		w_cmd_word[20] = w_card_busy;
 		w_cmd_word[19] = !card_present;
 		w_cmd_word[18] =  card_removed;
 		w_cmd_word[17:16] = r_cmd_ecode;
-		w_cmd_word[15] = r_cmd_err || r_rx_err || dma_error;
+		w_cmd_word[15] = r_cmd_err || r_transfer_err || dma_error;
 		w_cmd_word[14] = cmd_busy;
 		w_cmd_word[13] = dma_busy;
 		w_cmd_word[12] = r_fifo;
@@ -1184,7 +1222,7 @@ module	sdaxil #(
 			o_cfg_shutdown <= 1'b0;
 		if (r_tx_request || r_rx_request)
 			o_cfg_shutdown <= 1'b0;
-		if (o_tx_en && (!r_tx_sent || i_tx_busy))
+		if (o_tx_en && !i_tx_done)
 			o_cfg_shutdown <= 1'b0;
 
 		// No checks for RX shutdown--that needs to be done from the
@@ -1460,7 +1498,7 @@ module	sdaxil #(
 		//
 		// B) Transmit to card operation is complete, and is now ready
 		//	for another command (if desired)
-		2'b10: if (o_tx_en && r_tx_sent && !i_tx_busy) o_int <= 1'b1;
+		2'b10: if (o_tx_en && r_tx_sent && i_tx_done) o_int <= 1'b1;
 		//
 		// C) A block has been received.  We are now ready to receive
 		//	another block (if desired)
@@ -1843,7 +1881,7 @@ module	sdaxil #(
 		begin
 			// {{{
 			if (new_dma_request && !r_dma_zero_len
-				&& !r_mem_busy && card_present
+				&& !r_mem_busy && !o_tx_en && card_present
 				&& (!dma_error || clear_err))
 			begin // User command to activate the DMA
 				r_dma <= 1'b1;
@@ -1888,7 +1926,7 @@ module	sdaxil #(
 		begin // User command to activate the DMA
 			// {{{
 			r_dma_int <= 1'b0;
-			if (!r_dma_zero_len && !r_mem_busy)
+			if (!r_dma_zero_len && !r_mem_busy && !o_tx_en)
 				r_dma_int <= 1'b1;
 			if (!card_present)
 				r_dma_int <= 1'b1;
@@ -2614,9 +2652,9 @@ module	sdaxil #(
 		begin
 			assert(!r_dma);
 		end else if (dma_error && $past(dma_error)
-			&& !$past(cmd_busy || r_mem_busy || r_abort) && !dma_write)
+			&& !$past(cmd_busy || r_mem_busy || o_tx_en || r_abort) && !dma_write)
 		begin
-			if (!i_dma_busy && !r_mem_busy && !cmd_busy && !r_abort)
+			if (!i_dma_busy && !r_mem_busy && !o_tx_en && !cmd_busy && !r_abort)
 				assert(!r_dma);
 		end
 
@@ -2837,8 +2875,10 @@ module	sdaxil #(
 		ADDR_PHY: pre_data[31:0] <= w_phy_ctrl;
 		// 3'h3: pre_data <= w_ffta_word;
 		// 3'h4: pre_data <= w_fftb_word;
-		3'h5: pre_data[31:0] <= (OPT_LITTLE_ENDIAN) ? dma_addr_return[31:0] : dma_addr_return[63:32];
-		3'h6: pre_data[31:0] <= (OPT_LITTLE_ENDIAN) ? dma_addr_return[63:32] : dma_addr_return[31:0];
+		3'h5: pre_data[31:0] <= (OPT_LITTLE_ENDIAN)
+			? dma_addr_return[31:0] : dma_addr_return[63:32];
+		3'h6: pre_data[31:0] <= (OPT_LITTLE_ENDIAN)
+			? dma_addr_return[63:32] : dma_addr_return[31:0];
 		3'h7: pre_data[31:0] <= dma_len_return;
 		default: begin end
 		endcase
@@ -3078,7 +3118,7 @@ module	sdaxil #(
 		if ($past(bus_wstrb[1:0] != 2'b11))
 		begin
 			assert(!o_cmd_request);
-		end else if ($past(r_mem_busy && f_mem_request))
+		end else if ($past((r_mem_busy || o_tx_en) && f_mem_request))
 		begin
 			// Can't start a command that would use memory, if the
 			// memory is already in use
@@ -3114,7 +3154,7 @@ module	sdaxil #(
 
 	always @(posedge i_clk)
 	if (f_past_valid && !$past(i_reset || o_soft_reset || !o_hwreset_n)
-		&& !$past(r_mem_busy)
+		&& !$past(r_mem_busy || o_tx_en)
 		&& !$past(r_cmd_err)
 		&& !$past(cmd_busy)
 		&& !$past(dma_busy)
@@ -3194,6 +3234,13 @@ module	sdaxil #(
 	//
 	// TX Handling
 	// {{{
+	always @(*)
+	if (!o_tx_en || !r_tx_sent)
+	begin
+		assume(!i_tx_done);
+		assume(!i_tx_err);
+	end
+
 	always @(*)
 	if (!o_tx_en)
 		assert(!o_tx_mem_valid);

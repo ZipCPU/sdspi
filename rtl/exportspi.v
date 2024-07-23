@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdspi.v
+// Filename:	rtl/sdspi.v
 // {{{
-// Project:	SPI-based SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	SD Card controller, using SPI interface with the card and
 //		WB interface with the rest of the system.  This is the top
@@ -1036,9 +1036,9 @@ module	sdspi #(
 endmodule
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	spicmd.v
+// Filename:	rtl/spicmd.v
 // {{{
-// Project:	SPI-based SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Issues commands and collects responses from the lower level
 //		SPI processor.
@@ -1048,7 +1048,7 @@ endmodule
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2019-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -1061,7 +1061,7 @@ endmodule
 // for more details.
 //
 // You should have received a copy of the GNU General Public License along
-// with this program.  (It's in the $(ROOT)/doc directory, run make with no
+// with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
 // }}}
@@ -1549,9 +1549,9 @@ module	spicmd (
 endmodule
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	spitxdata.v
+// Filename:	rtl/spitxdata.v
 // {{{
-// Project:	SPI-based SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	To handle all of the processing associated with sending data
 //		from a memory to our lower-level SPI processor.
@@ -1574,7 +1574,7 @@ endmodule
 // for more details.
 //
 // You should have received a copy of the GNU General Public License along
-// with this program.  (It's in the $(ROOT)/doc directory, run make with no
+// with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
 // }}}
@@ -2279,9 +2279,9 @@ module spitxdata #(
 endmodule
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	spirxdata.v
+// Filename:	rtl/spirxdata.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	To handle all of the processing associated with receiving data
 //		from an SD card via the lower-level SPI processor, and then
@@ -2293,7 +2293,7 @@ endmodule
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2019-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -2306,7 +2306,7 @@ endmodule
 // for more details.
 //
 // You should have received a copy of the GNU General Public License along
-// with this program.  (It's in the $(ROOT)/doc directory, run make with no
+// with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
 // }}}
@@ -2607,7 +2607,7 @@ module spirxdata #(
 	// {{{
 	always @(*)
 	begin
-		first_crc_data = crc_data << 1;;
+		first_crc_data = crc_data << 1;
 
 		if (crc_data[15] ^ crc_gearbox[7])
 			first_crc_data = first_crc_data ^ CRC_POLYNOMIAL;
@@ -2975,9 +2975,9 @@ module spirxdata #(
 endmodule
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	llsdspi.v
+// Filename:	rtl/llsdspi.v
 // {{{
-// Project:	SPI-based SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	This file implements the "lower-level" interface to the
 //		SD-Card controller.  Specifically, it turns byte-level
@@ -3051,7 +3051,7 @@ endmodule
 // for more details.
 //
 // You should have received a copy of the GNU General Public License along
-// with this program.  (It's in the $(ROOT)/doc directory, run make with no
+// with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
 // }}}

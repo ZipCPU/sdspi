@@ -34,8 +34,8 @@ This particular design is somewhat optimized for low area.
   My anticipation is that I will typically break these components up in my
   designs, so that the [host controller](sdio.v) will exist within the main
   body of any design, whereas the [front end PHY](sdfrontend.v) will only
-  exist within the top level--since it contains hardware IO macro components
-  which may not be simulable within Verilator.
+  exist within the top level--since it contains _vendor dependent_ IO macro
+  components which may not be simulable within an open source environment.
 
   - [SDFRONTEND](sdfrontend.v) is the front end to this IP.  It contains three
     separate implementations: 1) one for direct IO support, going up to 50MHz
@@ -104,7 +104,7 @@ adjust this optimization for lowpower at the (potential) expense of area.
 
 A [perl script](usage.pl) is also available to measure the logic usage of these
 two IP components via Yosys.  Measurement results are kept [here](usage.txt).
-As of this writing, the [SDSPI](sdspi.v) controller requires only 543 Xilinx
-6-LUTs, whereas the [SDIO](sdio.v) controller requires 1465 Xilinx 6-LUTs
-without the DMA, and 2775 6-LUTs with the DMA.
+As of this writing, the [SDSPI](sdspi.v) controller requires only 548 Xilinx
+6-LUTs, whereas the [SDIO](sdio.v) controller requires 1438 Xilinx 6-LUTs
+without the DMA, and 2708 6-LUTs with the DMA.
 

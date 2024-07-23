@@ -2,7 +2,7 @@
 //
 // Filename:	bench/testscript/sddmachk.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Drive and demonstrate the DMA controller.
 //
@@ -158,12 +158,9 @@ $display("Set speed to 25MHz");
 	// {{{
 	u_bfm.write_f(ADDR_SDPHY, SECTOR_512B | SPEED_DS | SDPHY_W4 | sample_shift);
 
-$display("DMA Write command");
 	sdcard_write_dma(5, 32'h3, MEM_ADDR);
 
-$display("DMA Read  command");
 	sdcard_read_dma(4, 32'h4, MEM_ADDR + ((5+3)<<9));
-$display("DMA Read  command #2");
 	sdcard_read_dma(1, 32'h3, MEM_ADDR + ((5+3+4)<<9));
 	// }}}
 
@@ -172,13 +169,11 @@ $display("DMA Read  command #2");
 $display("Set speed to 200MHz");
 	u_bfm.write_f(ADDR_SDPHY, SECTOR_512B | SPEED_SDR200 | SDPHY_W4 | sample_shift);
 	sdcard_write_dma(6, 32'h4, MEM_ADDR);
-$display("DMA Read  command");
 	sdcard_read_dma(4, 32'h5, MEM_ADDR + ((6+4)<<9));
 	// }}}
 
 	// 1 block, sector 0, going right up to the end of memory
 	u_bfm.readio(ADDR_SDCARD, read_data);
-$display("DMA Read  command #2, cmd_reg = %08x", read_data);
 	sdcard_read_dma(1, 32'h9, MEM_ADDR + (1<<LGMEMSZ)-512);
 
 	repeat(512)

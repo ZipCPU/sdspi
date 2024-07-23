@@ -2,7 +2,7 @@
 //
 // Filename:	bench/verilog/axil_bfm.v
 // {{{
-// Project:	SDIO SD-Card controller
+// Project:	SD-Card controller
 //
 // Purpose:	Drive an AXI-Lite bus via commands from a test script.  This is
 //		*NOT* a sufficient method to test whether or not an AXI-Lite
@@ -15,7 +15,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2023-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2024, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published

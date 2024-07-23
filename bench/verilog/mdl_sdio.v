@@ -411,6 +411,17 @@ module	mdl_sdio #(
 				cmd8_sent <= 1'b1;
 			end end
 			// }}}
+		{ 1'b?, 6'd10 }: begin // CMD10: SEND_CID
+			// {{{
+			if (cmd_arg[31:16] == RCA)
+			begin
+				reply_valid <= #7 1'b1;
+				reply_type <= 1'b1;
+				reply <= 6'd10;
+				reply_data <= CID;
+				drive_cmd <= 1'b1;
+			end end
+			// }}}
 		{ 1'b?, 6'd11 }: begin // CMD11: Voltage switch
 			// {{{
 			if (r_1p8v_request && OPT_DUAL_VOLTAGE && !r_1p8v && !power_up_busy)

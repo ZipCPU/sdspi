@@ -2153,13 +2153,13 @@ module	sdwb #(
 			wide_block_count = r_block_count;
 
 			if (bus_wstrb[0])
-				wide_block_count[7:0] = bus_wdata[7:0];
+				wide_block_count[ 7: 0] = bus_wdata[ 7: 0];
 			if (bus_wstrb[1])
-				wide_block_count[7:0] = bus_wdata[7:0];
+				wide_block_count[15: 8] = bus_wdata[15: 8];
 			if (bus_wstrb[2])
-				wide_block_count[7:0] = bus_wdata[7:0];
+				wide_block_count[23:16] = bus_wdata[23:16];
 			if (bus_wstrb[3])
-				wide_block_count[7:0] = bus_wdata[7:0];
+				wide_block_count[31:24] = bus_wdata[31:24];
 		end
 
 		always @(posedge i_clk)

@@ -383,7 +383,6 @@ module	sdio #(
 		.o_tx_mem_valid(tx_mem_valid),
 			.i_tx_mem_ready(tx_mem_ready && tx_en),
 		.o_tx_mem_data(tx_mem_data), .o_tx_mem_last(tx_mem_last),
-		.i_tx_busy(o_data_en),
 		.i_tx_done(tx_done), .i_tx_err(tx_err), .i_tx_ercode(tx_ercode),
 		// }}}
 		// RX interface
@@ -484,7 +483,6 @@ module	sdio #(
 		.o_tx_mem_valid(tx_mem_valid),
 			.i_tx_mem_ready(tx_mem_ready && tx_en),
 		.o_tx_mem_data(tx_mem_data), .o_tx_mem_last(tx_mem_last),
-		.i_tx_busy(o_data_en),
 		.i_tx_done(tx_done), .i_tx_err(tx_err), .i_tx_ercode(tx_ercode),
 		// }}}
 		// RX interface
@@ -782,6 +780,7 @@ module	sdio #(
 				s2sd_ready,
 				s_valid, s_data, m_ready
 				};
+		// Verilator lint_on  UNUSED
 		// }}}
 		// }}}
 	end endgenerate

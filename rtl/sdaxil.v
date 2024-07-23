@@ -197,7 +197,6 @@ module	sdaxil #(
 		input	wire			i_tx_mem_ready,
 		output	reg	[31:0]		o_tx_mem_data,
 		output	reg			o_tx_mem_last,
-		input	wire			i_tx_busy,
 		//
 		input	wire			i_tx_done, i_tx_err,i_tx_ercode,
 		// }}}

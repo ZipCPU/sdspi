@@ -229,11 +229,12 @@ module	sddma #(
 `ifdef	SDIO_AXI
 	// {{{
 	// The AXI-based DMA hasn't (yet) been built
-	assign	mm2s_busy = 1'b0;
-	assign	mm2s_err  = 1'b0;
-	assign	mm2s_valid= 1'b0;
-	assign	mm2s_data = 0;
-	assign	mm2s_last = 1'b0;
+	assign	mm2s_busy  = 1'b0;
+	assign	mm2s_err   = 1'b0;
+	assign	mm2s_valid = 1'b0;
+	assign	mm2s_data  = 0;
+	assign	mm2s_bytes = 0;
+	assign	mm2s_last  = 1'b0;
 	// }}}
 `else	// SDIO_AXI
 	sddma_mm2s #(
@@ -333,15 +334,19 @@ module	sddma #(
 			wide_rx_bytes = 4;
 			wide_rx_last  = i_sd2s_last;
 `ifdef	SDIO_AXI
-		begin
+		end else begin
 			wide_rx_valid = s_valid;
+			// Verilator lint_off WIDTH
 			wide_rx_bytes = SW/8;
+			// Verilator lint_on  WIDTH
 			wide_rx_last  = s_last;
 `else
 		end else if (!mm2s_busy && OPT_ISTREAM)
 		begin
 			wide_rx_valid = s_valid;
+			// Verilator lint_off WIDTH
 			wide_rx_bytes = SW/8;
+			// Verilator lint_on  WIDTH
 			wide_rx_last  = s_last;
 		end else begin
 			wide_rx_valid = mm2s_valid;
@@ -544,7 +549,7 @@ module	sddma #(
 	// Only the S2MM portion of the DMA will ever write
 	// {{{
 	assign	M_AXI_AWVALID = 1'b0;
-	assign	M_AXI_AWID    = 0;
+	assign	M_AXI_AWID    = AXI_WRITE_ID;
 	assign	M_AXI_AWADDR  = 0;
 	assign	M_AXI_AWLEN   = 8'h0;
 	assign	M_AXI_AWSIZE  = 3'h0;
@@ -565,7 +570,7 @@ module	sddma #(
 	// Only the MM2S portion of the DMA will ever read
 	// {{{
 	assign	M_AXI_ARVALID = 1'b0;
-	assign	M_AXI_ARID    = 0;
+	assign	M_AXI_ARID    = AXI_READ_ID;
 	assign	M_AXI_ARADDR  = 0;
 	assign	M_AXI_ARLEN   = 8'h0;
 	assign	M_AXI_ARSIZE  = 3'h0;
@@ -623,6 +628,16 @@ module	sddma #(
 	wire	unused;
 	assign	unused = &{ 1'b0, ign_fifo_fill, fifo_last,
 `ifdef	SDIO_AXI
+				OPT_LOWPOWER,
+				mm2s_valid, mm2s_ready, mm2s_data, mm2s_bytes,
+				mm2s_last,
+				M_AXI_AWREADY, M_AXI_WREADY,
+				M_AXI_BVALID, M_AXI_BID, M_AXI_BRESP,
+				M_AXI_ARREADY,
+				M_AXI_RVALID, M_AXI_RID, M_AXI_RDATA,
+				M_AXI_RRESP, M_AXI_RLAST,
+				s2mm_busy,
+			tx_bytes, i_dma_len, i_dma_abort, i_dma_addr,
 `else
 				wr_we, rd_we, ign_rd_data,
 `endif

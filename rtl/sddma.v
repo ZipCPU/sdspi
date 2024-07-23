@@ -307,7 +307,7 @@ module	sddma #(
 				s_active <= !s_last;
 				r_last   <= (s_count <= 1);
 			end
-		end else if (i_dma_sd2s)
+		end else if (i_dma_s2sd)
 		begin
 			r_last   <= (i_dma_len <= SW/8);
 			s_count  <= (i_dma_len >> $clog2(SW/8))-1;

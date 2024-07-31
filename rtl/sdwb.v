@@ -866,7 +866,7 @@ module	sdwb #(
 	else begin
 		if (clear_err)
 			r_transfer_err <= 1'b0;
-		if (!dma_busy || !dma_stopped)
+		if (!dma_busy)
 		begin
 			if (o_rx_en && i_rx_err)
 				r_transfer_err <= 1'b1;
@@ -2263,7 +2263,7 @@ module	sdwb #(
 					r_dma_stopped <= 1'b1;
 				end
 				// }}}
-			end else if (!o_tx_en && !o_rx_en
+			end else if (!i_dma_busy && !o_tx_en && !o_rx_en
 					&& !cmd_busy && !r_dma_err
 					&& !r_tx_request && !r_rx_request)
 			begin // Have the DMA read/write another block

@@ -956,10 +956,13 @@ module	sdaxil #(
 	else begin
 		if (clear_err)
 			r_transfer_err <= 1'b0;
-		if (o_rx_en && i_rx_err && (!dma_busy || !dma_stopped))
-			r_transfer_err <= 1'b1;
-		if (o_tx_en && i_tx_err)
-			r_transfer_err <= 1'b1;
+		if (!dma_busy)
+		begin
+			if (o_rx_en && i_rx_err)
+				r_transfer_err <= 1'b1;
+			if (o_tx_en && i_tx_err)
+				r_transfer_err <= 1'b1;
+		end
 	end
 
 	initial	r_ecode = 1'b0;
@@ -2075,7 +2078,8 @@ module	sdaxil #(
 			w_dma_abort = 1'b0;
 			if (o_soft_reset || !card_present)
 				w_dma_abort = 1'b1;
-			if (i_dma_err || i_cmd_err || (o_rx_en && i_rx_err))
+			if (i_dma_err || i_cmd_err || (o_rx_en && i_rx_err)
+					|| i_tx_err)
 				w_dma_abort = 1'b1;
 			if (!dma_busy)
 				w_dma_abort = 1'b0;
@@ -2340,8 +2344,8 @@ module	sdaxil #(
 				&& (!r_tx || r_dma_loaded == 0)))
 			begin // Send STOP_TRANSMISSION
 				// {{{
-				if (!cmd_busy && (!r_tx
-					||(!i_dma_busy&& !o_tx_en
+				if (!cmd_busy && ((!r_tx && !i_dma_busy)
+					||(!o_tx_en
 						&& (r_dma_err || r_dma_loaded == 2'b0))))
 				begin
 					r_dma_write <= 1'b1;

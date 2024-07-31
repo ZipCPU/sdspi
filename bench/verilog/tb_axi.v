@@ -46,7 +46,9 @@ module	tb_axi;
 	parameter	[0:0]	OPT_DMA = 1'b0;
 	parameter	[0:0]	OPT_VCD = 1'b0;
 	parameter	[0:0]	OPT_CPU = 1'b0;
+	parameter	[0:0]	OPT_STREAM = 1'b0;
 	parameter		DW = 64;
+	parameter		SW = 32;	// May only be 32 or DW
 	parameter		MEM_FILE = "";
 	parameter		CONSOLE_FILE = "";
 	parameter		AXI_IW = 2;
@@ -530,6 +532,7 @@ module	tb_axi;
 
 	// Stream checking definitions
 	// {{{
+
 	// SCK_AXI_*
 	// {{{
 	wire			SCK_AXI_AWVALID, SCK_AXI_AWREADY;
@@ -570,27 +573,19 @@ module	tb_axi;
 	wire	[1:0]		SCK_AXI_RRESP;
 	// }}}
 
-	// SCK_*
-	// {{{
-	wire			SCK_AWVALID, SCK_AWREADY;
-	wire	[AW-1:0]	SCK_AWADDR;
-	wire	[2:0]		SCK_AWPROT;
+	wire		s2dev_valid, s2dev_ready, s2dev_last;
+	wire [SW-1:0]	s2dev_data;
 
-	wire			SCK_WVALID, SCK_WREADY;
-	wire	[32-1:0]	SCK_WDATA;
-	wire	[32/8-1:0]	SCK_WSTRB;
+	wire		dev2s_valid, dev2s_ready, dev2s_last;
+	wire [SW-1:0]	dev2s_data;
 
-	wire			SCK_BVALID, SCK_BREADY;
-	wire	[1:0]		SCK_BRESP;
+	wire			sdios_ready, sdios_valid, sdios_last;
+	wire	[SW-1:0]	sdios_data;
 
-	wire			SCK_ARVALID, SCK_ARREADY;
-	wire	[AW-1:0]	SCK_ARADDR;
-	wire	[2:0]		SCK_ARPROT;
+	wire			emmcs_ready, emmcs_valid, emmcs_last;
+	wire	[SW-1:0]	emmcs_data;
 
-	wire			SCK_RVALID, SCK_RREADY;
-	wire	[32-1:0]	SCK_RDATA;
-	wire	[1:0]		SCK_RRESP;
-	// }}}
+	wire			stream_dev, stream_error_flag;
 	// }}}
 
 	// GPIO_AXI_*
@@ -932,12 +927,13 @@ module	tb_axi;
 
 	axixbar #(
 		// {{{
-		.NM(5), .NS(6),
+		.NM(5), .NS(7),
 		.C_AXI_ADDR_WIDTH(AW), .C_AXI_DATA_WIDTH(DW),
 		.C_AXI_ID_WIDTH(AXI_IW),
 		.SLAVE_ADDR({
 			MEM_ADDR,
 			AXILP_ADDR,
+			SCK_ADDR,
 			CON_ADDR,
 			GPIO_ADDR,
 			EMMC_ADDR,
@@ -945,6 +941,7 @@ module	tb_axi;
 		.SLAVE_MASK({
 			MEM_MASK,
 			AXILP_MASK,
+			SCK_MASK,
 			CON_MASK,
 			GPIO_MASK,
 			EMMC_MASK,
@@ -999,47 +996,47 @@ module	tb_axi;
 		// }}}
 		// Master
 		// {{{
-		.M_AXI_AWVALID({ MEM_AWVALID, AXILP_AXI_AWVALID, CON_AXI_AWVALID, GPIO_AXI_AWVALID, EMMC_AXI_AWVALID, SDIO_AXI_AWVALID }),
-		.M_AXI_AWREADY({ MEM_AWREADY, AXILP_AXI_AWREADY, CON_AXI_AWREADY, GPIO_AXI_AWREADY, EMMC_AXI_AWREADY, SDIO_AXI_AWREADY }),
-		.M_AXI_AWID({    MEM_AWID,    AXILP_AXI_AWID,    CON_AXI_AWID,    GPIO_AXI_AWID, EMMC_AXI_AWID,    SDIO_AXI_AWID }),
-		.M_AXI_AWADDR({  MEM_AWADDR,  AXILP_AXI_AWADDR,  CON_AXI_AWADDR,  GPIO_AXI_AWADDR, EMMC_AXI_AWADDR,  SDIO_AXI_AWADDR }),
-		.M_AXI_AWLEN({   MEM_AWLEN,   AXILP_AXI_AWLEN,   CON_AXI_AWLEN,   GPIO_AXI_AWLEN, EMMC_AXI_AWLEN,   SDIO_AXI_AWLEN }),
-		.M_AXI_AWSIZE({  MEM_AWSIZE,  AXILP_AXI_AWSIZE,  CON_AXI_AWSIZE,  GPIO_AXI_AWSIZE, EMMC_AXI_AWSIZE,  SDIO_AXI_AWSIZE }),
-		.M_AXI_AWBURST({ MEM_AWBURST, AXILP_AXI_AWBURST, CON_AXI_AWBURST, GPIO_AXI_AWBURST, EMMC_AXI_AWBURST, SDIO_AXI_AWBURST }),
-		.M_AXI_AWLOCK({  MEM_AWLOCK,  AXILP_AXI_AWLOCK,  CON_AXI_AWLOCK,  GPIO_AXI_AWLOCK, EMMC_AXI_AWLOCK,  SDIO_AXI_AWLOCK }),
-		.M_AXI_AWCACHE({ MEM_AWCACHE, AXILP_AXI_AWCACHE, CON_AXI_AWCACHE, GPIO_AXI_AWCACHE, EMMC_AXI_AWCACHE, SDIO_AXI_AWCACHE }),
-		.M_AXI_AWPROT({  MEM_AWPROT,  AXILP_AXI_AWPROT,  CON_AXI_AWPROT,  GPIO_AXI_AWPROT, EMMC_AXI_AWPROT,  SDIO_AXI_AWPROT }),
-		.M_AXI_AWQOS({   MEM_AWQOS,   AXILP_AXI_AWQOS,   CON_AXI_AWQOS,   GPIO_AXI_AWQOS, EMMC_AXI_AWQOS,   SDIO_AXI_AWQOS }),
+		.M_AXI_AWVALID({ MEM_AWVALID, AXILP_AXI_AWVALID, SCK_AXI_AWVALID, CON_AXI_AWVALID, GPIO_AXI_AWVALID, EMMC_AXI_AWVALID, SDIO_AXI_AWVALID }),
+		.M_AXI_AWREADY({ MEM_AWREADY, AXILP_AXI_AWREADY, SCK_AXI_AWREADY, CON_AXI_AWREADY, GPIO_AXI_AWREADY, EMMC_AXI_AWREADY, SDIO_AXI_AWREADY }),
+		.M_AXI_AWID({    MEM_AWID,    AXILP_AXI_AWID,    SCK_AXI_AWID,    CON_AXI_AWID,    GPIO_AXI_AWID, EMMC_AXI_AWID,    SDIO_AXI_AWID }),
+		.M_AXI_AWADDR({  MEM_AWADDR,  AXILP_AXI_AWADDR,  SCK_AXI_AWADDR,  CON_AXI_AWADDR,  GPIO_AXI_AWADDR, EMMC_AXI_AWADDR,  SDIO_AXI_AWADDR }),
+		.M_AXI_AWLEN({   MEM_AWLEN,   AXILP_AXI_AWLEN,   SCK_AXI_AWLEN,   CON_AXI_AWLEN,   GPIO_AXI_AWLEN, EMMC_AXI_AWLEN,   SDIO_AXI_AWLEN }),
+		.M_AXI_AWSIZE({  MEM_AWSIZE,  AXILP_AXI_AWSIZE,  SCK_AXI_AWSIZE,  CON_AXI_AWSIZE,  GPIO_AXI_AWSIZE, EMMC_AXI_AWSIZE,  SDIO_AXI_AWSIZE }),
+		.M_AXI_AWBURST({ MEM_AWBURST, AXILP_AXI_AWBURST, SCK_AXI_AWBURST, CON_AXI_AWBURST, GPIO_AXI_AWBURST, EMMC_AXI_AWBURST, SDIO_AXI_AWBURST }),
+		.M_AXI_AWLOCK({  MEM_AWLOCK,  AXILP_AXI_AWLOCK,  SCK_AXI_AWLOCK,  CON_AXI_AWLOCK,  GPIO_AXI_AWLOCK, EMMC_AXI_AWLOCK,  SDIO_AXI_AWLOCK }),
+		.M_AXI_AWCACHE({ MEM_AWCACHE, AXILP_AXI_AWCACHE, SCK_AXI_AWCACHE, CON_AXI_AWCACHE, GPIO_AXI_AWCACHE, EMMC_AXI_AWCACHE, SDIO_AXI_AWCACHE }),
+		.M_AXI_AWPROT({  MEM_AWPROT,  AXILP_AXI_AWPROT,  SCK_AXI_AWPROT,  CON_AXI_AWPROT,  GPIO_AXI_AWPROT, EMMC_AXI_AWPROT,  SDIO_AXI_AWPROT }),
+		.M_AXI_AWQOS({   MEM_AWQOS,   AXILP_AXI_AWQOS,   SCK_AXI_AWQOS,   CON_AXI_AWQOS,   GPIO_AXI_AWQOS, EMMC_AXI_AWQOS,   SDIO_AXI_AWQOS }),
 		//
-		.M_AXI_WVALID({ MEM_WVALID, AXILP_AXI_WVALID, CON_AXI_WVALID, GPIO_AXI_WVALID, EMMC_AXI_WVALID, SDIO_AXI_WVALID }),
-		.M_AXI_WREADY({ MEM_WREADY, AXILP_AXI_WREADY, CON_AXI_WREADY, GPIO_AXI_WREADY, EMMC_AXI_WREADY, SDIO_AXI_WREADY }),
-		.M_AXI_WDATA({  MEM_WDATA,  AXILP_AXI_WDATA,  CON_AXI_WDATA,  GPIO_AXI_WDATA,  EMMC_AXI_WDATA,  SDIO_AXI_WDATA }),
-		.M_AXI_WSTRB({  MEM_WSTRB,  AXILP_AXI_WSTRB,  CON_AXI_WSTRB,  GPIO_AXI_WSTRB,  EMMC_AXI_WSTRB,  SDIO_AXI_WSTRB }),
-		.M_AXI_WLAST({  MEM_WLAST,  AXILP_AXI_WLAST,  CON_AXI_WLAST,  GPIO_AXI_WLAST,  EMMC_AXI_WLAST,  SDIO_AXI_WLAST }),
+		.M_AXI_WVALID({ MEM_WVALID, AXILP_AXI_WVALID, SCK_AXI_WVALID, CON_AXI_WVALID, GPIO_AXI_WVALID, EMMC_AXI_WVALID, SDIO_AXI_WVALID }),
+		.M_AXI_WREADY({ MEM_WREADY, AXILP_AXI_WREADY, SCK_AXI_WREADY, CON_AXI_WREADY, GPIO_AXI_WREADY, EMMC_AXI_WREADY, SDIO_AXI_WREADY }),
+		.M_AXI_WDATA({  MEM_WDATA,  AXILP_AXI_WDATA,  SCK_AXI_WDATA,  CON_AXI_WDATA,  GPIO_AXI_WDATA,  EMMC_AXI_WDATA,  SDIO_AXI_WDATA }),
+		.M_AXI_WSTRB({  MEM_WSTRB,  AXILP_AXI_WSTRB,  SCK_AXI_WSTRB,  CON_AXI_WSTRB,  GPIO_AXI_WSTRB,  EMMC_AXI_WSTRB,  SDIO_AXI_WSTRB }),
+		.M_AXI_WLAST({  MEM_WLAST,  AXILP_AXI_WLAST,  SCK_AXI_WLAST,  CON_AXI_WLAST,  GPIO_AXI_WLAST,  EMMC_AXI_WLAST,  SDIO_AXI_WLAST }),
 		//
-		.M_AXI_BVALID({ MEM_BVALID, AXILP_AXI_BVALID, CON_AXI_BVALID, GPIO_AXI_BVALID, EMMC_AXI_BVALID, SDIO_AXI_BVALID }),
-		.M_AXI_BREADY({ MEM_BREADY, AXILP_AXI_BREADY, CON_AXI_BREADY, GPIO_AXI_BREADY, EMMC_AXI_BREADY, SDIO_AXI_BREADY }),
-		.M_AXI_BID({    MEM_BID,    AXILP_AXI_BID,    CON_AXI_BID,    GPIO_AXI_BID,    EMMC_AXI_BID,    SDIO_AXI_BID }),
-		.M_AXI_BRESP({  MEM_BRESP,  AXILP_AXI_BRESP,  CON_AXI_BRESP,  GPIO_AXI_BRESP,  EMMC_AXI_BRESP,  SDIO_AXI_BRESP }),
+		.M_AXI_BVALID({ MEM_BVALID, AXILP_AXI_BVALID, SCK_AXI_BVALID, CON_AXI_BVALID, GPIO_AXI_BVALID, EMMC_AXI_BVALID, SDIO_AXI_BVALID }),
+		.M_AXI_BREADY({ MEM_BREADY, AXILP_AXI_BREADY, SCK_AXI_BREADY, CON_AXI_BREADY, GPIO_AXI_BREADY, EMMC_AXI_BREADY, SDIO_AXI_BREADY }),
+		.M_AXI_BID({    MEM_BID,    AXILP_AXI_BID,    SCK_AXI_BID,    CON_AXI_BID,    GPIO_AXI_BID,    EMMC_AXI_BID,    SDIO_AXI_BID }),
+		.M_AXI_BRESP({  MEM_BRESP,  AXILP_AXI_BRESP,  SCK_AXI_BRESP,  CON_AXI_BRESP,  GPIO_AXI_BRESP,  EMMC_AXI_BRESP,  SDIO_AXI_BRESP }),
 		//
-		.M_AXI_ARVALID({ MEM_ARVALID, AXILP_AXI_ARVALID, CON_AXI_ARVALID, GPIO_AXI_ARVALID, EMMC_AXI_ARVALID, SDIO_AXI_ARVALID }),
-		.M_AXI_ARREADY({ MEM_ARREADY, AXILP_AXI_ARREADY, CON_AXI_ARREADY, GPIO_AXI_ARREADY, EMMC_AXI_ARREADY, SDIO_AXI_ARREADY }),
-		.M_AXI_ARID({    MEM_ARID,    AXILP_AXI_ARID,    CON_AXI_ARID,    GPIO_AXI_ARID, EMMC_AXI_ARID, SDIO_AXI_ARID }),
-		.M_AXI_ARADDR({  MEM_ARADDR,  AXILP_AXI_ARADDR,  CON_AXI_ARADDR,  GPIO_AXI_ARADDR, EMMC_AXI_ARADDR, SDIO_AXI_ARADDR }),
-		.M_AXI_ARLEN({   MEM_ARLEN,   AXILP_AXI_ARLEN,   CON_AXI_ARLEN,   GPIO_AXI_ARLEN, EMMC_AXI_ARLEN, SDIO_AXI_ARLEN }),
-		.M_AXI_ARSIZE({  MEM_ARSIZE,  AXILP_AXI_ARSIZE,  CON_AXI_ARSIZE,  GPIO_AXI_ARSIZE, EMMC_AXI_ARSIZE, SDIO_AXI_ARSIZE }),
-		.M_AXI_ARBURST({ MEM_ARBURST, AXILP_AXI_ARBURST, CON_AXI_ARBURST, GPIO_AXI_ARBURST, EMMC_AXI_ARBURST, SDIO_AXI_ARBURST }),
-		.M_AXI_ARLOCK({  MEM_ARLOCK,  AXILP_AXI_ARLOCK,  CON_AXI_ARLOCK,  GPIO_AXI_ARLOCK, EMMC_AXI_ARLOCK, SDIO_AXI_ARLOCK }),
-		.M_AXI_ARCACHE({ MEM_ARCACHE, AXILP_AXI_ARCACHE, CON_AXI_ARCACHE, GPIO_AXI_ARCACHE, EMMC_AXI_ARCACHE, SDIO_AXI_ARCACHE }),
-		.M_AXI_ARPROT({  MEM_ARPROT,  AXILP_AXI_ARPROT,  CON_AXI_ARPROT,  GPIO_AXI_ARPROT, EMMC_AXI_ARPROT, SDIO_AXI_ARPROT }),
-		.M_AXI_ARQOS({   MEM_ARQOS,   AXILP_AXI_ARQOS,   CON_AXI_ARQOS,   GPIO_AXI_ARQOS, EMMC_AXI_ARQOS, SDIO_AXI_ARQOS }),
+		.M_AXI_ARVALID({MEM_ARVALID,AXILP_AXI_ARVALID,SCK_AXI_ARVALID,CON_AXI_ARVALID,GPIO_AXI_ARVALID,EMMC_AXI_ARVALID, SDIO_AXI_ARVALID }),
+		.M_AXI_ARREADY({MEM_ARREADY,AXILP_AXI_ARREADY,SCK_AXI_ARREADY,CON_AXI_ARREADY,GPIO_AXI_ARREADY,EMMC_AXI_ARREADY, SDIO_AXI_ARREADY }),
+		.M_AXI_ARID({   MEM_ARID,   AXILP_AXI_ARID,   SCK_AXI_ARID,   CON_AXI_ARID,   GPIO_AXI_ARID,   EMMC_AXI_ARID, SDIO_AXI_ARID }),
+		.M_AXI_ARADDR({ MEM_ARADDR, AXILP_AXI_ARADDR, SCK_AXI_ARADDR, CON_AXI_ARADDR, GPIO_AXI_ARADDR, EMMC_AXI_ARADDR, SDIO_AXI_ARADDR }),
+		.M_AXI_ARLEN({  MEM_ARLEN,  AXILP_AXI_ARLEN,  SCK_AXI_ARLEN,  CON_AXI_ARLEN,  GPIO_AXI_ARLEN,  EMMC_AXI_ARLEN, SDIO_AXI_ARLEN }),
+		.M_AXI_ARSIZE({ MEM_ARSIZE, AXILP_AXI_ARSIZE, SCK_AXI_ARSIZE, CON_AXI_ARSIZE, GPIO_AXI_ARSIZE, EMMC_AXI_ARSIZE, SDIO_AXI_ARSIZE }),
+		.M_AXI_ARBURST({MEM_ARBURST,AXILP_AXI_ARBURST,SCK_AXI_ARBURST,CON_AXI_ARBURST,GPIO_AXI_ARBURST,EMMC_AXI_ARBURST, SDIO_AXI_ARBURST }),
+		.M_AXI_ARLOCK({ MEM_ARLOCK, AXILP_AXI_ARLOCK, SCK_AXI_ARLOCK, CON_AXI_ARLOCK, GPIO_AXI_ARLOCK, EMMC_AXI_ARLOCK, SDIO_AXI_ARLOCK }),
+		.M_AXI_ARCACHE({MEM_ARCACHE,AXILP_AXI_ARCACHE,SCK_AXI_ARCACHE,CON_AXI_ARCACHE,GPIO_AXI_ARCACHE,EMMC_AXI_ARCACHE, SDIO_AXI_ARCACHE }),
+		.M_AXI_ARPROT({ MEM_ARPROT, AXILP_AXI_ARPROT, SCK_AXI_ARPROT,CON_AXI_ARPROT,  GPIO_AXI_ARPROT, EMMC_AXI_ARPROT, SDIO_AXI_ARPROT }),
+		.M_AXI_ARQOS({  MEM_ARQOS,  AXILP_AXI_ARQOS,  SCK_AXI_ARQOS, CON_AXI_ARQOS,   GPIO_AXI_ARQOS,  EMMC_AXI_ARQOS, SDIO_AXI_ARQOS }),
 		//
-		.M_AXI_RVALID({ MEM_RVALID, AXILP_AXI_RVALID, CON_AXI_RVALID, GPIO_AXI_RVALID, EMMC_AXI_RVALID, SDIO_AXI_RVALID }),
-		.M_AXI_RREADY({ MEM_RREADY, AXILP_AXI_RREADY, CON_AXI_RREADY, GPIO_AXI_RREADY, EMMC_AXI_RREADY, SDIO_AXI_RREADY }),
-		.M_AXI_RID({    MEM_RID,    AXILP_AXI_RID,    CON_AXI_RID,    GPIO_AXI_RID,    EMMC_AXI_RID,    SDIO_AXI_RID }),
-		.M_AXI_RDATA({  MEM_RDATA,  AXILP_AXI_RDATA,  CON_AXI_RDATA,  GPIO_AXI_RDATA,  EMMC_AXI_RDATA,  SDIO_AXI_RDATA }),
-		.M_AXI_RRESP({  MEM_RRESP,  AXILP_AXI_RRESP,  CON_AXI_RRESP,  GPIO_AXI_RRESP,  EMMC_AXI_RRESP,  SDIO_AXI_RRESP }),
-		.M_AXI_RLAST({  MEM_RLAST,  AXILP_AXI_RLAST,  CON_AXI_RLAST,  GPIO_AXI_RLAST,  EMMC_AXI_RLAST,  SDIO_AXI_RLAST })
+		.M_AXI_RVALID({ MEM_RVALID, AXILP_AXI_RVALID, SCK_AXI_RVALID,CON_AXI_RVALID, GPIO_AXI_RVALID, EMMC_AXI_RVALID, SDIO_AXI_RVALID }),
+		.M_AXI_RREADY({ MEM_RREADY, AXILP_AXI_RREADY, SCK_AXI_RREADY,CON_AXI_RREADY, GPIO_AXI_RREADY, EMMC_AXI_RREADY, SDIO_AXI_RREADY }),
+		.M_AXI_RID({    MEM_RID,    AXILP_AXI_RID,    SCK_AXI_RID,   CON_AXI_RID,    GPIO_AXI_RID,    EMMC_AXI_RID,    SDIO_AXI_RID }),
+		.M_AXI_RDATA({  MEM_RDATA,  AXILP_AXI_RDATA,  SCK_AXI_RDATA, CON_AXI_RDATA,  GPIO_AXI_RDATA,  EMMC_AXI_RDATA,  SDIO_AXI_RDATA }),
+		.M_AXI_RRESP({  MEM_RRESP,  AXILP_AXI_RRESP,  SCK_AXI_RRESP, CON_AXI_RRESP,  GPIO_AXI_RRESP,  EMMC_AXI_RRESP,  SDIO_AXI_RRESP }),
+		.M_AXI_RLAST({  MEM_RLAST,  AXILP_AXI_RLAST,  SCK_AXI_RLAST, CON_AXI_RLAST,  GPIO_AXI_RLAST,  EMMC_AXI_RLAST,  SDIO_AXI_RLAST })
 		// }}}
 		// }}}
 	);
@@ -1095,7 +1092,7 @@ module	tb_axi;
 	begin
 		$readmemh(MEM_FILE, mem);
 	end
-	
+
 	always @(posedge clk)
 	if (ram_we)
 	for(ram_wk=0; ram_wk < DW/8; ram_wk=ram_wk+1)
@@ -1109,7 +1106,7 @@ module	tb_axi;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
-	// Unit under test
+	// Unit(s) under test
 	// {{{
 
 	// Downsize
@@ -1277,7 +1274,8 @@ module	tb_axi;
 
 	sdio_top #(
 		// {{{
-		.LGFIFO(12), .NUMIO(4),
+		.LGFIFO(12), .NUMIO(4), .SW(SW),
+		.OPT_ISTREAM(OPT_STREAM), .OPT_OSTREAM(OPT_STREAM),
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.DW(DW), .AXI_IW(AXI_IW),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
@@ -1358,8 +1356,24 @@ module	tb_axi;
 		.M_AXI_RRESP(  SDIO_DMA_RRESP ),
 		.M_AXI_RLAST(  SDIO_DMA_RLAST ),
 		// }}}
+		// DMA streaming interface
+		// {{{
+		.s_valid(s2dev_valid && !stream_dev),
+		.s_ready(sdios_ready),
+		.s_data(stream_dev ? {(SW){1'b0}} : s2dev_data),
+		// .s_last(s2dev_last && !stream_dev),
 		//
+		.m_valid(sdios_valid),
+		.m_ready(dev2s_ready && !stream_dev),
+		.m_data(sdios_data),
+		.m_last(sdios_last),
+		//
+		// }}}
+		//
+		// SDIO wire interface
+		// {{{
 		.o_ck(sd_ck), .i_ds(1'b0), .io_cmd(sd_cmd), .io_dat(sd_dat),
+		// }}}
 		.i_card_detect(1'b1), .o_int(sdio_interrupt),
 		.o_hwreset_n(ign_sdio_reset_n), .o_1p8v(sdio_1p8v),
 		.o_debug(sdio_debug)
@@ -1369,6 +1383,7 @@ module	tb_axi;
 	sdio_top #(
 		// {{{
 		.LGFIFO(12), .NUMIO(8),
+		.OPT_ISTREAM(OPT_STREAM), .OPT_OSTREAM(OPT_STREAM),
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.DW(DW), .AXI_IW(AXI_IW),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
@@ -1448,6 +1463,19 @@ module	tb_axi;
 		.M_AXI_RDATA(  EMMC_DMA_RDATA ),
 		.M_AXI_RRESP(  EMMC_DMA_RRESP ),
 		.M_AXI_RLAST(  EMMC_DMA_RLAST ),
+		// }}}
+		// DMA streaming interface
+		// {{{
+		.s_valid(s2dev_valid && stream_dev),
+		.s_ready(emmcs_ready),
+		.s_data(stream_dev ? s2dev_data : {(SW){1'b0}}),
+		// .s_last(s2dev_last && !stream_dev),
+		//
+		.m_valid(emmcs_valid),
+		.m_ready(dev2s_ready && stream_dev),
+		.m_data(emmcs_data),
+		.m_last(emmcs_last),
+		//
 		// }}}
 		//
 		.o_ck(emmc_ck),
@@ -1700,136 +1728,210 @@ module	tb_axi;
 	//
 	//
 
-	assign	dev2s_valid = (stream_dev) ? emmcs_valid : sdios_valid;
-	assign	dev2s_data  = (stream_dev) ? emmcs_data  : sdios_data;
-	assign	dev2s_last  = (stream_dev) ? emmcs_last  : sdios_last;
-
-	assign	s2dev_ready = (stream_dev) ? emmcs_ready : sdios_ready;
-
-	// Downsize, and convert to AXI-Lite
-	axi2axilsub #(
+	generate if (OPT_STREAM)
+	begin : GEN_STREAM_CHECKER
 		// {{{
-		.C_AXI_ID_WIDTH(AXI_IW),
-		.C_S_AXI_DATA_WIDTH(DW),
-		.C_M_AXI_DATA_WIDTH(32),
-		.C_AXI_ADDR_WIDTH(ADDRESS_WIDTH)
-		// }}}
-	) u_sck_downsz (
-		.S_AXI_ACLK(clk), .S_AXI_ARESETN(!reset),
-		// Slave
-		// {{{
-		.S_AXI_AWVALID( SCK_AXI_AWVALID ),
-		.S_AXI_AWREADY( SCK_AXI_AWREADY ),
-		.S_AXI_AWID(    SCK_AXI_AWID ),
-		.S_AXI_AWADDR(  SCK_AXI_AWADDR ),
-		.S_AXI_AWLEN(   SCK_AXI_AWLEN ),
-		.S_AXI_AWSIZE(  SCK_AXI_AWSIZE ),
-		.S_AXI_AWBURST( SCK_AXI_AWBURST ),
-		.S_AXI_AWLOCK(  SCK_AXI_AWLOCK ),
-		.S_AXI_AWCACHE( SCK_AXI_AWCACHE ),
-		.S_AXI_AWPROT(  SCK_AXI_AWPROT ),
-		.S_AXI_AWQOS(   SCK_AXI_AWQOS ),
-		//
-		.S_AXI_WVALID( SCK_AXI_WVALID ),
-		.S_AXI_WREADY( SCK_AXI_WREADY ),
-		.S_AXI_WDATA(  SCK_AXI_WDATA ),
-		.S_AXI_WSTRB(  SCK_AXI_WSTRB ),
-		.S_AXI_WLAST(  SCK_AXI_WLAST ),
-		//
-		.S_AXI_BVALID( SCK_AXI_BVALID ),
-		.S_AXI_BREADY( SCK_AXI_BREADY ),
-		.S_AXI_BID(    SCK_AXI_BID ),
-		.S_AXI_BRESP(  SCK_AXI_BRESP ),
-		//
-		.S_AXI_ARVALID( SCK_AXI_ARVALID ),
-		.S_AXI_ARREADY( SCK_AXI_ARREADY ),
-		.S_AXI_ARID(    SCK_AXI_ARID ),
-		.S_AXI_ARADDR(  SCK_AXI_ARADDR ),
-		.S_AXI_ARLEN(   SCK_AXI_ARLEN ),
-		.S_AXI_ARSIZE(  SCK_AXI_ARSIZE ),
-		.S_AXI_ARBURST( SCK_AXI_ARBURST ),
-		.S_AXI_ARLOCK(  SCK_AXI_ARLOCK ),
-		.S_AXI_ARCACHE( SCK_AXI_ARCACHE ),
-		.S_AXI_ARPROT(  SCK_AXI_ARPROT ),
-		.S_AXI_ARQOS(   SCK_AXI_ARQOS ),
-		//
-		.S_AXI_RVALID( SCK_AXI_RVALID ),
-		.S_AXI_RREADY( SCK_AXI_RREADY ),
-		.S_AXI_RID(    SCK_AXI_RID ),
-		.S_AXI_RDATA(  SCK_AXI_RDATA ),
-		.S_AXI_RRESP(  SCK_AXI_RRESP ),
-		.S_AXI_RLAST(  SCK_AXI_RLAST ),
-		// }}}
-		// Master
-		// {{{
-		.M_AXI_AWVALID( SCK_AWVALID ),
-		.M_AXI_AWREADY( SCK_AWREADY ),
-		.M_AXI_AWADDR(  SCK_AWADDR ),
-		.M_AXI_AWPROT(  SCK_AWPROT ),
-		//
-		.M_AXI_WVALID( SCK_WVALID ),
-		.M_AXI_WREADY( SCK_WREADY ),
-		.M_AXI_WDATA(  SCK_WDATA ),
-		.M_AXI_WSTRB(  SCK_WSTRB ),
-		//
-		.M_AXI_BVALID( SCK_BVALID ),
-		.M_AXI_BREADY( SCK_BREADY ),
-		.M_AXI_BRESP(  SCK_BRESP ),
-		//
-		.M_AXI_ARVALID( SCK_ARVALID ),
-		.M_AXI_ARREADY( SCK_ARREADY ),
-		.M_AXI_ARADDR(  SCK_ARADDR ),
-		.M_AXI_ARPROT(  SCK_ARPROT ),
-		//
-		.M_AXI_RVALID( SCK_RVALID ),
-		.M_AXI_RREADY( SCK_RREADY ),
-		.M_AXI_RDATA(  SCK_RDATA ),
-		.M_AXI_RRESP(  SCK_RRESP )
-		// }}}
-	);
 
-
-	streamchk #(
-		.SW(SW)
-	) u_streamchk (
+		// SCK_*
 		// {{{
-		.S_AXI_ACLK(clk), .S_AXI_ARESETN(!reset),
-		// AXI-Lite interface
+		wire			SCK_AWVALID, SCK_AWREADY;
+		wire	[AW-1:0]	SCK_AWADDR;
+		wire	[2:0]		SCK_AWPROT;
+
+		wire			SCK_WVALID, SCK_WREADY;
+		wire	[32-1:0]	SCK_WDATA;
+		wire	[32/8-1:0]	SCK_WSTRB;
+
+		wire			SCK_BVALID, SCK_BREADY;
+		wire	[1:0]		SCK_BRESP;
+
+		wire			SCK_ARVALID, SCK_ARREADY;
+		wire	[AW-1:0]	SCK_ARADDR;
+		wire	[2:0]		SCK_ARPROT;
+
+		wire			SCK_RVALID, SCK_RREADY;
+		wire	[32-1:0]	SCK_RDATA;
+		wire	[1:0]		SCK_RRESP;
+		// }}}
+
+		assign	dev2s_valid = (stream_dev) ? emmcs_valid : sdios_valid;
+		assign	dev2s_data  = (stream_dev) ? emmcs_data  : sdios_data;
+		assign	dev2s_last  = (stream_dev) ? emmcs_last  : sdios_last;
+
+		assign	s2dev_ready = (stream_dev) ? emmcs_ready : sdios_ready;
+
+		// Downsize, and convert to AXI-Lite
+		axi2axilsub #(
+			// {{{
+			.C_AXI_ID_WIDTH(AXI_IW),
+			.C_S_AXI_DATA_WIDTH(DW),
+			.C_M_AXI_DATA_WIDTH(32),
+			.C_AXI_ADDR_WIDTH(ADDRESS_WIDTH)
+			// }}}
+		) u_sck_downsz (
+			.S_AXI_ACLK(clk), .S_AXI_ARESETN(!reset),
+			// Slave
+			// {{{
+			.S_AXI_AWVALID( SCK_AXI_AWVALID ),
+			.S_AXI_AWREADY( SCK_AXI_AWREADY ),
+			.S_AXI_AWID(    SCK_AXI_AWID ),
+			.S_AXI_AWADDR(  SCK_AXI_AWADDR ),
+			.S_AXI_AWLEN(   SCK_AXI_AWLEN ),
+			.S_AXI_AWSIZE(  SCK_AXI_AWSIZE ),
+			.S_AXI_AWBURST( SCK_AXI_AWBURST ),
+			.S_AXI_AWLOCK(  SCK_AXI_AWLOCK ),
+			.S_AXI_AWCACHE( SCK_AXI_AWCACHE ),
+			.S_AXI_AWPROT(  SCK_AXI_AWPROT ),
+			.S_AXI_AWQOS(   SCK_AXI_AWQOS ),
+			//
+			.S_AXI_WVALID( SCK_AXI_WVALID ),
+			.S_AXI_WREADY( SCK_AXI_WREADY ),
+			.S_AXI_WDATA(  SCK_AXI_WDATA ),
+			.S_AXI_WSTRB(  SCK_AXI_WSTRB ),
+			.S_AXI_WLAST(  SCK_AXI_WLAST ),
+			//
+			.S_AXI_BVALID( SCK_AXI_BVALID ),
+			.S_AXI_BREADY( SCK_AXI_BREADY ),
+			.S_AXI_BID(    SCK_AXI_BID ),
+			.S_AXI_BRESP(  SCK_AXI_BRESP ),
+			//
+			.S_AXI_ARVALID( SCK_AXI_ARVALID ),
+			.S_AXI_ARREADY( SCK_AXI_ARREADY ),
+			.S_AXI_ARID(    SCK_AXI_ARID ),
+			.S_AXI_ARADDR(  SCK_AXI_ARADDR ),
+			.S_AXI_ARLEN(   SCK_AXI_ARLEN ),
+			.S_AXI_ARSIZE(  SCK_AXI_ARSIZE ),
+			.S_AXI_ARBURST( SCK_AXI_ARBURST ),
+			.S_AXI_ARLOCK(  SCK_AXI_ARLOCK ),
+			.S_AXI_ARCACHE( SCK_AXI_ARCACHE ),
+			.S_AXI_ARPROT(  SCK_AXI_ARPROT ),
+			.S_AXI_ARQOS(   SCK_AXI_ARQOS ),
+			//
+			.S_AXI_RVALID( SCK_AXI_RVALID ),
+			.S_AXI_RREADY( SCK_AXI_RREADY ),
+			.S_AXI_RID(    SCK_AXI_RID ),
+			.S_AXI_RDATA(  SCK_AXI_RDATA ),
+			.S_AXI_RRESP(  SCK_AXI_RRESP ),
+			.S_AXI_RLAST(  SCK_AXI_RLAST ),
+			// }}}
+			// Master
+			// {{{
+			.M_AXI_AWVALID( SCK_AWVALID ),
+			.M_AXI_AWREADY( SCK_AWREADY ),
+			.M_AXI_AWADDR(  SCK_AWADDR ),
+			.M_AXI_AWPROT(  SCK_AWPROT ),
+			//
+			.M_AXI_WVALID( SCK_WVALID ),
+			.M_AXI_WREADY( SCK_WREADY ),
+			.M_AXI_WDATA(  SCK_WDATA ),
+			.M_AXI_WSTRB(  SCK_WSTRB ),
+			//
+			.M_AXI_BVALID( SCK_BVALID ),
+			.M_AXI_BREADY( SCK_BREADY ),
+			.M_AXI_BRESP(  SCK_BRESP ),
+			//
+			.M_AXI_ARVALID( SCK_ARVALID ),
+			.M_AXI_ARREADY( SCK_ARREADY ),
+			.M_AXI_ARADDR(  SCK_ARADDR ),
+			.M_AXI_ARPROT(  SCK_ARPROT ),
+			//
+			.M_AXI_RVALID( SCK_RVALID ),
+			.M_AXI_RREADY( SCK_RREADY ),
+			.M_AXI_RDATA(  SCK_RDATA ),
+			.M_AXI_RRESP(  SCK_RRESP )
+			// }}}
+		);
+
+		streamchk #(
+			.SW(SW)
+		) u_streamchk (
+			// {{{
+			.S_AXI_ACLK(clk), .S_AXI_ARESETN(!reset),
+			// AXI-Lite interface
+			// {{{
+			.S_AXI_AWVALID(SCK_AWVALID),
+			.S_AXI_AWREADY(SCK_AWREADY),
+			.S_AXI_AWADDR(SCK_AWADDR[2:0]),
+			.S_AXI_AWPROT(SCK_AWPROT),
+			//
+			.S_AXI_WVALID(SCK_WVALID),
+			.S_AXI_WREADY(SCK_WREADY),
+			.S_AXI_WDATA( SCK_WDATA),
+			.S_AXI_WSTRB( SCK_WSTRB),
+			//
+			.S_AXI_BVALID(SCK_BVALID),
+			.S_AXI_BREADY(SCK_BREADY),
+			.S_AXI_BRESP( SCK_BRESP),
+			//
+			.S_AXI_ARVALID(SCK_ARVALID),
+			.S_AXI_ARREADY(SCK_ARREADY),
+			.S_AXI_ARADDR( SCK_ARADDR[2:0]),
+			.S_AXI_ARPROT( SCK_ARPROT),
+			//
+			.S_AXI_RVALID(SCK_RVALID),
+			.S_AXI_RREADY(SCK_RREADY),
+			.S_AXI_RDATA( SCK_RDATA),
+			.S_AXI_RRESP( SCK_RRESP),
+			// }}}
+			.S_VALID(dev2s_valid), .S_READY(dev2s_ready),
+				.S_DATA(dev2s_data), .S_LAST(dev2s_last),
+
+			.M_VALID(s2dev_valid), .M_READY(s2dev_ready),
+				.M_DATA(s2dev_data), .M_LAST(s2dev_last),
+
+			.o_dev(stream_dev),
+			.o_err(stream_error_flag)
+			// }}}
+		);
+
+		// }}}
+	end else begin : NO_STREAM_CHECKER
 		// {{{
-		.S_AXI_AWVALID(SCK_AWVALID),
-		.S_AXI_AWREADY(SCK_AWREADY),
-		.S_AXI_AWADDR(SCK_AWADDR[2:0]),
-		.S_AXI_AWPROT(SCK_AWPROT),
-		//
-		.S_AXI_WVALID(SCK_WVALID),
-		.S_AXI_WREADY(SCK_WREADY),
-		.S_AXI_WDATA( SCK_WDATA),
-		.S_AXI_WSTRB( SCK_WSTRB),
-		//
-		.S_AXI_BVALID(SCK_BVALID),
-		.S_AXI_BREADY(SCK_BREADY),
-		.S_AXI_BRESP( SCK_BRESP),
-		//
-		.S_AXI_ARVALID(SCK_ARVALID),
-		.S_AXI_ARREADY(SCK_ARREADY),
-		.S_AXI_ARADDR( SCK_ARADDR[2:0]),
-		.S_AXI_ARPROT( SCK_ARPROT),
-		//
-		.S_AXI_RVALID(SCK_RVALID),
-		.S_AXI_RREADY(SCK_RREADY),
-		.S_AXI_RDATA( SCK_RDATA),
-		.S_AXI_RRESP( SCK_RRESP),
-		// }}}
-		.S_VALID(dev2s_valid), .S_READY(dev2s_ready),
-			.S_DATA(dev2s_data), .S_LAST(dev2s_last),
 
-		.M_VALID(s2dev_valid), .M_READY(s2dev_ready),
-			.M_DATA(s2dev_data), .M_LAST(s2dev_last),
+		axiempty #(
+			.C_AXI_ID_WIDTH(AXI_IW),
+			.C_AXI_ADDR_WIDTH(AW),
+			.C_AXI_DATA_WIDTH(DW)
+		) u_no_periphs (
+			// {{{
+			.S_AXI_ACLK(clk), .S_AXI_ARESETN(!reset),
+			//
+			.S_AXI_AWVALID(SCK_AXI_AWVALID),
+			.S_AXI_AWREADY(SCK_AXI_AWREADY),
+			.S_AXI_AWID(   SCK_AXI_AWID),
+			//
+			.S_AXI_WVALID(SCK_AXI_WVALID),
+			.S_AXI_WREADY(SCK_AXI_WREADY),
+			.S_AXI_WLAST( SCK_AXI_WLAST),
+			//
+			.S_AXI_BVALID(SCK_AXI_BVALID),
+			.S_AXI_BREADY(SCK_AXI_BREADY),
+			.S_AXI_BID(   SCK_AXI_BID),
+			.S_AXI_BRESP( SCK_AXI_BRESP),
+			//
+			.S_AXI_ARVALID(SCK_AXI_ARVALID),
+			.S_AXI_ARREADY(SCK_AXI_ARREADY),
+			.S_AXI_ARID(   SCK_AXI_ARID),
+			.S_AXI_ARLEN(  SCK_AXI_ARLEN),
+			//
+			.S_AXI_RVALID(SCK_AXI_RVALID),
+			.S_AXI_RREADY(SCK_AXI_RREADY),
+			.S_AXI_RID(   SCK_AXI_RID),
+			.S_AXI_RDATA( SCK_AXI_RDATA),
+			.S_AXI_RLAST( SCK_AXI_RLAST),
+			.S_AXI_RRESP( SCK_AXI_RRESP)
+			// }}}
+		);
 
-		.o_dev(stream_dev),
-		.o_err(stream_error_flag)
+		assign	stream_dev = 1'b0;
+		assign	stream_error_flag = (sdios_valid || emmcs_valid) && !reset;
+		assign	dev2s_ready = 1'b1;
+		assign	s2dev_valid = 1'b0;
+		assign	s2dev_data  = {(SW){1'b0}};
+		assign	s2dev_last  = 1'b0;
 		// }}}
-	);
+	end endgenerate
+
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -2111,7 +2213,7 @@ module	tb_axi;
 
 	// Actual AXI-Lite Peripheral set
 	axilgpio #(
-		.NIN(1), .NOUT(2), .DEFAULT_OUTPUT((OPT_CPU) ? 2'b0: 2'b01)
+		.NIN(2), .NOUT(2), .DEFAULT_OUTPUT((OPT_CPU) ? 2'b0: 2'b01)
 	) u_gpio (
 		.S_AXI_ACLK(clk), .S_AXI_ARESETN(!reset),
 		// AXI-Lite interface
@@ -2140,8 +2242,8 @@ module	tb_axi;
 		.S_AXI_RDATA( GPIO_RDATA),
 		.S_AXI_RRESP( GPIO_RRESP),
 		// }}}
+		.i_gpio({ stream_error_flag, OPT_VCD && gpio_vcd_flag }),
 		.o_gpio({ gpio_error_flag, gpio_vcd_flag }),
-		.i_gpio(OPT_VCD && gpio_vcd_flag),
 		.o_int(gpio_interrupt)
 	);
 
@@ -2150,6 +2252,9 @@ module	tb_axi;
 	//
 	// VCD generation
 	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
 
 	initial if (OPT_VCD && VCD_FILE != 0)
 	begin
@@ -2163,6 +2268,9 @@ module	tb_axi;
 	//
 	// Test script
 	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
 	reg	error_flag = 1'b0;
 
 	generate if (OPT_CPU)
@@ -2396,7 +2504,10 @@ module	tb_axi;
 	end endgenerate
 
 	always @(gpio_error_flag)
-		error_flag = (error_flag !== 1'b0)||(gpio_error_flag === 1'b1);
+		error_flag = (error_flag !== 1'b0)||(!reset && gpio_error_flag === 1'b1);
+
+	always @(stream_error_flag)
+		error_flag = (error_flag !== 1'b0)||(!reset && stream_error_flag === 1'b1);
 
 	always @(posedge error_flag)
 	if (!reset)

@@ -128,7 +128,7 @@ module	sdio #(
 		// DMA interface
 		// {{{
 `ifdef	SDIO_AXI
-		// DMA AXI-Lite interface
+		// DMA AXI interface
 		// {{{
 		output	wire			M_AXI_AWVALID,
 		input	wire			M_AXI_AWREADY,

@@ -128,7 +128,7 @@ module	sddma #(
 		output	wire			M_AXI_WVALID,
 		input	wire			M_AXI_WREADY,
 		output	wire	[DW-1:0]	M_AXI_WDATA,
-		output	wire	[3:0]		M_AXI_WSTRB,
+		output	wire	[DW/8-1:0]	M_AXI_WSTRB,
 		output	wire			M_AXI_WLAST,
 		//
 		input	wire			M_AXI_BVALID,
@@ -268,11 +268,11 @@ module	sddma #(
 
 	// s_last, s_count, s_active
 	// {{{
-	wire	s_last;
+	wire	s_last, s_active;
 
 	generate if (OPT_ISTREAM)
 	begin : GEN_ISTREAM
-		reg			s_lost, r_last, s_active;
+		reg			s_lost, r_last, r_active;
 		reg	[LGFIFO:0]	s_count;
 
 		always @(posedge i_clk)
@@ -281,7 +281,7 @@ module	sddma #(
 			r_last <= 0;
 			s_lost <= 0;
 			s_count <= 0;
-			s_active <= 0;
+			r_active <= 0;
 		end else if (s_active)
 		begin
 			s_lost <= s_lost || i_soft_reset || i_dma_abort;
@@ -290,23 +290,29 @@ module	sddma #(
 			begin
 				s_lost <= (s_lost || i_soft_reset || i_dma_abort) && !s_last;
 				s_count  <= s_count - 1;
-				s_active <= !s_last;
+				r_active <= !s_last;
 				r_last   <= (s_count <= 1);
 			end
 		end else if (i_dma_s2sd)
 		begin
 			r_last   <= (i_dma_len <= SW/8);
 			s_count  <= (i_dma_len >> $clog2(SW/8))-1;
-			s_active <= i_dma_addr[ADDR_MSB];
+`ifdef	SDIO_AXI
+			r_active <= 1'b1;
+`else
+			r_active <= i_dma_addr[ADDR_MSB];
+`endif
 		end
 
 		assign	s_ready = s_active && (rxgears_ready
 					|| i_dma_abort || s_lost);
 		assign	s_last = r_last;
+		assign	s_active = r_active;
 	end else begin : NO_ISTREAM
 
-		assign	s_ready = 1'b0;
-		assign	s_last = 1'b0;
+		assign	s_active = 1'b0;
+		assign	s_ready  = 1'b0;
+		assign	s_last   = 1'b0;
 	end endgenerate
 	// }}}
 
@@ -314,14 +320,17 @@ module	sddma #(
 	// {{{
 	always @(*)
 	begin
-		if (!s2sd_busy)
+		if (sd2s_busy)
 		begin
 			wide_rx_valid = i_sd2s_valid;
 			wide_rx_bytes = 4;
 			wide_rx_last  = i_sd2s_last;
 `ifdef	SDIO_AXI
 		end else begin
-			wide_rx_valid = s_valid;
+			// We only skip what follows here because we don't
+			// have any built-in AXI MM2S ... yet
+			//
+			wide_rx_valid = s_valid && s_active;
 			// Verilator lint_off WIDTH
 			wide_rx_bytes = SW/8;
 			// Verilator lint_on  WIDTH
@@ -329,7 +338,7 @@ module	sddma #(
 `else
 		end else if (!mm2s_busy && OPT_ISTREAM)
 		begin
-			wide_rx_valid = s_valid;
+			wide_rx_valid = s_valid && s_active;
 			// Verilator lint_off WIDTH
 			wide_rx_bytes = SW/8;
 			// Verilator lint_on  WIDTH
@@ -344,7 +353,7 @@ module	sddma #(
 		wide_rx_data = 0;
 		if (OPT_LITTLE_ENDIAN)
 		begin
-			if (!s2sd_busy)
+			if (sd2s_busy)
 				wide_rx_data[31: 0]  = i_sd2s_data;
 `ifdef	SDIO_AXI	// AXI is always, only, ever, OPT_LITTLE_ENDIAN=1
 			else
@@ -356,7 +365,7 @@ module	sddma #(
 				wide_rx_data[DW-1:0] = mm2s_data;
 `endif
 		end else begin
-			if (!s2sd_busy)
+			if (sd2s_busy)
 				wide_rx_data[RXWIDTH-1:RXWIDTH-32]= i_sd2s_data;
 			else if (!mm2s_busy && OPT_ISTREAM)
 				wide_rx_data[RXWIDTH-1:RXWIDTH-SW]= s_data;

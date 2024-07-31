@@ -134,6 +134,7 @@ sub simline($) {
 		$toplevel = $wbtoplvl;
 		$filelist = "dev_files.txt";
 		$parm = $parm . " -P$toplevel.OPT_CPU=1";
+		$defs = $defs . " -DSDIO_AXI";
 		$defs = $defs . " -DSCRIPT=\\\"/dev/null\\\"";
 		$cpu_flag = 1;
 	} elsif ($tstcfg =~ /WB/i) {
@@ -151,6 +152,7 @@ sub simline($) {
 		$toplevel = $axtoplvl;
 		$filelist = "dev_files.txt";
 		$parm = $parm . " -P$toplevel.OPT_CPU=0 -P$toplevel.MEM_FILE=\\\"\\\"";
+		$defs = $defs . " -DSDIO_AXI";
 		$cpu_flag = 0;
 	} else {
 		return();

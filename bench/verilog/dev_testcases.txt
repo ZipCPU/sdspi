@@ -52,19 +52,21 @@
 ##		script would be a hex file specifying the software load for
 ##		the test.
 ## }}}
-sdioio		WB  sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=0
+sdioio		WB  sdiostart	OPT_SERDES=0 OPT_DDR=0
 sdioddr		WB  sdiostart	OPT_SERDES=0 OPT_DDR=1
-sdio8x		WB  sdiostart	OPT_SERDES=1 OPT_DDR=1 OPT_VCD=0
-sddmachk	WB  sddmachk	OPT_SERDES=1 OPT_DDR=1 OPT_VCD=1 OPT_DMA=1
-axsdioio	AXI sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=0 -DSDIO_AXI
-axsdioddr	AXI sdiostart	OPT_SERDES=0 OPT_DDR=1 OPT_VCD=0 -DSDIO_AXI
-axsdio8x	AXI sdiostart	OPT_SERDES=1 OPT_DDR=1 OPT_VCD=0 -DSDIO_AXI
-emmcio		WB  emmcstart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=0
-emmcddr		WB  emmcstart	OPT_SERDES=0 OPT_DDR=1 OPT_VCD=0
-emmc8x		WB  emmcstart	OPT_SERDES=1 OPT_DDR=1 OPT_VCD=0
-axemmcio	AXI emmcstart	OPT_SERDES=0 OPT_DDR=0 OPT_VCD=0 -DSDIO_AXI
-axemmcddr	AXI emmcstart	OPT_SERDES=0 OPT_DDR=1 OPT_VCD=0 -DSDIO_AXI
-axemmc8x	AXI emmcstart	OPT_SERDES=1 OPT_DDR=1 OPT_VCD=0 -DSDIO_AXI
+sdio8x		WB  sdiostart	OPT_SERDES=1 OPT_DDR=1
+sddmachk	WB  sddmachk	OPT_SERDES=1 OPT_DDR=1 OPT_DMA=1
+sdstream	WB  sdstream	OPT_SERDES=1 OPT_DDR=1 OPT_DMA=1 OPT_STREAM=1
+axsdioio	AXI sdiostart	OPT_SERDES=0 OPT_DDR=0
+axsdioddr	AXI sdiostart	OPT_SERDES=0 OPT_DDR=1
+axsdio8x	AXI sdiostart	OPT_SERDES=1 OPT_DDR=1
+axsdstream	AXI sdstream	OPT_SERDES=1 OPT_DDR=1 OPT_DMA=1 OPT_STREAM=1
+emmcio		WB  emmcstart	OPT_SERDES=0 OPT_DDR=0
+emmcddr		WB  emmcstart	OPT_SERDES=0 OPT_DDR=1
+emmc8x		WB  emmcstart	OPT_SERDES=1 OPT_DDR=1
+axemmcio	AXI emmcstart	OPT_SERDES=0 OPT_DDR=0
+axemmcddr	AXI emmcstart	OPT_SERDES=0 OPT_DDR=1
+axemmc8x	AXI emmcstart	OPT_SERDES=1 OPT_DDR=1
 #
 # The SDSPI tests aren't yet fully implemented in all Verilog yet
 #	They currently exist as part of an integrated C++/Verilog test bench,

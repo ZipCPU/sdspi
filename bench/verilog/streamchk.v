@@ -4,7 +4,21 @@
 // {{{
 // Project:	SD-Card controller
 //
-// Purpose:
+// Purpose:	Used for verifying the operation of a stream.  This IP has two
+//		registers.  The first sets the direction of the stream and
+//	a mux switch (since the SD card has two stream source/sinks: the SDIO
+//	and the EMMC).  The second register sets a SEED, which is then used
+//	to determine either outgoing data, or the "correct" data upon receive.
+//	What happens next depends on the direction.  If configured as a SINK,
+//	data arriving that don't match the SEED, or data arriving after the
+//	length has been exhausted will be declared an error.  Likewise, a
+//	VALID from the source will also be declared an error.  If configured
+//	as a SOURCE, the outgoing data will be drawn from the SEED and LAST
+//	will be set at the end of the transaction.
+//
+//	Ideally, the SEED will (eventually) be used to generate a pseudorandom
+//	sequence.  At present, the SEED is only used to set a counter that
+//	then increments on every read or write.
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
@@ -42,7 +56,7 @@ module	streamchk #(
 		// {{{
 `ifdef	SDIO_AXI
 		// {{{
-		input	wire		S_ACLK, S_ARESETN,
+		input	wire		S_AXI_ACLK, S_AXI_ARESETN,
 		//
 		input	wire		S_AXI_AWVALID,
 		output	wire		S_AXI_AWREADY,
@@ -124,11 +138,11 @@ module	streamchk #(
 	reg		bvalid, rvalid;
 	reg	[31:0]	rdata;
 
-	assign	clk = S_ACLK;
-	assign	reset = !S_ARESETN;
+	assign	clk = S_AXI_ACLK;
+	assign	reset = !S_AXI_ARESETN;
 
 	sdskid #(
-		.DW(1)
+		.DW(1), .OPT_OUTREG(1'b0)
 	) u_awskd (
 		.i_clk(clk), .i_reset(reset),
 		.i_valid(S_AXI_AWVALID), .o_ready(S_AXI_AWREADY),
@@ -255,7 +269,7 @@ module	streamchk #(
 
 	always @(*)
 	begin
-		new_len = bus_wdata;
+		new_len = { 2'b00, bus_wdata[29:0] };
 		new_len[$clog2(SW/8)-1:0] = 0;
 		old_len = { 2'b0, r_len } << $clog2(SW/8);
 
@@ -285,7 +299,9 @@ module	streamchk #(
 	end
 
 	always @(posedge clk)
-	if (bus_write && bus_waddr == 0 && bus_wstrb[3])
+	if (reset)
+		{ r_dir, r_dev } <= 2'b00;
+	else if (bus_write && bus_waddr == 0 && bus_wstrb[3])
 	begin
 		r_dir <= bus_wdata[31];
 		r_dev <= bus_wdata[30];
@@ -296,9 +312,10 @@ module	streamchk #(
 
 	// o_err
 	// {{{
+	initial	o_err = 1'b0;
 	always @(posedge clk)
 	if (reset)
-		o_err <= 1;
+		o_err <= 0;
 	else begin
 		if (bus_write && bus_waddr == 0 && bus_wstrb[0])
 			o_err <= 1'b0;
@@ -312,8 +329,8 @@ module	streamchk #(
 				o_err <= 1'b1;
 			if (r_len == 0)
 				o_err <= 1'b1;
-			if (S_LAST != (r_len == 1))
-				o_err <= 1'b1;
+			// if (S_LAST != (r_len == 1))
+			//	o_err <= 1'b1;
 		end
 
 		if (M_READY && r_dir != D_SOURCE)

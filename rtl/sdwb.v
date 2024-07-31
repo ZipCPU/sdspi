@@ -2254,8 +2254,8 @@ module	sdwb #(
 				&& (!r_tx || r_dma_loaded == 0)))
 			begin // Send STOP_TRANSMISSION
 				// {{{
-				if (!cmd_busy && (!r_tx
-					||(!i_dma_busy&& !o_tx_en
+				if (!cmd_busy && ((!r_tx && !i_dma_busy)
+					||(!o_tx_en
 						&& (r_dma_err || r_dma_loaded == 2'b0))))
 				begin
 					r_dma_write <= 1'b1;
@@ -2263,7 +2263,7 @@ module	sdwb #(
 					r_dma_stopped <= 1'b1;
 				end
 				// }}}
-			end else if (!i_dma_busy && !o_tx_en && !o_rx_en
+			end else if (!o_tx_en && !o_rx_en
 					&& !cmd_busy && !r_dma_err
 					&& !r_tx_request && !r_rx_request)
 			begin // Have the DMA read/write another block

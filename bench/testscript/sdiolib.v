@@ -44,6 +44,8 @@ localparam	[ADDRESS_WIDTH-1:0]
 				ADDR_SDPHY  = SDIO_ADDR +16,
 				ADDR_DMABUS = SDIO_ADDR +24,
 				ADDR_DMALEN = SDIO_ADDR +28;
+localparam [ADDRESS_WIDTH:0] ADDR_STREAM = { 1'b1, {(ADDRESS_WIDTH){1'b0}} };
+localparam [31:0] ADDR_STREAM_WORD = {{(32-ADDRESS_WIDTH-1){1'b0}}, ADDR_STREAM };
 
 localparam [31:0]	SDIO_RNONE    = 32'h000000,
 			SDIO_R1       = 32'h000100,
@@ -382,6 +384,36 @@ $display("Waiting for completion");
 end endtask
 // }}}
 
+task	sdcard_write_stream(input [31:0] nblocks, input[31:0] sector);
+	// {{{
+	reg	[31:0]	ctrl_reg, phy_reg, dummy_data;
+	integer		ik;
+begin
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	if (phy_reg[27:24] != 4'h9)
+	begin
+		phy_reg[27:24] = 4'h9;
+		u_bfm.writeio(ADDR_SDPHY, phy_reg);
+	end
+
+	u_bfm.writeio(SCK_ADDR+4, 32'h01);
+	u_bfm.writeio(SCK_ADDR, { 1'b1, 1'b0, nblocks[20:0], 9'h0 });
+
+	u_bfm.writeio(ADDR_SDDATA, sector);
+	u_bfm.writeio(ADDR_DMABUS, ADDR_STREAM_WORD);
+	u_bfm.writeio(ADDR_DMALEN, nblocks);
+$display("Commanding DMA stream transaction");
+	u_bfm.write_f(ADDR_SDCARD, SDIO_WRITEDMA);
+
+$display("Waiting for completion");
+	sdio_wait_while_busy;
+
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: H, Write DMA error"); error_flag = 1'b1; end
+end endtask
+// }}}
+
 task	sdcard_read_block(input[31:0] sector);	// CMD17
 	// {{{
 	reg	[31:0]	ctrl_reg, phy_reg;
@@ -429,6 +461,40 @@ begin
 
 	u_bfm.writeio(ADDR_SDDATA, sector);
 	u_bfm.writeio(ADDR_DMABUS, wbaddr);
+	u_bfm.writeio(ADDR_DMALEN, nblocks);
+	u_bfm.write_f(ADDR_SDCARD, SDIO_READDMA);
+
+	sdio_wait_while_busy;
+
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+
+	if (1'b0 !== ctrl_reg[15])
+	begin
+		$display("CMD FAILED CODE (%d) at %t", ctrl_reg[17:16], $time);
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: J, Read DMA ERR"); error_flag = 1'b1; end
+end endtask
+// }}}
+
+task	sdcard_read_stream(input [31:0] nblocks, input[31:0] sector);
+	// {{{
+	reg	[31:0]	ctrl_reg, phy_reg;
+	integer		ik;
+begin
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	if (phy_reg[27:24] != 4'h9)
+	begin
+		phy_reg[27:24] = 4'h9;
+		u_bfm.writeio(ADDR_SDPHY, phy_reg);
+	end
+
+	u_bfm.writeio(SCK_ADDR+4, 32'h01);
+	u_bfm.writeio(SCK_ADDR, { 1'b0, 1'b0, nblocks[20:0], 9'h0 });
+
+	u_bfm.writeio(ADDR_SDDATA, sector);
+	u_bfm.writeio(ADDR_DMABUS, ADDR_STREAM_WORD);
 	u_bfm.writeio(ADDR_DMALEN, nblocks);
 	u_bfm.write_f(ADDR_SDCARD, SDIO_READDMA);
 

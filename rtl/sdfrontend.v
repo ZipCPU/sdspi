@@ -427,7 +427,8 @@ module	sdfrontend #(
 		wire	[15:0]	w_dat;
 		wire	[1:0]	next_pedge, next_dedge;
 
-		reg	[6:0]	ck_sreg, pck_sreg, ck_psreg;
+		reg	[5:0]	ck_sreg;
+		reg	[6:0]	pck_sreg, ck_psreg;
 		reg	[1:0]	sample_ck, cmd_sample_ck, sample_pck;
 		reg		resp_started, last_ck, r_last_cmd_enabled,
 				r_cmd_strb, r_cmd_data, r_rx_strb;
@@ -539,7 +540,7 @@ module	sdfrontend #(
 		if (i_data_en || i_cfg_ds)
 			ck_sreg <= 0;
 		else
-			ck_sreg <= { ck_sreg[5:0], next_dedge };
+			ck_sreg <= { ck_sreg[3:0], next_dedge };
 
 		initial	sample_ck = 0;
 		always @(*)
@@ -547,18 +548,18 @@ module	sdfrontend #(
 			sample_ck = 0;
 		else
 			// Verilator lint_off WIDTH
-			sample_ck = { ck_sreg[6:0], next_dedge } >> i_sample_shift[4:2];
+			sample_ck = { ck_sreg[5:0], next_dedge } >> i_sample_shift[4:2];
 			// Verilator lint_on  WIDTH
 		// }}}
 
 		// sample_pck -- positive edge data sampl clock
 		// {{{
-		initial	ck_sreg = 0;
+		initial	ck_psreg = 0;
 		always @(posedge i_clk)
 		if (i_data_en || i_cfg_ds)
 			ck_psreg <= 0;
 		else
-			ck_psreg <= { ck_psreg[5:0], next_pedge };
+			ck_psreg <= { ck_psreg[4:0], next_pedge };
 
 		initial	sample_pck = 0;
 		always @(*)
@@ -576,7 +577,7 @@ module	sdfrontend #(
 		if (i_reset || i_cmd_en || r_last_cmd_enabled || i_cfg_dscmd)
 			pck_sreg <= 0;
 		else
-			pck_sreg <= { pck_sreg[5:0], next_pedge };
+			pck_sreg <= { pck_sreg[4:0], next_pedge };
 
 		always @(*)
 		if (i_cmd_en || r_last_cmd_enabled || i_cfg_dscmd)
@@ -640,7 +641,7 @@ module	sdfrontend #(
 			busy_delay <= busy_delay - 1;
 		end else if (wait_for_busy && (!OPT_CRCTOKEN || busy_count[2])
 				&& (cmd_sample_ck != 0)
-				&& ({ cmd_sample_ck[7], cmd_sample_ck[0] }
+				&& ({ cmd_sample_ck[1], cmd_sample_ck[0] }
 						& {w_dat[8],w_dat[0]})==2'b0)
 		begin
 			dat0_busy <= 1'b1;

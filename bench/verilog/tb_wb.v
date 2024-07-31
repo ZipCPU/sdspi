@@ -85,6 +85,7 @@ module	tb_wb
 
 	localparam [ADDRESS_WIDTH-1:0]
 			MEM_ADDR  = { 1'b1,   {(AW-1){1'b0}}, {(WBLSB){1'b0}} },
+			SCK_ADDR  = { 5'b00001,{(AW-5){1'b0}},{(WBLSB){1'b0}} },
 			CON_ADDR  = { 5'b00010,{(AW-5){1'b0}},{(WBLSB){1'b0}} },
 			GPIO_ADDR = { 5'b00011,{(AW-5){1'b0}},{(WBLSB){1'b0}} },
 			SDIO_ADDR = { 3'b001, {(AW-3){1'b0}}, {(WBLSB){1'b0}} },
@@ -92,6 +93,7 @@ module	tb_wb
 	//
 	localparam [ADDRESS_WIDTH-1:0]
 			MEM_MASK  = { 1'b1,  {(AW-1){1'b0}}, {(WBLSB){1'b0}} },
+			SCK_MASK  = { 5'b11111,{(AW-5){1'b0}},{(WBLSB){1'b0}} },
 			CON_MASK  = { 5'b11111,{(AW-5){1'b0}},{(WBLSB){1'b0}} },
 			GPIO_MASK = { 5'b11111,{(AW-5){1'b0}},{(WBLSB){1'b0}} },
 			SDIO_MASK = { 3'b111,{(AW-3){1'b0}}, {(WBLSB){1'b0}} },
@@ -144,6 +146,37 @@ module	tb_wb
 	wire	[DW-1:0]	con_data, con_idata;
 	wire	[DW/8-1:0]	con_sel;
 	// }}}
+
+	// Stream checker definitions
+	// {{{
+	localparam	SW = 32;
+
+	wire			sckw_cyc, sckw_stb, sckw_we,
+				sckw_stall, sckw_ack, sckw_err;
+	wire	[AW-1:0]	sckw_addr;
+	wire	[DW-1:0]	sckw_data, sckw_idata;
+	wire	[DW/8-1:0]	sckw_sel;
+
+	wire			sck_cyc, sck_stb, sck_we,
+				sck_stall, sck_ack, sck_err;
+	wire	[AW+$clog2(DW/32)-1:0]	sck_addr;
+	wire	[31:0]	sck_data, sck_idata;
+	wire	[3:0]	sck_sel;
+
+	wire		s2dev_valid, s2dev_ready, s2dev_last;
+	wire [SW-1:0]	s2dev_data;
+
+	wire		dev2s_valid, dev2s_ready, dev2s_last;
+	wire [SW-1:0]	dev2s_data;
+
+	wire			sdios_ready, sdios_valid, sdios_last;
+	wire	[SW-1:0]	sdios_data;
+
+	wire			emmcs_ready, emmcs_valid, emmcs_last;
+	wire	[SW-1:0]	emmcs_data;
+
+	wire		stream_dev, stream_error_flag;
+
 
 	// sdiow_*
 	// {{{
@@ -297,16 +330,18 @@ module	tb_wb
 
 	wbxbar #(
 		// {{{
-		.NM(4), .NS(5),
+		.NM(4), .NS(6),
 		.AW(AW), .DW(DW),
 		.SLAVE_ADDR({
 			MEM_ADDR[AW+WBLSB-1:WBLSB],
+			SCK_ADDR[AW+WBLSB-1:WBLSB],
 			CON_ADDR[AW+WBLSB-1:WBLSB],
 			GPIO_ADDR[AW+WBLSB-1:WBLSB],
 			EMMC_ADDR[AW+WBLSB-1:WBLSB],
 			SDIO_ADDR[AW+WBLSB-1:WBLSB]}),
 		.SLAVE_MASK({
 			MEM_MASK[AW+WBLSB-1:WBLSB],
+			SCK_MASK[AW+WBLSB-1:WBLSB],
 			CON_MASK[AW+WBLSB-1:WBLSB],
 			GPIO_MASK[AW+WBLSB-1:WBLSB],
 			EMMC_MASK[AW+WBLSB-1:WBLSB],
@@ -327,16 +362,16 @@ module	tb_wb
 		.o_mdata({  cpu_idata, emmc_dma_idata, sdio_dma_idata, bfmw_idata }),
 		.o_merr({   cpu_err,   emmc_dma_err,   sdio_dma_err,   bfmw_err   }),
 		//
-		.o_scyc({   mem_cyc,   con_cyc,   gpio_cyc,   emmcw_cyc,   sdiow_cyc   }),
-		.o_sstb({   mem_stb,   con_stb,   gpio_stb,   emmcw_stb,   sdiow_stb   }),
-		.o_swe({    mem_we,    con_we,    gpio_we,    emmcw_we,    sdiow_we    }),
-		.o_saddr({  mem_addr,  con_addr,  gpio_addr,  emmcw_addr,  sdiow_addr  }),
-		.o_sdata({  mem_data,  con_data,  gpio_data,  emmcw_data,  sdiow_data  }),
-		.o_ssel({   mem_sel,   con_sel,   gpio_sel,   emmcw_sel,   sdiow_sel   }),
-		.i_sstall({ mem_stall, con_cyc,   gpio_stall, emmcw_stall, sdiow_stall }),
-		.i_sack({   mem_ack,   con_ack,   gpio_ack,   emmcw_ack,   sdiow_ack   }),
-		.i_sdata({  mem_idata, con_idata, gpio_idata, emmcw_idata, sdiow_idata }),
-		.i_serr({   mem_err,   con_err,   gpio_err,   emmcw_err,   sdiow_err   })
+		.o_scyc({   mem_cyc,   sckw_cyc,   con_cyc,   gpio_cyc,   emmcw_cyc,   sdiow_cyc   }),
+		.o_sstb({   mem_stb,   sckw_stb,   con_stb,   gpio_stb,   emmcw_stb,   sdiow_stb   }),
+		.o_swe({    mem_we,    sckw_we,    con_we,    gpio_we,    emmcw_we,    sdiow_we    }),
+		.o_saddr({  mem_addr,  sckw_addr,  con_addr,  gpio_addr,  emmcw_addr,  sdiow_addr  }),
+		.o_sdata({  mem_data,  sckw_data,  con_data,  gpio_data,  emmcw_data,  sdiow_data  }),
+		.o_ssel({   mem_sel,   sckw_sel,   con_sel,   gpio_sel,   emmcw_sel,   sdiow_sel   }),
+		.i_sstall({ mem_stall, sckw_stall, con_stall,   gpio_stall, emmcw_stall, sdiow_stall }),
+		.i_sack({   mem_ack,   sckw_ack,   con_ack,   gpio_ack,   emmcw_ack,   sdiow_ack   }),
+		.i_sdata({  mem_idata, sckw_idata, con_idata, gpio_idata, emmcw_idata, sdiow_idata }),
+		.i_serr({   mem_err,   sckw_err,   con_err,   gpio_err,   emmcw_err,   sdiow_err   })
 		// }}}
 	);
 
@@ -377,17 +412,17 @@ module	tb_wb
 		// {{{
 		.i_clk(clk), .i_reset(reset),
 		//
-		.i_wcyc(sdiow_cyc), .i_wstb(sdiow_stb), .i_wwe(sdiow_we), 
-		.i_waddr(sdiow_addr), .i_wdata(sdiow_data), 
-			.i_wsel(sdiow_sel), 
+		.i_wcyc(sdiow_cyc), .i_wstb(sdiow_stb), .i_wwe(sdiow_we),
+		.i_waddr(sdiow_addr), .i_wdata(sdiow_data),
+			.i_wsel(sdiow_sel),
 		.o_wstall(sdiow_stall),
-		.o_wack(sdiow_ack), .o_wdata(sdiow_idata), 
-			.o_werr(sdiow_err), 
+		.o_wack(sdiow_ack), .o_wdata(sdiow_idata),
+			.o_werr(sdiow_err),
 		//
-		.o_scyc(sdio_cyc), .o_sstb(sdio_stb), .o_swe(sdio_we), 
-		.o_saddr(sdio_addr), .o_sdata(sdio_data), 
-			.o_ssel(sdio_sel), 
-		.i_sstall(sdio_stall), .i_sack(sdio_ack), .i_sdata(sdio_idata), 
+		.o_scyc(sdio_cyc), .o_sstb(sdio_stb), .o_swe(sdio_we),
+		.o_saddr(sdio_addr), .o_sdata(sdio_data),
+			.o_ssel(sdio_sel),
+		.i_sstall(sdio_stall), .i_sack(sdio_ack), .i_sdata(sdio_idata),
 			.i_serr(sdio_err)
 		// }}}
 	);
@@ -399,17 +434,17 @@ module	tb_wb
 		// {{{
 		.i_clk(clk), .i_reset(reset),
 		//
-		.i_wcyc(emmcw_cyc), .i_wstb(emmcw_stb), .i_wwe(emmcw_we), 
-		.i_waddr(emmcw_addr), .i_wdata(emmcw_data), 
-			.i_wsel(emmcw_sel), 
+		.i_wcyc(emmcw_cyc), .i_wstb(emmcw_stb), .i_wwe(emmcw_we),
+		.i_waddr(emmcw_addr), .i_wdata(emmcw_data),
+			.i_wsel(emmcw_sel),
 		.o_wstall(emmcw_stall),
-		.o_wack(emmcw_ack), .o_wdata(emmcw_idata), 
-			.o_werr(emmcw_err), 
+		.o_wack(emmcw_ack), .o_wdata(emmcw_idata),
+			.o_werr(emmcw_err),
 		//
-		.o_scyc(emmc_cyc), .o_sstb(emmc_stb), .o_swe(emmc_we), 
-		.o_saddr(emmc_addr), .o_sdata(emmc_data), 
-			.o_ssel(emmc_sel), 
-		.i_sstall(emmc_stall), .i_sack(emmc_ack), .i_sdata(emmc_idata), 
+		.o_scyc(emmc_cyc), .o_sstb(emmc_stb), .o_swe(emmc_we),
+		.o_saddr(emmc_addr), .o_sdata(emmc_data),
+			.o_ssel(emmc_sel),
+		.i_sstall(emmc_stall), .i_sack(emmc_ack), .i_sdata(emmc_idata),
 			.i_serr(emmc_err)
 		// }}}
 	);
@@ -417,7 +452,7 @@ module	tb_wb
 
 	sdio_top #(
 		// {{{
-		.LGFIFO(9), .NUMIO(4), .DW(DW),
+		.LGFIFO(9), .NUMIO(4), .DW(DW), .SW(SW),
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
 		.OPT_CARD_DETECT(0), .LGTIMEOUT(10),
@@ -444,7 +479,21 @@ module	tb_wb
 		.i_dma_ack(sdio_dma_ack), .i_dma_data(sdio_dma_idata),
 		.i_dma_err(sdio_dma_err),
 		// }}}
+		// DMA streaming interface
+		// {{{
+		.s_valid(s2dev_valid && !stream_dev),
+		.s_ready(sdios_ready),
+		.s_data(stream_dev ? {(SW){1'b0}} : s2dev_data),
+		// .s_last(s2dev_last && !stream_dev),
 		//
+		.m_valid(sdios_valid),
+		.m_ready(dev2s_ready && !stream_dev),
+		.m_data(sdios_data),
+		.m_last(sdios_last),
+		//
+		// }}}
+		// SDIO wire interface
+		// {{{
 `ifdef	VERILATOR
 		.o_ck(o_sd_ck), .i_ds(1'b0),
 		//
@@ -458,6 +507,7 @@ module	tb_wb
 `else
 		.o_ck(sd_ck), .i_ds(1'b0), .io_cmd(sd_cmd), .io_dat(sd_dat),
 `endif
+		// }}}
 		.i_card_detect(1'b1), .o_int(sdio_interrupt),
 		.o_hwreset_n(ign_sdio_reset_n), .o_1p8v(sdio_1p8v),
 		.o_debug(sdio_debug)
@@ -558,6 +608,70 @@ module	tb_wb
 `endif
 	////////////////////////////////////////////////////////////////////////
 	//
+	// Stream checking peripheral
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
+
+	assign	dev2s_valid = (stream_dev) ? emmcs_valid : sdios_valid;
+	assign	dev2s_data  = (stream_dev) ? emmcs_data  : sdios_data;
+	assign	dev2s_last  = (stream_dev) ? emmcs_last  : sdios_last;
+
+	assign	s2dev_ready = (stream_dev) ? emmcs_ready : sdios_ready;
+
+	// Downsize
+	// {{{
+	wbdown #(
+		.ADDRESS_WIDTH(ADDRESS_WIDTH),
+		.WIDE_DW(DW), .SMALL_DW(32)
+	) u_streamchk_downsz (
+		// {{{
+		.i_clk(clk), .i_reset(reset),
+		//
+		.i_wcyc(sckw_cyc), .i_wstb(sckw_stb), .i_wwe(sckw_we),
+		.i_waddr(sckw_addr), .i_wdata(sckw_data),
+			.i_wsel(sckw_sel),
+		.o_wstall(sckw_stall),
+		.o_wack(sckw_ack), .o_wdata(sckw_idata),
+			.o_werr(sckw_err),
+		//
+		.o_scyc(sck_cyc), .o_sstb(sck_stb), .o_swe(sck_we),
+		.o_saddr(sck_addr), .o_sdata(sck_data),
+			.o_ssel(sck_sel),
+		.i_sstall(sck_stall), .i_sack(sck_ack), .i_sdata(sck_idata),
+			.i_serr(sck_err)
+		// }}}
+	);
+	// }}}
+
+	streamchk #(
+		.SW(SW)
+	) u_streamchk (
+		// {{{
+		.i_clk(clk), .i_reset(reset),
+		//
+		.i_wb_cyc(sck_cyc), .i_wb_stb(sck_stb),
+			.i_wb_we(sck_we),
+		.i_wb_addr(sck_addr[0]), .i_wb_data(sck_data),
+			.i_wb_sel(sck_sel),
+		.o_wb_stall(sck_stall), .o_wb_ack(sck_ack),
+			.o_wb_data(sck_idata),
+		//
+		.S_VALID(dev2s_valid), .S_READY(dev2s_ready),
+			.S_DATA(dev2s_data), .S_LAST(dev2s_last),
+
+		.M_VALID(s2dev_valid), .M_READY(s2dev_ready),
+			.M_DATA(s2dev_data), .M_LAST(s2dev_last),
+
+		.o_dev(stream_dev),
+		.o_err(stream_error_flag)
+		// }}}
+	);
+
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
 	// Console peripheral
 	// {{{
 	////////////////////////////////////////////////////////////////////////
@@ -630,7 +744,7 @@ module	tb_wb
 	// really need to downsize.
 
 	wbgpio #(
-		.NOUT(2), .NIN(1), .DEFAULT((OPT_CPU) ? 2'b0 : 2'b1)
+		.NOUT(2), .NIN(2), .DEFAULT((OPT_CPU) ? 2'b0 : 2'b1)
 	) u_gpio (
 		// {{{
 		.i_clk(clk),
@@ -641,7 +755,7 @@ module	tb_wb
 			.i_wb_sel(gpio_sel[DW/8-1:DW/8-4]),
 		.o_wb_stall(gpio_stall), .o_wb_ack(gpio_ack),
 		.o_wb_data(gpio_idata[DW-1:DW-32]),
-		.i_gpio(OPT_VCD && gpio_vcd_flag),
+		.i_gpio({ stream_error_flag, OPT_VCD && gpio_vcd_flag }),
 		.o_gpio({ gpio_error_flag, gpio_vcd_flag }),
 		.o_int(gpio_interrupt)
 		// }}}
@@ -761,6 +875,9 @@ module	tb_wb
 
 	always @(gpio_error_flag)
 		error_flag = error_flag || gpio_error_flag;
+
+	always @(stream_error_flag)
+		error_flag = error_flag || stream_error_flag;
 
 	always @(posedge error_flag)
 	if (!reset)

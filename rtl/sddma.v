@@ -185,7 +185,6 @@ module	sddma #(
 	reg			wide_rx_valid, wide_rx_last;
 	reg	[RXWIDTH-1:0]		wide_rx_data;
 	reg	[$clog2(RXWIDTH/8):0]	wide_rx_bytes;
-	reg				rx_busy;
 
 	reg	s2sd_busy, sd2s_busy;
 
@@ -266,19 +265,6 @@ module	sddma #(
 		// }}}
 	);
 `endif
-
-	// rx_busy
-	// {{{
-	always @(posedge i_clk)
-	if (i_reset)
-	begin
-		rx_busy <= 0;
-	end else if (i_dma_sd2s)
-	begin
-		rx_busy <= 1'b1;
-	end else if (wide_rx_valid && rxgears_ready && wide_rx_last)
-		rx_busy <= 1'b0;
-	// }}}
 
 	// s_last, s_count, s_active
 	// {{{
@@ -400,8 +386,8 @@ module	sddma #(
 		// }}}
 	);
 
-	assign	o_sd2s_ready = rxgears_ready;	// && !mm2s_busy && s2sd_busy
-	assign	mm2s_ready   = rxgears_ready;	// &&  mm2s_busy && s2sd_busy
+	assign	o_sd2s_ready = rxgears_ready;	// && sd2s_busy
+	assign	mm2s_ready   = rxgears_ready;	// && s2sd_busy && mm2s_busy
 
 	sdfifo #(
 		// {{{
@@ -637,11 +623,11 @@ module	sddma #(
 				M_AXI_RVALID, M_AXI_RID, M_AXI_RDATA,
 				M_AXI_RRESP, M_AXI_RLAST,
 				s2mm_busy,
-			tx_bytes, i_dma_len, i_dma_abort, i_dma_addr,
+			tx_bytes, i_dma_len, i_dma_abort, i_dma_addr
 `else
-				wr_we, rd_we, ign_rd_data,
+				wr_we, rd_we, ign_rd_data
 `endif
-				rx_busy };
+				};
 	// verilator lint_on  UNUSED
 	// verilator coverage_on
 	// }}}

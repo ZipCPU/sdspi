@@ -61,18 +61,20 @@ module	tb_axi;
 			BFM_AW = AW;
 
 	parameter	MEM_ADDR  = { 1'b1, {(AW-1){1'b0}} },
-			AXILP_ADDR= { 5'b00001,{(AW-5){1'b0}} },
-			CON_ADDR  = { 5'b00010,{(AW-5){1'b0}} },
-			GPIO_ADDR = { 5'b00011,{(AW-5){1'b0}} },
-			SDIO_ADDR = { 3'b001,{(AW-3){1'b0}} },
-			EMMC_ADDR = { 3'b010,{(AW-3){1'b0}} };
+			AXILP_ADDR= { 4'b0001,{(AW-4){1'b0}} },
+			SCK_ADDR  = { 4'b0010,{(AW-4){1'b0}} },
+			CON_ADDR  = { 4'b0011,{(AW-4){1'b0}} },
+			GPIO_ADDR = { 4'b0100,{(AW-4){1'b0}} },
+			SDIO_ADDR = { 4'b0101,{(AW-4){1'b0}} },
+			EMMC_ADDR = { 4'b0110,{(AW-4){1'b0}} };
 	//
 	parameter	MEM_MASK = { 1'b1, {(AW-1){1'b0}} },
-			AXILP_MASK= { 5'b11111,{(AW-5){1'b0}} },
-			CON_MASK  = { 5'b11111,{(AW-5){1'b0}} },
-			GPIO_MASK = { 5'b11111,{(AW-5){1'b0}} },
-			SDIO_MASK = { 3'b111,{(AW-8){1'b1}}, {(5){1'b0}} },
-			EMMC_MASK = { 3'b111,{(AW-8){1'b1}}, {(5){1'b0}} };
+			AXILP_MASK= { 4'b1111,{(AW-4){1'b0}} },
+			SCK_MASK  = { 4'b1111,{(AW-4){1'b0}} },
+			CON_MASK  = { 4'b1111,{(AW-4){1'b0}} },
+			GPIO_MASK = { 4'b1111,{(AW-4){1'b0}} },
+			SDIO_MASK = { 4'b1111,{(AW-4-5){1'b1}}, {(5){1'b0}} },
+			EMMC_MASK = { 4'b1111,{(AW-4-5){1'b1}}, {(5){1'b0}} };
 
 	reg	[2:0]		ckcounter;
 	wire			clk, hsclk;
@@ -524,6 +526,71 @@ module	tb_axi;
 	wire	[DW-1:0]	CON_AXI_RDATA;
 	wire			CON_AXI_RLAST;
 	wire	[1:0]		CON_AXI_RRESP;
+	// }}}
+
+	// Stream checking definitions
+	// {{{
+	// SCK_AXI_*
+	// {{{
+	wire			SCK_AXI_AWVALID, SCK_AXI_AWREADY;
+	wire	[AXI_IW-1:0]	SCK_AXI_AWID;
+	wire	[AW-1:0]	SCK_AXI_AWADDR;
+	wire	[7:0]		SCK_AXI_AWLEN;
+	wire	[2:0]		SCK_AXI_AWSIZE;
+	wire	[1:0]		SCK_AXI_AWBURST;
+	wire			SCK_AXI_AWLOCK;
+	wire	[3:0]		SCK_AXI_AWCACHE;
+	wire	[2:0]		SCK_AXI_AWPROT;
+	wire	[3:0]		SCK_AXI_AWQOS;
+
+	wire			SCK_AXI_WVALID, SCK_AXI_WREADY;
+	wire	[DW-1:0]	SCK_AXI_WDATA;
+	wire	[DW/8-1:0]	SCK_AXI_WSTRB;
+	wire			SCK_AXI_WLAST;
+
+	wire			SCK_AXI_BVALID, SCK_AXI_BREADY;
+	wire	[AXI_IW-1:0]	SCK_AXI_BID;
+	wire	[1:0]		SCK_AXI_BRESP;
+
+	wire			SCK_AXI_ARVALID, SCK_AXI_ARREADY;
+	wire	[AXI_IW-1:0]	SCK_AXI_ARID;
+	wire	[AW-1:0]	SCK_AXI_ARADDR;
+	wire	[7:0]		SCK_AXI_ARLEN;
+	wire	[2:0]		SCK_AXI_ARSIZE;
+	wire	[1:0]		SCK_AXI_ARBURST;
+	wire			SCK_AXI_ARLOCK;
+	wire	[3:0]		SCK_AXI_ARCACHE;
+	wire	[2:0]		SCK_AXI_ARPROT;
+	wire	[3:0]		SCK_AXI_ARQOS;
+
+	wire			SCK_AXI_RVALID, SCK_AXI_RREADY;
+	wire	[AXI_IW-1:0]	SCK_AXI_RID;
+	wire	[DW-1:0]	SCK_AXI_RDATA;
+	wire			SCK_AXI_RLAST;
+	wire	[1:0]		SCK_AXI_RRESP;
+	// }}}
+
+	// SCK_*
+	// {{{
+	wire			SCK_AWVALID, SCK_AWREADY;
+	wire	[AW-1:0]	SCK_AWADDR;
+	wire	[2:0]		SCK_AWPROT;
+
+	wire			SCK_WVALID, SCK_WREADY;
+	wire	[32-1:0]	SCK_WDATA;
+	wire	[32/8-1:0]	SCK_WSTRB;
+
+	wire			SCK_BVALID, SCK_BREADY;
+	wire	[1:0]		SCK_BRESP;
+
+	wire			SCK_ARVALID, SCK_ARREADY;
+	wire	[AW-1:0]	SCK_ARADDR;
+	wire	[2:0]		SCK_ARPROT;
+
+	wire			SCK_RVALID, SCK_RREADY;
+	wire	[32-1:0]	SCK_RDATA;
+	wire	[1:0]		SCK_RRESP;
+	// }}}
 	// }}}
 
 	// GPIO_AXI_*
@@ -1624,6 +1691,145 @@ module	tb_axi;
 		// }}}
 	end endgenerate
 
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Stream checking peripheral
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
+
+	assign	dev2s_valid = (stream_dev) ? emmcs_valid : sdios_valid;
+	assign	dev2s_data  = (stream_dev) ? emmcs_data  : sdios_data;
+	assign	dev2s_last  = (stream_dev) ? emmcs_last  : sdios_last;
+
+	assign	s2dev_ready = (stream_dev) ? emmcs_ready : sdios_ready;
+
+	// Downsize, and convert to AXI-Lite
+	axi2axilsub #(
+		// {{{
+		.C_AXI_ID_WIDTH(AXI_IW),
+		.C_S_AXI_DATA_WIDTH(DW),
+		.C_M_AXI_DATA_WIDTH(32),
+		.C_AXI_ADDR_WIDTH(ADDRESS_WIDTH)
+		// }}}
+	) u_sck_downsz (
+		.S_AXI_ACLK(clk), .S_AXI_ARESETN(!reset),
+		// Slave
+		// {{{
+		.S_AXI_AWVALID( SCK_AXI_AWVALID ),
+		.S_AXI_AWREADY( SCK_AXI_AWREADY ),
+		.S_AXI_AWID(    SCK_AXI_AWID ),
+		.S_AXI_AWADDR(  SCK_AXI_AWADDR ),
+		.S_AXI_AWLEN(   SCK_AXI_AWLEN ),
+		.S_AXI_AWSIZE(  SCK_AXI_AWSIZE ),
+		.S_AXI_AWBURST( SCK_AXI_AWBURST ),
+		.S_AXI_AWLOCK(  SCK_AXI_AWLOCK ),
+		.S_AXI_AWCACHE( SCK_AXI_AWCACHE ),
+		.S_AXI_AWPROT(  SCK_AXI_AWPROT ),
+		.S_AXI_AWQOS(   SCK_AXI_AWQOS ),
+		//
+		.S_AXI_WVALID( SCK_AXI_WVALID ),
+		.S_AXI_WREADY( SCK_AXI_WREADY ),
+		.S_AXI_WDATA(  SCK_AXI_WDATA ),
+		.S_AXI_WSTRB(  SCK_AXI_WSTRB ),
+		.S_AXI_WLAST(  SCK_AXI_WLAST ),
+		//
+		.S_AXI_BVALID( SCK_AXI_BVALID ),
+		.S_AXI_BREADY( SCK_AXI_BREADY ),
+		.S_AXI_BID(    SCK_AXI_BID ),
+		.S_AXI_BRESP(  SCK_AXI_BRESP ),
+		//
+		.S_AXI_ARVALID( SCK_AXI_ARVALID ),
+		.S_AXI_ARREADY( SCK_AXI_ARREADY ),
+		.S_AXI_ARID(    SCK_AXI_ARID ),
+		.S_AXI_ARADDR(  SCK_AXI_ARADDR ),
+		.S_AXI_ARLEN(   SCK_AXI_ARLEN ),
+		.S_AXI_ARSIZE(  SCK_AXI_ARSIZE ),
+		.S_AXI_ARBURST( SCK_AXI_ARBURST ),
+		.S_AXI_ARLOCK(  SCK_AXI_ARLOCK ),
+		.S_AXI_ARCACHE( SCK_AXI_ARCACHE ),
+		.S_AXI_ARPROT(  SCK_AXI_ARPROT ),
+		.S_AXI_ARQOS(   SCK_AXI_ARQOS ),
+		//
+		.S_AXI_RVALID( SCK_AXI_RVALID ),
+		.S_AXI_RREADY( SCK_AXI_RREADY ),
+		.S_AXI_RID(    SCK_AXI_RID ),
+		.S_AXI_RDATA(  SCK_AXI_RDATA ),
+		.S_AXI_RRESP(  SCK_AXI_RRESP ),
+		.S_AXI_RLAST(  SCK_AXI_RLAST ),
+		// }}}
+		// Master
+		// {{{
+		.M_AXI_AWVALID( SCK_AWVALID ),
+		.M_AXI_AWREADY( SCK_AWREADY ),
+		.M_AXI_AWADDR(  SCK_AWADDR ),
+		.M_AXI_AWPROT(  SCK_AWPROT ),
+		//
+		.M_AXI_WVALID( SCK_WVALID ),
+		.M_AXI_WREADY( SCK_WREADY ),
+		.M_AXI_WDATA(  SCK_WDATA ),
+		.M_AXI_WSTRB(  SCK_WSTRB ),
+		//
+		.M_AXI_BVALID( SCK_BVALID ),
+		.M_AXI_BREADY( SCK_BREADY ),
+		.M_AXI_BRESP(  SCK_BRESP ),
+		//
+		.M_AXI_ARVALID( SCK_ARVALID ),
+		.M_AXI_ARREADY( SCK_ARREADY ),
+		.M_AXI_ARADDR(  SCK_ARADDR ),
+		.M_AXI_ARPROT(  SCK_ARPROT ),
+		//
+		.M_AXI_RVALID( SCK_RVALID ),
+		.M_AXI_RREADY( SCK_RREADY ),
+		.M_AXI_RDATA(  SCK_RDATA ),
+		.M_AXI_RRESP(  SCK_RRESP )
+		// }}}
+	);
+
+
+	streamchk #(
+		.SW(SW)
+	) u_streamchk (
+		// {{{
+		.S_AXI_ACLK(clk), .S_AXI_ARESETN(!reset),
+		// AXI-Lite interface
+		// {{{
+		.S_AXI_AWVALID(SCK_AWVALID),
+		.S_AXI_AWREADY(SCK_AWREADY),
+		.S_AXI_AWADDR(SCK_AWADDR[2:0]),
+		.S_AXI_AWPROT(SCK_AWPROT),
+		//
+		.S_AXI_WVALID(SCK_WVALID),
+		.S_AXI_WREADY(SCK_WREADY),
+		.S_AXI_WDATA( SCK_WDATA),
+		.S_AXI_WSTRB( SCK_WSTRB),
+		//
+		.S_AXI_BVALID(SCK_BVALID),
+		.S_AXI_BREADY(SCK_BREADY),
+		.S_AXI_BRESP( SCK_BRESP),
+		//
+		.S_AXI_ARVALID(SCK_ARVALID),
+		.S_AXI_ARREADY(SCK_ARREADY),
+		.S_AXI_ARADDR( SCK_ARADDR[2:0]),
+		.S_AXI_ARPROT( SCK_ARPROT),
+		//
+		.S_AXI_RVALID(SCK_RVALID),
+		.S_AXI_RREADY(SCK_RREADY),
+		.S_AXI_RDATA( SCK_RDATA),
+		.S_AXI_RRESP( SCK_RRESP),
+		// }}}
+		.S_VALID(dev2s_valid), .S_READY(dev2s_ready),
+			.S_DATA(dev2s_data), .S_LAST(dev2s_last),
+
+		.M_VALID(s2dev_valid), .M_READY(s2dev_ready),
+			.M_DATA(s2dev_data), .M_LAST(s2dev_last),
+
+		.o_dev(stream_dev),
+		.o_err(stream_error_flag)
+		// }}}
+	);
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//

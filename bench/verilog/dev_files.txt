@@ -3,6 +3,7 @@ tb_axi.v
 IOBUF.v
 wb_bfm.v
 axil_bfm.v
+streamchk.v
 mdl_sdio.v
 mdl_emmc.v
 mdl_sdcmd.v

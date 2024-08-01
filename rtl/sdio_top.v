@@ -332,10 +332,10 @@ module sdio_top #(
 	wire	[7:0]	sdclk;
 	wire		w_crcack, w_crcnak;
 		//
-	wire		cmd_en, pp_cmd, cmd_collision;
+	wire		cmd_en, cmd_collision, cmd_tristate;
 	wire	[1:0]	cmd_data;
 		//
-	wire		data_en, pp_data, rx_en;
+	wire		data_en, data_tristate, rx_en;
 	wire	[31:0]	tx_data;
 		//
 	wire	[1:0]	rply_strb, rply_data;
@@ -496,10 +496,11 @@ module sdio_top #(
 		.o_cfg_sample_shift(cfg_sample_shift),
 		.o_sdclk(sdclk),
 		//
-		.o_cmd_en(cmd_en), .o_pp_cmd(pp_cmd),
+		.o_cmd_en(cmd_en), .o_cmd_tristate(cmd_tristate),
 		.o_cmd_data(cmd_data),
 		//
-		.o_data_en(data_en), .o_rx_en(rx_en), .o_pp_data(pp_data),
+		.o_data_en(data_en), .o_data_tristate(data_tristate),
+			.o_rx_en(rx_en),
 		.o_tx_data(tx_data),
 		//
 		.i_cmd_strb(rply_strb), .i_cmd_data(rply_data),
@@ -529,9 +530,11 @@ module sdio_top #(
 		// MSB "first" incoming data.
 		.i_sdclk(sdclk),
 		//
-		.i_cmd_en(cmd_en), .i_pp_cmd(pp_cmd), .i_cmd_data(cmd_data),				.o_data_busy(card_busy),
+		.i_cmd_en(cmd_en), .i_cmd_tristate(cmd_tristate),
+			.i_cmd_data(cmd_data), .o_data_busy(card_busy),
 		//
-		.i_data_en(data_en), .i_pp_data(pp_data), .i_tx_data(tx_data),
+		.i_data_en(data_en), .i_data_tristate(data_tristate),
+			.i_tx_data(tx_data),
 		// }}}
 		// Synchronous Rx path
 		// {{{

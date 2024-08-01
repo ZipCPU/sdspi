@@ -79,7 +79,7 @@ module	xsdserdes8x #(
 		r_last <= { r_last[0], i_data };
 
 	always @(posedge i_clk)
-		r_mine <= r_last;
+		r_mine <= r_last[8:1];
 
 	assign	o_mine = r_mine;
 

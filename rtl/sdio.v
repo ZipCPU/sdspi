@@ -214,10 +214,10 @@ module	sdio #(
 		output	wire	[4:0]	o_cfg_sample_shift,
 		output	reg	[7:0]	o_sdclk,
 		//
-		output	wire		o_cmd_en, o_pp_cmd,
+		output	wire		o_cmd_en, o_cmd_tristate,
 		output	wire	[1:0]	o_cmd_data,
 		//
-		output	wire		o_data_en, o_pp_data, o_rx_en,
+		output	wire		o_data_en, o_data_tristate, o_rx_en,
 		output	wire	[31:0]	o_tx_data,
 		//
 		input	wire	[1:0]	i_cmd_strb, i_cmd_data,
@@ -239,7 +239,8 @@ module	sdio #(
 	// {{{
 	wire			soft_reset;
 
-	wire			cfg_clk90, cfg_clk_shutdown, cfg_expect_ack;
+	wire			cfg_clk90, cfg_clk_shutdown, cfg_expect_ack,
+				cfg_cmd_pp, cfg_data_pp;
 	wire	[7:0]		cfg_ckspeed;
 	wire	[1:0]		cfg_width;
 
@@ -335,7 +336,7 @@ module	sdio #(
 		.o_cfg_shutdown(cfg_clk_shutdown),
 		.o_cfg_width(cfg_width), .o_cfg_ds(o_cfg_ds),
 			.o_cfg_dscmd(o_cfg_dscmd), .o_cfg_ddr(o_cfg_ddr),
-		.o_pp_cmd(o_pp_cmd), .o_pp_data(o_pp_data),
+		.o_pp_cmd(cfg_cmd_pp), .o_pp_data(cfg_data_pp), // Push-pull
 		.o_cfg_sample_shift(o_cfg_sample_shift),
 		.o_cfg_expect_ack(cfg_expect_ack),
 		.i_ckspd(clk_ckspd),
@@ -435,7 +436,7 @@ module	sdio #(
 		.o_cfg_shutdown(cfg_clk_shutdown),
 		.o_cfg_width(cfg_width), .o_cfg_ds(o_cfg_ds),
 			.o_cfg_dscmd(o_cfg_dscmd), .o_cfg_ddr(o_cfg_ddr),
-		.o_pp_cmd(o_pp_cmd), .o_pp_data(o_pp_data),
+		.o_pp_cmd(cfg_cmd_pp), .o_pp_data(cfg_data_pp), // Push-pull
 		.o_cfg_sample_shift(o_cfg_sample_shift),
 		.o_cfg_expect_ack(cfg_expect_ack),
 		.i_ckspd(clk_ckspd),
@@ -528,6 +529,7 @@ module	sdio #(
 		.i_clk(i_clk), .i_reset(i_reset || soft_reset),
 		//
 		.i_cfg_ds(o_cfg_dscmd), .i_cfg_dbl(cfg_ckspeed == 0),
+		.i_cfg_pp(cfg_cmd_pp),
 		.i_ckstb(clk_stb),
 		//
 		.i_cmd_request(cmd_request), .i_cmd_type(cmd_type),
@@ -538,6 +540,7 @@ module	sdio #(
 			.o_ercode(cmd_ercode),
 		//
 		.o_cmd_en(o_cmd_en), .o_cmd_data(o_cmd_data),
+			.o_cmd_tristate(o_cmd_tristate),
 		.i_cmd_strb(i_cmd_strb), .i_cmd_data(i_cmd_data),
 			.i_cmd_collision(i_cmd_collision),
 		.S_ASYNC_VALID(S_AC_VALID), .S_ASYNC_DATA(S_AC_DATA),
@@ -561,6 +564,7 @@ module	sdio #(
 		.i_cfg_spd(cfg_ckspeed),
 		.i_cfg_width(cfg_width),
 		.i_cfg_ddr(o_cfg_ddr),
+		.i_cfg_pp(cfg_data_pp),
 		.i_cfg_expect_ack(cfg_expect_ack),
 		//
 		.i_en(tx_en), .i_ckstb(clk_stb), .i_hlfck(clk_half),
@@ -569,6 +573,7 @@ module	sdio #(
 		.S_DATA(tx_mem_data), .S_LAST(tx_mem_last),
 		//
 		.tx_valid(o_data_en), .tx_data(o_tx_data),
+			.tx_tristate(o_data_tristate),
 		.i_crcack(i_crcack), .i_crcnak(i_crcnak),
 		.o_done(tx_done), .o_err(tx_err), .o_ercode(tx_ercode)
 		// }}}

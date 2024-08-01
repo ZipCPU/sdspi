@@ -56,6 +56,7 @@ module	sdcmd #(
 		// Configuration bits
 		input	wire			i_cfg_ds,	// Use ASYNC
 		input	wire			i_cfg_dbl,	// 2Bits/Clk
+		input	wire			i_cfg_pp,	// Push/Pull
 		input	wire			i_ckstb,
 		// Controller interface
 		// {{{
@@ -75,6 +76,7 @@ module	sdcmd #(
 		output	wire			o_cmd_en,
 		// output	wire		o_pp_cmd,	// From CFG reg
 		output	wire	[1:0]		o_cmd_data,
+		output	wire			o_cmd_tristate,
 		// }}}
 		// Receive from the front end
 		// {{{
@@ -116,10 +118,10 @@ module	sdcmd #(
 
 	reg		active;
 	reg	[5:0]	srcount;
-	reg	[47:0]	tx_sreg;
+	reg	[47:0]	tx_sreg, tx_tristate;
 
 	reg		waiting_on_response, cfg_ds, cfg_dbl, r_frame_err,
-			response_active;
+			response_active, cfg_pp;
 	wire		self_request;
 	wire		lcl_accept;
 	reg	[1:0]	cmd_type;
@@ -196,8 +198,30 @@ module	sdcmd #(
 			tx_sreg <= { tx_sreg[46:0], 1'b1 };
 	end
 
+	always @(posedge i_clk)
+	if (i_reset)
+		tx_tristate <= 48'hffff_ffff_ffff;
+	else if (OPT_EMMC && active && i_cmd_collision)
+	begin
+		tx_tristate <= 48'hffff_ffff_ffff;
+	end else if (lcl_accept)
+	begin
+		if (cfg_pp || i_cfg_dbl)
+			tx_tristate <= 48'h0;
+		else
+			tx_tristate <= { 1'b0, i_cmd, i_arg,
+				CMDCRC({ 1'b0, i_cmd, i_arg }), 1'b1 };
+	end else if (i_ckstb)
+	begin
+		if (cfg_dbl)
+			tx_tristate <= { tx_tristate[45:0], 2'b11 };
+		else
+			tx_sreg <= { tx_tristate[46:0], 1'b1 };
+	end
+
 	assign	o_cmd_en = active;
 	assign	o_cmd_data = (cfg_dbl) ? tx_sreg[47:46] : {(2){tx_sreg[47]}};
+	assign	o_cmd_tristate = tx_tristate[47];
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -220,13 +244,13 @@ module	sdcmd #(
 		waiting_on_response <= 1'b0;
 	// }}}
 
-	// cfg_ds, cfg_dbl, cmd_type
+	// cfg_ds, cfg_dbl, cmd_type, cfg_pp
 	// {{{
 	always @(posedge i_clk)
 	if (i_reset)
-		{ cfg_ds, cfg_dbl, cmd_type } <= 4'b0;
+		{ cfg_pp, cfg_ds, cfg_dbl, cmd_type } <= 5'b0;
 	else if (lcl_accept)
-		{ cfg_ds, cfg_dbl, cmd_type } <= { (i_cfg_ds && OPT_DS), i_cfg_dbl, i_cmd_type };
+		{ cfg_pp, cfg_ds, cfg_dbl, cmd_type } <= { i_cfg_pp, (i_cfg_ds && OPT_DS), i_cfg_dbl, i_cmd_type };
 	// }}}
 
 	// new_data

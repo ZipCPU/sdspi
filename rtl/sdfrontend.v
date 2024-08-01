@@ -72,13 +72,11 @@ module	sdfrontend #(
 		// MSB "first" incoming data.
 		input	wire	[7:0]	i_sdclk,
 		// Verilator lint_off SYNCASYNCNET
-		input	wire		i_cmd_en,
+		input	wire		i_cmd_en, i_cmd_tristate,
 		// Verilator lint_on  SYNCASYNCNET
-		input	wire		i_pp_cmd,	// Push/pull cmd lines
 		input	wire	[1:0]	i_cmd_data,
 		//
-		input	wire		i_data_en, i_rx_en,
-		input	wire		i_pp_data,	// Push/pull data lines
+		input	wire		i_data_en, i_rx_en, i_data_tristate,
 		input	wire	[31:0]	i_tx_data,
 		// }}}
 		output	wire		o_data_busy,
@@ -160,24 +158,13 @@ module	sdfrontend #(
 
 		assign	o_ck = i_sdclk[7];
 
-		assign	io_cmd_tristate = (OPT_COLLISION && o_cmd_collision)
-				|| !(i_cmd_en && (i_pp_cmd || !i_cmd_data[1]));
+		assign	io_cmd_tristate = i_cmd_tristate || o_cmd_collision;
 		assign	o_cmd = i_cmd_data[1];
 		assign	raw_cmd = i_cmd;
 
-		// assign	io_cmd = (io_cmd_tristate) ? i_cmd : o_cmd;
-
-
 		assign	o_dat = i_tx_data[24 +: NUMIO];
 
-		for(gk=0; gk<NUMIO; gk=gk+1)
-		begin : FOREACH_IO
-			assign	io_dat_tristate[gk] = !(i_data_en
-					&& (i_pp_data || !i_tx_data[24+gk]));
-		end
-
-		// assign	io_dat = (o_dat & ~io_dat_tristate)
-		//		| (i_dat & io_dat_tristate);
+		assign	io_dat_tristate = {(NUMIO){i_data_tristate}};
 
 		assign	next_pedge = !last_ck && o_ck;
 		assign	next_dedge = next_pedge || (i_cfg_ddr
@@ -185,7 +172,6 @@ module	sdfrontend #(
 
 		assign	w_cmd_collision = OPT_COLLISION && io_cmd_tristate
 				&& i_cmd_en && !i_cmd && next_pedge;
-					// && !i_pp_cmd;
 
 		if (OPT_COLLISION)
 		begin : GEN_COLLISION
@@ -200,6 +186,11 @@ module	sdfrontend #(
 			assign	o_cmd_collision = r_collision;
 		end else begin : NO_COLLISION
 			assign	o_cmd_collision = 1'b0;
+
+			// Verilator lint_off UNUSED
+			wire	unused_collision;
+			assign	unused_collision = &{ 1'b0, w_cmd_collision };
+			// Verilator lint_on  UNUSED
 		end
 
 		initial	last_ck = 1'b0;
@@ -310,7 +301,7 @@ module	sdfrontend #(
 		always @(posedge i_clk)
 		if (!OPT_CRCTOKEN)
 		begin
-			busy_count = 3'h4;
+			busy_count <= 3'h4;
 		end else if (i_reset || i_cmd_en || i_data_en || i_dat[0])
 		begin
 			busy_count <= 0;
@@ -461,14 +452,12 @@ module	sdfrontend #(
 		// CMD
 		// {{{
 		always @(posedge i_clk)
-			r_last_cmd_enabled <= i_cmd_en && i_pp_cmd;
+			r_last_cmd_enabled <= i_cmd_en;
 
 		xsdddr #(.OPT_BIDIR(1'b1))
 		u_cmd_ddr(
 			.i_clk(i_clk),
-			.i_en(i_reset || r_last_cmd_enabled
-				|| (!o_cmd_collision && i_cmd_en
-					&& (i_pp_cmd || !i_cmd_data[1]))),
+			.i_en(!i_cmd_tristate && !o_cmd_collision),
 			.i_data({(2){ i_reset || i_cmd_data[1] }}),
 			.io_pin_tristate(io_cmd_tristate),
 			.o_pin(o_cmd),
@@ -479,7 +468,7 @@ module	sdfrontend #(
 
 		assign	raw_cmd = i_cmd;
 
-		assign	w_cmd_collision = OPT_COLLISION && i_cmd_en && !i_pp_cmd
+		assign	w_cmd_collision = OPT_COLLISION && i_cmd_en
 				&& |(my_cmd_data & ~w_cmd);
 
 		if (OPT_COLLISION)
@@ -487,7 +476,7 @@ module	sdfrontend #(
 			reg	r_collision;
 
 			always @(posedge i_clk)
-			if (i_reset || !i_cmd_en || i_pp_cmd)
+			if (i_reset || !i_cmd_en)
 				r_collision <= 1'b0;
 			else if (w_cmd_collision)
 				r_collision <= 1'b1;
@@ -495,6 +484,11 @@ module	sdfrontend #(
 			assign	o_cmd_collision = r_collision;
 		end else begin : NO_COLLISION
 			assign	o_cmd_collision = 1'b0;
+
+			// Verilator lint_off UNUSED
+			wire	unused_collision;
+			assign	unused_collision = &{ 1'b0, w_cmd_collision };
+			// Verilator lint_on  UNUSED
 		end
 		// }}}
 
@@ -502,14 +496,11 @@ module	sdfrontend #(
 		// {{{
 		for(gk=0; gk<NUMIO; gk=gk+1)
 		begin : DRIVE_DDR_IO
-			wire	enable;
 
-			assign	enable = i_reset || (i_data_en && (i_pp_data
-						|| !i_tx_data[24+gk]));
 			xsdddr #(.OPT_BIDIR(1'b1))
 			u_dat_ddr(
 				.i_clk(i_clk),
-				.i_en(enable),
+				.i_en(!i_data_tristate),
 				.i_data({(2){ i_reset || i_tx_data[24+gk] }}),
 				.io_pin_tristate(io_dat_tristate[gk]),
 				.o_pin(o_dat[gk]),
@@ -614,7 +605,7 @@ module	sdfrontend #(
 		always @(posedge i_clk)
 		if (!OPT_CRCTOKEN)
 		begin
-			busy_count = 3'h4;
+			busy_count <= 3'h4;
 		end else if (i_reset || i_cmd_en || i_data_en)
 		begin
 			busy_count <= 0;
@@ -742,27 +733,29 @@ module	sdfrontend #(
 
 		// Local declarations
 		// {{{
-		reg		r_last_cmd_enabled, r_last_enabled;
+		reg		r_last_cmd_enabled;
 		reg	[1:0]	w_cmd_data;
 		reg	[15:0]	r_rx_data;
 		wire	[15:0]	w_rx_data;
 		reg		last_ck;
 		wire	[7:0]	next_ck_sreg, next_ck_psreg;
-		reg	[23:0]	ck_sreg, ck_psreg;
-		wire	[7:0]	next_pedge, next_nedge, wide_cmd_data,
-				my_cmd_data;
+		reg	[24:0]	ck_sreg, ck_psreg;
+		wire	[7:0]	next_pedge, next_nedge, wide_cmd_data;
 		reg	[7:0]	sample_ck, sample_pck;
 		reg	[1:0]	r_cmd_data;
-		reg		busy_strb, busy_data;
+		reg		busy_strb;
 		reg	[1:0]	r_rx_strb;
 		reg	[1:0]	start_io;
 		reg	[1:0]	io_started;
 		reg		resp_started;
 		reg	[1:0]	r_cmd_strb;
-		reg	[23:0]	pck_sreg;
+		reg	[24:0]	pck_sreg;
 		reg	[7:0]	cmd_sample_ck;
 		wire		busy_pin;
 		reg	[1:0]	busy_delay;
+		// Verilator lint_off UNUSED
+		wire	[7:0]	my_cmd_data;
+		// Verilator lint_on  UNUSED
 		// }}}
 
 		// Clock
@@ -838,13 +831,9 @@ module	sdfrontend #(
 			// Verilator lint_on  WIDTH
 		// }}}
 
-		always @(posedge i_clk)
-			r_last_enabled <= i_data_en && i_pp_data;
-
 		for(gk=0; gk<NUMIO; gk=gk+1)
 		begin : GEN_WIDE_DATIO
 			// {{{
-			wire		out_en;
 			reg	[7:0]	out_pin;
 			wire	[7:0]	in_pin;
 			integer		ik;
@@ -854,15 +843,12 @@ module	sdfrontend #(
 			for(ik=0; ik<4; ik=ik+1)
 				out_pin[ik*2 +: 2] = {(2){i_tx_data[ik*8+gk]}};
 
-			assign	out_en=(i_data_en &&(i_pp_data || !out_pin[3]))
-					|| r_last_enabled;
-
 			xsdserdes8x #(
 				.OPT_BIDIR(1'b1)
 			) io_serdes(
 				.i_clk(i_clk),
 				.i_hsclk(i_hsclk),
-				.i_en(out_en),
+				.i_en(!i_data_tristate),
 				.i_data(out_pin),
 				.io_tristate(io_dat_tristate[gk]),
 				.o_pin(o_dat[gk]),
@@ -970,26 +956,16 @@ module	sdfrontend #(
 		assign	o_rx_data = r_rx_data;
 		// }}}
 
-		// busy_strb, busy_data
-		// {{{
+		// busy_strb
 		always @(*)
-		begin
 			busy_strb = (|sample_pck);
-			if (|sample_pck[3:0] && !w_rx_data[0])
-				busy_data = 1'b0;
-			else if (|sample_pck[7:4] && !w_rx_data[8])
-				busy_data = 1'b0;
-			else
-				busy_data = 1'b1;
-		end
-		// }}}
 
 		// o_data_busy, dat0_busy, wait_for_busy, busy_delay
 		// {{{
 		always @(posedge i_clk)
 		if (!OPT_CRCTOKEN)
 		begin
-			busy_count = 3'h4;
+			busy_count <= 3'h4;
 		end else if (i_reset || i_cmd_en || i_data_en)
 		begin
 			busy_count <= 0;
@@ -1037,6 +1013,9 @@ module	sdfrontend #(
 		// CMD
 		// {{{
 		always @(posedge i_clk)
+			r_last_cmd_enabled <= i_cmd_en;
+
+		always @(posedge i_clk)
 		if (i_reset || i_cfg_dscmd || i_cmd_en)
 			pck_sreg <= 0;
 		else
@@ -1050,18 +1029,12 @@ module	sdfrontend #(
 			cmd_sample_ck <= { pck_sreg[24:0], next_pedge } >> i_sample_shift;
 			// Verilator lint_on  WIDTH
 
-		always @(posedge i_clk)
-			r_last_cmd_enabled <= i_cmd_en && i_pp_cmd;
-
 		xsdserdes8x #(
 			.OPT_BIDIR(1'b1)
 		) cmd_serdes(
 			.i_clk(i_clk),
 			.i_hsclk(i_hsclk),
-			.i_en(r_last_cmd_enabled
-				||(!w_cmd_collision && !o_cmd_collision
-					&& i_cmd_en
-					&& (i_pp_cmd || !i_cmd_data[1]))),
+			.i_en(!i_cmd_tristate && !o_cmd_collision),
 			.i_data({ {(4){i_cmd_data[1]}}, {(4){i_cmd_data[0]}} }),
 			.io_tristate(io_cmd_tristate),
 			.o_pin(o_cmd),
@@ -1071,15 +1044,16 @@ module	sdfrontend #(
 		);
 
 		assign	w_cmd_collision = OPT_COLLISION && i_cmd_en
-					&& !i_pp_cmd && !i_cfg_dscmd
-					&& |(my_cmd_data & ~wide_cmd_data);
+					&& i_cmd_tristate && !i_cfg_dscmd
+					&& my_cmd_data[0] != wide_cmd_data[7]
+					&& (|next_pedge);
 
 		if (OPT_COLLISION)
 		begin : GEN_COLLISION
 			reg	r_collision;
 
 			always @(posedge i_clk)
-			if (i_reset || !i_cmd_en || i_pp_cmd || i_cfg_dscmd)
+			if (i_reset || !i_cmd_en || i_cfg_dscmd)
 				r_collision <= 1'b0;
 			else if (w_cmd_collision)
 				r_collision <= 1'b1;
@@ -1087,6 +1061,11 @@ module	sdfrontend #(
 			assign	o_cmd_collision = r_collision;
 		end else begin : NO_COLLISION
 			assign	o_cmd_collision = 1'b0;
+
+			// Verilator lint_off UNUSED
+			wire	unused_collision;
+			assign	unused_collision = &{ 1'b0, w_cmd_collision };
+			// Verilator lint_on  UNUSED
 		end
 
 		// resp_started
@@ -1383,7 +1362,7 @@ module	sdfrontend #(
 		// {{{
 		// Verilator lint_off UNUSED
 		wire	unused_ds;
-		assign	unused_ds = &{ 1'b0, raw_cmd, raw_iodat,
+		assign	unused_ds = &{ 1'b0, raw_cmd, raw_iodat, i_ds,
 				i_cfg_ds, i_cfg_dscmd
 				};
 		// Verilator lint_on  UNUSED

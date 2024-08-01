@@ -57,6 +57,7 @@ module	sdtxframe #(
 		input	wire	[7:0]		i_cfg_spd,
 		input	wire	[1:0]		i_cfg_width,
 		input	wire			i_cfg_ddr,
+		input	wire			i_cfg_pp,
 		input	wire			i_cfg_expect_ack,
 		//
 		input	wire			i_en, i_ckstb, i_hlfck,
@@ -69,6 +70,7 @@ module	sdtxframe #(
 		output	wire			tx_valid,
 		// input wire			tx_ready,
 		output	wire	[31:0]		tx_data,
+		output	wire			tx_tristate,
 		//
 		input	wire			i_crcack,
 		input	wire			i_crcnak,
@@ -93,7 +95,7 @@ module	sdtxframe #(
 				P_2D = 2'b01,
 				P_4D = 2'b10;
 
-	reg		cfg_ddr;
+	reg		cfg_ddr, cfg_pp;
 	reg	[1:0]	cfg_width, cfg_period;
 
 
@@ -112,7 +114,7 @@ module	sdtxframe #(
 	reg	[NCRC* 8-1:0]	di_crc_8w, nxt_crc_8w, new_crc_8w, crc_8w_reg;
 	reg	[NCRC*16-1:0]	di_crc_8d, nxt_crc_8d, new_crc_8d, crc_8d_reg;
 
-	reg		ck_valid;
+	reg		ck_valid, ck_tristate;
 	reg	[4:0]	ck_counts;
 	reg	[31:0]	ck_data, ck_sreg;
 
@@ -148,6 +150,12 @@ module	sdtxframe #(
 		cfg_width <= WIDTH_1W;
 	else if (pstate == P_IDLE)
 		cfg_width <= i_cfg_width;
+
+	always @(posedge i_clk)
+	if (i_reset)
+		cfg_pp <= 1'b0;
+	else if (pstate == P_IDLE)
+		cfg_pp <= i_cfg_pp;
 
 	always @(posedge i_clk)
 	if (i_reset)
@@ -705,6 +713,35 @@ module	sdtxframe #(
 		endcase
 	end
 
+	always @(posedge i_clk)
+	if (i_reset) // pstate == P_IDLE)
+	begin
+		ck_tristate <= 1'b1;
+	end else if (i_ckstb && pre_valid && ck_counts == 0) // && tx_ready
+	begin
+		if (cfg_pp || cfg_period != P_1D)
+			ck_tristate <= 1'b0;
+		else case(cfg_width) // One clock period of data
+		WIDTH_1W: ck_tristate <= pre_data[31];
+		WIDTH_4W: ck_tristate <= !(&pre_data[31:28]);
+		default:  ck_tristate <= !(&pre_data[31:24]);
+		endcase
+	end else if ((i_ckstb || (i_hlfck && cfg_ddr)) && ck_counts > 0)
+	begin
+		if (cfg_pp || cfg_period != P_1D)
+			ck_tristate <= 1'b0;
+		else case(cfg_width) // One clock period of data
+		WIDTH_1W: ck_tristate <= ck_sreg[31];
+		WIDTH_4W: ck_tristate <= !(&ck_sreg[31:28]);
+		default:  ck_tristate <= !(&ck_sreg[31:24]);
+		endcase
+	end else if (i_ckstb && ck_counts == 0)
+	begin
+		ck_tristate <= 1'b1;
+		if (start_packet)
+			ck_tristate <= 1'b0;
+	end
+
 	assign	pre_ready = (ck_counts == 0) && i_ckstb; // && tx_ready;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -714,6 +751,7 @@ module	sdtxframe #(
 	assign	tx_valid = ck_valid;
 	// assign ck_ready = (i_ckstb || (i_hlfck && cfg_ddr)); // && tx_ready;
 	assign	tx_data  = ck_data;
+	assign	tx_tristate = ck_tristate;
 	// }}}
 
 	////////////////////////////////////////////////////////////////////////
@@ -778,6 +816,11 @@ module	sdtxframe #(
 		assign	{ o_err, o_ercode } = { r_err, r_ercode };
 	end else begin : NO_CRCTOKEN
 		assign	{ o_err, o_ercode } = 2'b00;
+
+		// Verilator lint_off UNUSED
+		wire	unused_token;
+		assign	unused_token = &{ 1'b0, i_crcack, i_crcnak, i_cfg_expect_ack };
+		// Verilator lint_on  UNUSED
 	end endgenerate
 	// }}}
 

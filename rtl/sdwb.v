@@ -2254,7 +2254,7 @@ module	sdwb #(
 				&& (!r_tx || r_dma_loaded == 0)))
 			begin // Send STOP_TRANSMISSION
 				// {{{
-				if (!cmd_busy && ((!r_tx && !i_dma_busy)
+				if (!cmd_busy && (!r_tx
 					||(!o_tx_en
 						&& (r_dma_err || r_dma_loaded == 2'b0))))
 				begin

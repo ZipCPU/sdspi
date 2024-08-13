@@ -37,6 +37,7 @@
 // }}}
 #ifndef	EMMCDRV_H
 #define	EMMCDRV_H
+#include <stdint.h>
 
 typedef	struct EMMC_S {
 	volatile uint32_t	sd_cmd, sd_data, sd_fifa, sd_fifb, sd_phy;

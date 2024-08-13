@@ -37,6 +37,7 @@
 // }}}
 #ifndef	SDIODRV_H
 #define	SDIODRV_H
+#include <stdint.h>
 
 typedef	struct SDIO_S {
 	volatile uint32_t	sd_cmd, sd_data, sd_fifa, sd_fifb, sd_phy;

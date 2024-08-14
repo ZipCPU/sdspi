@@ -1475,9 +1475,9 @@ EMMCDRV *emmc_init(EMMC *dev) {
 
 	// Determine if the DMA is present, and mark it for use if so
 	// {{{
-	dv->dev->sd_dma_length = -1;
+	dv->d_dev->sd_dma_length = -1;
 	dv->d_DMA = 0;
-	if (dv->sd_dma_length != 0)
+	if (dv->d_dev->sd_dma_length != 0)
 		dv->d_DMA = 1;
 	// }}}
 

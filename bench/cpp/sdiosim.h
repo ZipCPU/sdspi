@@ -43,6 +43,8 @@
 
 class	SDIOSIM {
 	static	constexpr int	DBUFLN = 512+2+32;
+	bool	HCS;
+
 	FILE		*m_fp;
 	uint32_t	m_buf[512/sizeof(uint32_t)];
 	bool		m_readonly, m_reply_active, m_open_drain, m_ddr,

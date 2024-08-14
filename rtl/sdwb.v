@@ -700,7 +700,6 @@ module	sdwb #(
 			new_tx_request = 1'b0;
 	end
 
-
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset || !OPT_CRCTOKEN)
 		o_cfg_expect_ack <= 1'b0;

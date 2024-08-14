@@ -130,7 +130,7 @@ module	sddma_mm2s #(
 	reg			r_inc;
 	reg	[1:0]		r_size;
 	reg	[LGLENGTH:0]	r_transferlen;
-	reg	[ADDRESS_WIDTH-1:0]	r_addr;
+	reg	[WBLSB-1:0]	r_addr;
 	// }}}
 
 	assign	o_rd_we = 1'b0;
@@ -144,7 +144,7 @@ module	sddma_mm2s #(
 		r_inc  <= i_inc;
 		r_size <= i_size;
 		r_transferlen <= i_transferlen;
-		r_addr <= i_addr;
+		r_addr <= i_addr[WBLSB-1:0];
 	end
 	// }}}
 
@@ -859,8 +859,7 @@ module	sddma_mm2s #(
 	// Verilator coverage_off
 	// Verilator lint_off UNUSED
 	wire	unused;
-	assign	unused = &{ 1'b0, M_READY, last_request_addr[0],
-				r_addr[ADDRESS_WIDTH-1:WBLSB] };
+	assign	unused = &{ 1'b0, M_READY, last_request_addr[0] };
 	// Verilator lint_on  UNUSED
 	// Verilator coverage_on
 	// }}}

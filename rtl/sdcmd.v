@@ -180,7 +180,7 @@ module	sdcmd #(
 			srcount <= srcount - 1;
 		end
 	end
-	
+
 	always @(posedge i_clk)
 	if (i_reset)
 		tx_sreg <= 48'hffff_ffff_ffff;
@@ -216,7 +216,7 @@ module	sdcmd #(
 		if (cfg_dbl)
 			tx_tristate <= { tx_tristate[45:0], 2'b11 };
 		else
-			tx_sreg <= { tx_tristate[46:0], 1'b1 };
+			tx_tristate <= { tx_tristate[46:0], 1'b1 };
 	end
 
 	assign	o_cmd_en = active;
@@ -449,7 +449,7 @@ module	sdcmd #(
 		r_frame_err <= 1'b0;
 	else if (resp_count == 2 && rx_sreg[1:0] != 2'b00)
 		r_frame_err <= 1'b1;
-	
+
 	assign	frame_err = r_frame_err || (waiting_on_response
 			&&((cmd_type[1] && !rx_sreg[0] && resp_count == 48)
 			||((cmd_type==R_R2&& !rx_sreg[0] && resp_count == 136))));

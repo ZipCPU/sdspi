@@ -14,11 +14,11 @@
 //	At present, this DMA controller supports Wishbone alone.
 //
 // Submodules:
-//	sddma_mm2s:	
-//	sddma_rxgears:	
-//	sdfifo:	
-//	sddma_txgears:	
-//	sddma_s2mm:	
+//	sddma_mm2s:
+//	sddma_rxgears:
+//	sdfifo:
+//	sddma_txgears:
+//	sddma_s2mm:
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC

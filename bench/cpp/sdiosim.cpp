@@ -39,45 +39,13 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
-//
-// #include "sdiosim.h"
+#include <assert.h>
+#include "sdiosim.h"
 
-class	SDIOSIM {
-	FILE		*m_fp;
-	uint32_t	m_buf[512/sizeof(uint32_t)];
-	bool		m_readonly, m_reply_active, m_open_drain, m_ddr,
-			m_data_started, m_cmd_started;
-	uint32_t	m_last_dat, m_last_cmd, m_lastck, m_app_cmd,
-			m_selected, m_RCA, m_width, m_drive;
-	char		m_cmd_buf[8], m_cid[15], m_reply_buf[20],
-			m_dbuf[512+1+32];
-	uint32_t	m_cmd_pos, m_reply_posn, m_reply_count, m_R1,
-			m_reply_delay, m_sector, m_data_delay, m_data_posn;
-protected:
-	void		init(void);
-	unsigned	cmdbit(unsigned);
-	unsigned	datp(unsigned);
-	unsigned	datn(unsigned);
-	void		accept_command(void);
-	void		load_reply(int cmd, unsigned arg);
-	uint8_t		cmdcrc(int ln, char *buf);
-	uint16_t	blockcrc(uint16_t fill, int bit);
-	void		CID(void);
-public:
-	// SDIOSIM(const unsigned lglen);
-	SDIOSIM(const char *fname);
-	void	load(const unsigned addr, const char *fname);
-	void	load(const char *fname) { load(0, fname); }
-	void	apply(unsigned sdclk, unsigned ddr,
-			unsigned cmd_en, unsigned cmd_data,
-			unsigned data_en, unsigned rx_en, unsigned tx_data,
-			unsigned &o_sync, unsigned &async_sync,
-			unsigned &async_data);
-};
-
-
-SDIOSIM::SDIOSIM(const char *fname) {
+SDIOSIM::SDIOSIM(const char *fname) : m_debug(false) {
 	// {{{
+	HCS = true;
+
 	if (0 == access(fname, R_OK|W_OK)) {
 		m_fp = fopen(fname, "rw");
 		m_readonly = false;
@@ -117,6 +85,7 @@ void	SDIOSIM::init(void) {
 
 	CID();
 	CSD();
+	SCR();
 }
 // }}}
 
@@ -173,6 +142,30 @@ void	SDIOSIM::CSD(void) {
 }
 // }}}
 
+void	SDIOSIM::SCR(void) {
+	// {{{
+	for(unsigned k=0; k<8; k++)
+		m_scr[k] = rand();
+	m_scr[0] = 0x06;	// Bits 63:56
+	m_scr[1] = 0x85;	// Bits 55:48
+	m_scr[2] = 0x84;	// Bits 47:40
+	m_scr[3] = 0x80;	// Bits 39:32
+		// SD_SPEC3=1'b1	// Bit 47
+		// EX_SECURITY=4'h0	Bits 46:43
+		// SD_SPEC4=1'b1	Bit  42
+		///////
+		// SD_SPECX=4'h2	Bit  41:38
+		// 	2'bxx		Bits 37:36
+		// CMD_SUPPORT=4'h0	Bits 35:32
+
+	// Bytes 4-7 are reserved for manufacturer usage
+	// m_scr[4] = 0x00;	// Bits 31:24
+	// m_scr[5] = 0x00;	// Bits 23:16
+	// m_scr[6] = 0x00;	// Bits 15: 8
+	// m_scr[7] = 0x00;	// Bits  7: 0
+}
+// }}}
+
 uint8_t	SDIOSIM::cmdcrc(int ln, char *buf) {
 	// {{{
 		unsigned int	fill = 0;
@@ -221,6 +214,16 @@ void	SDIOSIM::load_reply(int cmd, unsigned arg) {
 	m_reply_buf[4] = (arg      )&0x0ff;
 	m_reply_buf[5] = cmdcrc(5, m_reply_buf);
 
+	if (m_debug) {
+		printf("SDIOSIM::REPLY%d%*s-- %02x:%02x%02x%02x%02x,%02x\n",
+			m_reply_buf[0] & 0x0ff,
+				((m_reply_buf[0]&0x0ff) > 9) ? 1:2, "",
+			m_reply_buf[0] & 0x0ff,
+			m_reply_buf[1] & 0x0ff, m_reply_buf[2] & 0x0ff,
+			m_reply_buf[3] & 0x0ff, m_reply_buf[4] & 0x0ff,
+			m_reply_buf[5] & 0x0ff);
+	}
+
 	m_reply_posn = 0;
 	m_reply_count = 48;
 }
@@ -232,6 +235,116 @@ void	SDIOSIM::appendcrc(unsigned len_bytes) {
 
 	//unsigned	SDIOSIM::blockcrc(unsigned fill, unsigned bit) {
 	if (m_ddr) {
+		if (m_width >= 8) {
+			// {{{
+			for(int k=0; k<32; k++)
+				m_dbuf[len_bytes+k] = 0;
+			m_dbuf[len_bytes+32] = 0xff;
+			for(unsigned w=0; w<16; w++) {
+				unsigned lsb = w & 7;
+				fill = 0;
+				for(unsigned k=(w>=8 ? 1:0);k<len_bytes; k+=2){
+					unsigned b;
+					b = (m_dbuf[k] >> lsb) & 1;
+					fill = blockcrc(fill, b);
+				}
+
+				unsigned msk = 1 << (7-lsb);
+				for(int k=0; k<16; k++)
+					m_dbuf[len_bytes + 2*k + (w>=8 ? 1:0)]
+						|= ((fill & (1<<(15-k))) ? msk:0);
+			}
+
+			for(unsigned k=len_bytes+34; k>0; k--)
+				m_dbuf[k] = m_dbuf[k-2];
+			m_dbuf[0] = 0;
+			m_dbuf[1] = 0;
+			for(unsigned k=len_bytes+14; k<DBUFLN; k++)
+				m_dbuf[k] = 0x0ff;
+			// }}}
+		} else if (m_width >= 4) {
+			// {{{
+			for(int k=0; k<16; k++)
+				m_dbuf[len_bytes+k] = 0;
+			m_dbuf[len_bytes+16] = 0xff;
+			for(unsigned w=0; w<8; w++) {
+				fill = 0;
+				for(unsigned k=0; k<len_bytes; k++) {
+					unsigned b;
+					b = (m_dbuf[k] >> w) & 1;
+					fill = blockcrc(fill, b);
+				}
+
+				unsigned msk = 1 << (7-w);
+				for(int k=0; k<16; k++)
+					m_dbuf[len_bytes + k] |= ((fill & (1<<(15-k))) ? msk:0);
+			}
+
+			for(unsigned k=len_bytes+17; k>0; k--)
+				m_dbuf[k] = m_dbuf[k-1];
+			m_dbuf[0] = 0;
+			for(unsigned k=len_bytes+17; k<DBUFLN; k++)
+				m_dbuf[k] = 0x0ff;
+			// }}}
+		} else { // if (m_width == 1)
+			// {{{
+			fill = 0;
+			for(unsigned k=0; k<len_bytes; k++) {
+				unsigned b, d;
+				d = m_dbuf[k] & 0x0ff;
+
+				for(unsigned w=0; w<8; w+=2) {
+					b = (d & 0x80) ? 1:0; d<<= 2;
+					fill = blockcrc(fill, b);
+				}
+			}
+
+			for(unsigned w=0; w<8; w++) {
+				unsigned b, p;
+
+				b  = fill >> (15-2*w);
+				b &= 1;
+				b <<= (7-2*(w&3));
+
+				p = len_bytes + ((w >= 4) ? 1:0);
+				m_dbuf[p] |= b;
+			}
+
+			fill = 0;
+			for(unsigned k=0; k<len_bytes; k++) {
+				unsigned b, d;
+				d = m_dbuf[k] & 0x0ff;
+
+				for(unsigned w=1; w<8; w+=2) {
+					b = (d & 0x40) ? 1:0; d<<= 2;
+					fill = blockcrc(fill, b);
+				}
+			}
+
+			for(unsigned w=0; w<8; w++) {
+				unsigned b, p;
+
+				b  = fill >> (14-2*w);
+				b &= 1;
+				b <<= (6-2*(w&3));
+
+				p = len_bytes + ((w >= 4) ? 1:0);
+				m_dbuf[p] |= b;
+			}
+
+			m_dbuf[len_bytes+2] = 0x0ff;
+
+			for(unsigned k=len_bytes+3; k> 0; k--) {
+				unsigned d;
+				d = m_dbuf[k] & 0x0ff;
+				d >>= 2;
+				d |= (m_dbuf[k-1] << 6);
+				m_dbuf[k] = d;
+			} m_dbuf[0] = (m_dbuf[0] & 0x0ff) >> 2u;
+			for(unsigned k=len_bytes+3; k<DBUFLN; k++)
+				m_dbuf[k] = 0x0ff;
+			// }}}
+		}
 	} else {
 		if (m_width >= 8) {
 			// {{{
@@ -290,6 +403,27 @@ void	SDIOSIM::appendcrc(unsigned len_bytes) {
 				}
 			}
 
+			if (m_debug) {
+				// {{{
+				for(unsigned w=0; w < 4; w++) {
+					fill = 0;
+					for(unsigned k=0; k<len_bytes+8; k++) {
+						unsigned b, d;
+
+						d = (m_dbuf[k] & 0x0ff) >> w;
+
+						b = (d & 0x10) ? 1:0;
+						fill = blockcrc(fill, b);
+
+						b = d & 1;
+						fill = blockcrc(fill, b);
+					}
+					// printf("SDIOSIM: Check CRC%d = %04x\n", w, fill); fflush(stdout);
+					assert(fill == 0);
+				}
+			}
+			// }}}
+
 			for(unsigned k=len_bytes+9; k> 0; k--) {
 				unsigned d;
 
@@ -318,6 +452,24 @@ void	SDIOSIM::appendcrc(unsigned len_bytes) {
 			m_dbuf[len_bytes+1] =  (fill & 0x0ff);
 			m_dbuf[len_bytes+2] = 0x0ff;
 
+			if (m_debug) {
+				// {{{
+				fill = 0;
+				for(unsigned k=0; k<len_bytes+2; k++) {
+					unsigned b, d;
+					d = m_dbuf[k] & 0x0ff;
+
+					for(unsigned w=0; w<8; w++) {
+						b = (d & 0x80) ? 1:0; d<<= 1;
+						fill = blockcrc(fill, b);
+					}
+				}
+
+				//printf("SDIOSIM: Check CRC = %08x\n", fill); fflush(stdout);
+				assert(fill == 0);
+			}
+			// }}}
+
 			for(unsigned k=len_bytes+3; k> 0; k--) {
 				unsigned d;
 				d = m_dbuf[k] & 0x0ff;
@@ -345,15 +497,20 @@ void	SDIOSIM::accept_command(void) {
 	arg |=  (m_cmd_buf[4] & 0x0ff);
 
 	if (m_debug) {
+		// {{{
 		printf("SDIOSIM::");
 		if (m_app_cmd)
 			printf("A");
-		printf("CMD%d - %02x:%02x%02x%02x%02x,%02x\n",
-			m_cmd_buf[0]&0x03f, m_cmd_buf[0]&0x0ff,
+		printf("CMD%d", m_cmd_buf[0] & 0x03f);
+		printf("%*s",2 + (m_app_cmd ? 0:1)
+				+ (((m_cmd_buf[0] & 0x03f) > 9) ? 0 : 1),"");
+		printf("-  %02x:%02x%02x%02x%02x,%02x\n",
+			m_cmd_buf[0]&0x0ff,
 			m_cmd_buf[1]&0x0ff, m_cmd_buf[2]&0x0ff,
 			m_cmd_buf[3]&0x0ff, m_cmd_buf[4]&0x0ff,
 			m_cmd_buf[5]&0x0ff);
 	}
+	// }}}
 
 	// Check the incoming CRC
 	// {{{
@@ -363,10 +520,12 @@ void	SDIOSIM::accept_command(void) {
 
 		valid_crc = rcvd_crc == expected_crc;
 		if (!valid_crc) {
-			printf("SDIOSIM:CRC mismatch, expecting %02x, received %02x\n", expected_crc, rcvd_crc);
+			printf("SDIOSIM::ERR, CRC mismatch, expecting %02x, received %02x\n", expected_crc, rcvd_crc);
 		}
 	}
 	// }}}
+
+	// printf("SDIOSIM: Switching on %02x\n", m_cmd_buf[0] & 0x03f);
 
 	switch(m_cmd_buf[0] & 0x03f) {
 	case 0: // Go idle
@@ -378,6 +537,7 @@ void	SDIOSIM::accept_command(void) {
 		m_drive = 0;
 		m_reply_active = 0;
 		m_ddr = false;
+		m_drive = false;
 		break; // Go idle
 		// }}}
 	case 6:
@@ -385,8 +545,9 @@ void	SDIOSIM::accept_command(void) {
 			// {{{
 			if (m_selected) {
 				m_width=((arg&0x03)==2) ? 4:1;
+				// printf("SDIOSIM: Setting width to %d bits\n", m_width);
 				load_reply(6, m_R1);
-			} else printf("SDIOSIM::ERR -- Not selected!!\n");
+			} else printf("SDIOSIM::ACMD6, ERR -- Not selected!!\n");
 			m_app_cmd = 0;
 			// }}}
 		} else { // CMD6 - SWITCH_FUNC
@@ -396,13 +557,38 @@ void	SDIOSIM::accept_command(void) {
 			// Ignore this command for now.
 			// printf("SDIOSIM::CMD-SWITCH\n");
 			load_reply(6, m_R1);
-		} break;
-		// }}}
-	case 55: // APP_CMD
-		// {{{
-		if (m_selected && (m_RCA == (arg >> 16))) {
-			m_app_cmd = 1;
-			load_reply(55, m_R1);
+
+			// arg
+
+			// Return the new/updated/(would be) updated SCR reg
+			m_drive = 1;
+			m_sector     = 0;
+			m_data_delay = rand() & 1023;
+			m_data_posn  = 0;
+
+			for(unsigned k=0; k<64; k++)
+				m_dbuf[k] = 0;
+
+			m_dbuf[0] = 0x0ff;	// Bits 504	(MAX Current)
+			m_dbuf[1] = 0x0ff;	// Bits 496
+			m_dbuf[2] = 0x00;	// Bits 495:488, Support Function grp 6
+			m_dbuf[3] = 0x01;	// Bits 487:480
+			m_dbuf[4] = 0x00;	// Bits 479:472, Support Fn gp 5
+			m_dbuf[5] = 0x01;	// Bits 471:464
+			m_dbuf[6] = 0x00;	// Bits 463:456, Support Fn gp 4
+			m_dbuf[7] = 0x1f;	// Bits 455:448
+			m_dbuf[8] = 0x00;	// Bits 447:440, Support Fn gp 3
+			m_dbuf[9] = 0x0f;	// Bits 439:432
+			m_dbuf[10]= 0x00;	// Bits 431:424, Support Fn gp 2
+			m_dbuf[11]= 0x01;	// Bits 423:416
+			m_dbuf[12]= 0x00;	// Bits 415:408, Support Fn gp 1
+			m_dbuf[13]= 0x1f;	// Bits 407:400
+			m_dbuf[14]= 0x000;	// Bits 399:392, FuncSel, grp6-5
+			m_dbuf[15]= 0x000;	// Bits 391:384, FuncSel, grp4-3
+			m_dbuf[16]= 0x000;	// Bits 383:376, FuncSel, grp2-1
+			m_dbuf[17]= 0x001;	// Bits 375:368,
+
+			appendcrc(64);
 		} break;
 		// }}}
 	case 2: // ALL SEND CID
@@ -444,17 +630,9 @@ void	SDIOSIM::accept_command(void) {
 		// }}}
 	case 8: // SEND_IF_COND
 		// {{{
+		assert(valid_crc);
+
 		m_app_cmd = 0;
-		/*
-		m_reply_active = 1;
-		m_reply_buf[0] = ((m_cmd_buf[0] & 0x0ff) << 24) & 0x03f;
-		m_reply_buf[1] = 0;
-		m_reply_buf[2] = 0;
-		m_reply_buf[3] = 0;
-		m_reply_buf[4] = 1;
-		m_reply_buf[5] = (arg & 0x0ff);
-		m_reply_buf[6] = cmdcrc(5, &m_reply_buf[1]);
-		*/
 
 		load_reply(8,0x0100 | (arg & 0x0ff));
 		break;
@@ -491,9 +669,8 @@ void	SDIOSIM::accept_command(void) {
 			m_reply_posn = 0;
 			m_reply_count = 8+128+8;
 			m_reply_delay = 0;
-		} else {
-			printf("SDIOSIM:Ignoring CMD#10, RCA=%04x, arg=%08x\n",
-				m_RCA, arg);
+		// } else {
+			// printf("SDIOSIM:Ignoring CMD#10, RCA=%04x, arg=%08x\n", m_RCA, arg);
 
 		} break;
 		// }}}
@@ -503,22 +680,27 @@ void	SDIOSIM::accept_command(void) {
 		m_app_cmd = 0;
 		break;
 		// }}}
-	// case 16: // SET_BLOCKLEN
+	// case 16: // SET_BLOCKLEN	-- We only support 512B blocks
 	case 17: // READ_SINGLE_BLOCK
 		// {{{
 		m_app_cmd = 0;
 		if (m_selected) {
 			__attribute__((unused)) size_t	sz;
 			m_drive = 1;
-			load_reply(19,m_R1);
+			load_reply(17,m_R1);
 
 			m_sector     = arg;
 			m_data_delay = rand() & 1023;
 			m_data_posn  = 0;
 			// m_data_count = 512;
 
-			(void)fseek(m_fp, (long)(m_sector * 512l), SEEK_SET);
+			if (!HCS)
+				(void)fseek(m_fp, (long)m_sector, SEEK_SET);
+			else
+				(void)fseek(m_fp, (long)(m_sector * 512l), SEEK_SET);
 			sz = fread(m_dbuf, sizeof(char), 512, m_fp);
+			for(unsigned k=512; k<DBUFLN; k++)
+				m_dbuf[k] = 0x0ff;
 			appendcrc(512);
 		} break;
 		// }}}
@@ -531,7 +713,7 @@ void	SDIOSIM::accept_command(void) {
 		m_app_cmd = 0;
 		if (m_selected) {
 			m_drive = 0;
-			load_reply(19,m_R1);
+			load_reply(24,m_R1);
 
 			m_sector     = arg;
 			m_data_delay = rand() & 1023;
@@ -544,9 +726,22 @@ void	SDIOSIM::accept_command(void) {
 	case 41: // ACMD41: SEND_OP_COND
 		if (m_app_cmd) { // ACMD41
 		// {{{
-			if (1 || m_selected) {
-				unsigned opcond = 0xc0ff8000;
-				load_reply(6, opcond);
+			if (m_selected) {
+				unsigned opcond = 0x00ff8000;
+
+				if (HCS)
+					opcond |= 0x40000000;
+				if (arg == 0)
+					opcond = 0x0ff8000;
+				else
+					opcond &= arg;
+
+				if (arg != 0 && (!HCS || (opcond & 0x40000000)))
+					// Release from busy immediatley
+					//   HCS cards never leave this state
+					//   if the busy bit isn't set
+					opcond |= 0x80000000;
+				load_reply(41, opcond);
 			} m_app_cmd = 0;
 		// } else {
 			// The spec does not define any CMD41
@@ -564,17 +759,29 @@ void	SDIOSIM::accept_command(void) {
 				m_data_delay = rand() & 1023;
 				m_data_posn  = 0;
 
-				(void)fseek(m_fp, 0l, SEEK_SET);
-				sz = fread(m_dbuf, sizeof(char), 512, m_fp);
+				for(unsigned k=0; k<8; k++)
+					m_dbuf[k] = m_scr[k];
 
-				// We only care about dbuf[1]
-				m_dbuf[1] = 0x04;
+				appendcrc(64/8);
 			} else printf("SDIOSIM::SEND-SCR Card not selected\n");
 			m_app_cmd = 0;
 		} break;
 		// }}}
+	case 55: // APP_CMD
+		// {{{
+		if (m_selected && (m_RCA == (arg >> 16))) {
+			m_app_cmd = 1;
+			load_reply(55, m_R1 | 0x20);
+		} break;
+		// }}}
 	default:
+		printf("SDIOSIM:Unknown command CMD#%d\n",m_cmd_buf[0] & 0x03f);
 		break;
+	}
+
+	if (55 != (m_cmd_buf[0] & 0x03f)) {
+		// printf("SDIOSIM::Reset APP-CMD\n");
+		m_app_cmd = 0;
 	}
 	m_reply_delay += 8;
 }
@@ -606,7 +813,10 @@ unsigned SDIOSIM::cmdbit(unsigned in) {
 		if (m_cmd_pos == 48) {
 			m_cmd_pos = 0;
 			if (cmdcrc(5, m_cmd_buf) != (0x0ff & m_cmd_buf[5])) {
-				printf("SDIOSIM::CMD CRC-FAILURE!\n");
+				printf("SDIOSIM::CMD CRC-FAILURE! ... %02x:%02x%02x%02x%02x,%02x\n",
+					m_cmd_buf[0]&0x0ff, m_cmd_buf[1]&0x0ff,
+					m_cmd_buf[2]&0x0ff, m_cmd_buf[3]&0x0ff,
+					m_cmd_buf[4]&0x0ff, m_cmd_buf[5]&0x0ff);
 			} else if ((m_cmd_buf[0] & 0x0c0) != 0x040) {
 				printf("SDIOSIM::CMD FRAME FAILURE: %02x\n",
 					m_cmd_buf[0]);
@@ -648,13 +858,14 @@ unsigned SDIOSIM::datp(unsigned in) {
 			m_data_posn ++;
 		}
 
-		if (m_data_posn >= (512*8+m_width*32))
+		if (m_data_posn >= 8*DBUFLN)
 			m_drive = false;
 
-		if (m_open_drain)
+		if (m_open_drain) {
 			return r & in;
-		else
+		} else {
 			return r;
+		}
 	} else if (!m_data_started) {
 		if (m_width >= 8) {
 			if (0 == in)
@@ -747,7 +958,6 @@ unsigned SDIOSIM::datn(unsigned in) {
 		unsigned	r = 0;
 
 		if (m_data_delay > 0) {
-			m_data_delay--;
 			return 0x0ff;
 		}
 
@@ -770,7 +980,7 @@ unsigned SDIOSIM::datn(unsigned in) {
 			m_data_posn ++;
 		}
 
-		if (!m_ddr && m_data_posn >= (512*8+m_width*16))
+		if (!m_ddr && m_data_posn >= 8*DBUFLN)
 			m_drive = false;
 
 		if (m_open_drain)
@@ -791,7 +1001,7 @@ unsigned SDIOSIM::datn(unsigned in) {
 
 		return in;
 		// }}}
-	} else if (m_data_posn < 512*8 + 16*16) { // Receive a block of data
+	} else if (m_data_posn < 512*8 + 2*m_width*16) { // Receive a block of data
 		// {{{
 		unsigned	idx = m_data_posn >> 3;
 		if (m_width >= 8) {
@@ -879,7 +1089,10 @@ unsigned SDIOSIM::datn(unsigned in) {
 			}
 
 			if (!crc_fail) {
-				(void)fseek(m_fp, (long)(m_sector * 512l), SEEK_SET);
+				if (!HCS)
+					(void)fseek(m_fp, (long)m_sector, SEEK_SET);
+				else
+					(void)fseek(m_fp, (long)(m_sector * 512l), SEEK_SET);
 				(void)fwrite(m_dbuf, sizeof(char), 512, m_fp);
 			}
 		}
@@ -901,7 +1114,10 @@ void	SDIOSIM::apply(unsigned sdclk, unsigned ddr,
 
 	m_ddr = ddr;
 	if (cmd_en)  { m_cmd_started = 0; m_reply_started = false; };
-	if (data_en || !rx_en) m_data_started = 0;
+	if (data_en || !rx_en) {
+		m_data_started = 0;
+		// if (m_drive) printf("M-DRIVE && !RX-EN!\n");
+	}
 
 	// Tick the clock
 	// {{{
@@ -929,7 +1145,6 @@ void	SDIOSIM::apply(unsigned sdclk, unsigned ddr,
 			rstb = (rstb << 1) | 1;
 			rdat = (rdat << 8) | (datp(idat) & 0x0ff);
 			rlsb = (rlsb << 1) | (rdat&1);
-
 		} else if (ddr && edge == 2) {
 			rstb = (rstb << 1) | 1;
 			rdat = (rdat << 8) | (datn(idat) & 0x0ff);
@@ -968,27 +1183,33 @@ void	SDIOSIM::apply(unsigned sdclk, unsigned ddr,
 	if (data_en || !rx_en) {
 		rstb = 0;
 		m_data_started = 0;
-	} else if ((!m_data_started) && (rstb != (rstb & rlsb))) {
-		unsigned	msk = (rstb & ~rlsb) & 0x0f;
+		m_drive = false;
+	} else if (!m_data_started) {
+		/*
+		if (m_drive && m_data_delay <= 1)
+			printf("RSTB & RLSB = %x & %x = %x, MSK = %x\n",
+				rstb, rlsb, (rstb & rlsb)&0x0f,
+				(rstb & ~rlsb)&0x0f);
+		*/
+		if (rstb != (rstb & rlsb)) {
+			unsigned	msk = (rstb & ~rlsb) & 0x0f;
 
-		if (msk&0x08) {
-			m_data_started = 1;
-			rstb &= 0x07;
-		} else if (msk &0x04 ) {
-			m_data_started = 1;
-			rstb <<= 1;
-			rdat <<= 8;
-			rstb &= 0x03;
-		} else if (msk &0x02 ) {
-			m_data_started = 1;
-			rstb <<= 2;
-			rdat <<= 16;
-			rstb &= 0x01;
-		} else if (msk & 0x01 ) {
-			m_data_started = 1;
-			rstb <<= 3;
-			rdat <<= 24;
-			rstb = 0;
+			if (msk&0x08) {
+				rstb &= 0x07;
+			} else if (msk &0x04 ) {
+				rstb <<= 1;
+				rdat <<= 8;
+				rstb &= 0x03;
+			} else if (msk &0x02 ) {
+				rstb <<= 2;
+				rdat <<= 16;
+				rstb &= 0x01;
+			} else if (msk & 0x01 ) {
+				rstb <<= 3;
+				rdat <<= 24;
+				rstb = 0;
+			} if (msk)
+				m_data_started = 1;
 		}
 	} if (rstb && !(rstb & 0x08)) {
 		while(!(rstb & 0x08)) {
@@ -1009,7 +1230,7 @@ void	SDIOSIM::apply(unsigned sdclk, unsigned ddr,
 	// }}}
 
 	// Synchronous return can only return two clocks of data
-	o_sync = (cstb << 30) | (cmd << 28) | (rstb << 24) | (rdat >> 16);
+	o_sync = (cstb << 30) | (cmd << 28) | ((rstb & 0x0c) << 22) | (rdat >> 16);
 
 	async_sync = (cstb & 2) | ((rstb == 0x0f) ? 1:0);
 	async_data = rdat;

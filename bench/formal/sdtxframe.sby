@@ -1,6 +1,8 @@
 [tasks]
 prf
+prfs prf serdes
 cvr
+cvrs cvr serdes
 
 [options]
 prf: mode prove
@@ -15,6 +17,7 @@ smtbmc
 read -formal sdtxframe.v
 --pycode-begin--
 cmd = "hierarchy -top sdtxframe"
+cmd += " -chparam OPT_SERDES %d" % (1 if "serdes" in tags else 0)
 output(cmd)
 --pycode-end--
 proc -norom

@@ -171,11 +171,16 @@ $(SDCK)_cvr/PASS: $(SDCK).sby $(RTL)/$(SDCK).v
 
 .PHONY: $(SDTX)
 ## {{{
-$(SDTX): $(SDTX)_prf/PASS $(SDTX)_cvr/PASS
+$(SDTX): $(SDTX)_prf/PASS  $(SDTX)_cvr/PASS
+$(SDTX): $(SDTX)_prfs/PASS $(SDTX)_cvrs/PASS
 $(SDTX)_prf/PASS: $(RTL)/$(SDTX).v $(SDTX).sby
 	sby -f $(SDTX).sby prf
+$(SDTX)_prfs/PASS: $(RTL)/$(SDTX).v $(SDTX).sby
+	sby -f $(SDTX).sby prfs
 $(SDTX)_cvr/PASS: $(RTL)/$(SDTX).v $(SDTX).sby
 	sby -f $(SDTX).sby cvr
+$(SDTX)_cvrs/PASS: $(RTL)/$(SDTX).v $(SDTX).sby
+	sby -f $(SDTX).sby cvrs
 ## }}}
 
 .PHONY: $(SDRX)

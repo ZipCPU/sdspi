@@ -522,6 +522,7 @@ module	sdio #(
 	sdcmd #(
 		.OPT_DS(OPT_DS),
 		.OPT_EMMC(OPT_EMMC),
+		.OPT_SERDES(OPT_SERDES),
 		.MW(MW),
 		.LGLEN(LGFIFO-$clog2(MW/8))
 	) u_sdcmd (
@@ -555,6 +556,7 @@ module	sdio #(
 
 	sdtxframe #(
 		.OPT_SERDES(OPT_SERDES || OPT_DDR),
+		.OPT_SERDES(OPT_SERDES),
 		.OPT_CRCTOKEN(OPT_CRCTOKEN)
 		// .MW(MW)
 	) u_txframe (

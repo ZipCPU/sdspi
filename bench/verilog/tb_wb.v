@@ -58,6 +58,7 @@ module	tb_wb
 		// }}}
 `ifdef	VERILATOR
 	) (
+		// {{{
 		input	wire	clk, hsclk, reset,
 
 		output	wire		o_sd_ck,
@@ -76,6 +77,7 @@ module	tb_wb
 		output	wire		o_emmc_dat_tristate,
 		output	wire	[3:0]	o_emmc_dat,
 		input	wire	[3:0]	i_emmc_dat
+		// }}}
 `endif
 	);
 
@@ -246,6 +248,7 @@ module	tb_wb
 	wire	[31:0]		sdio_debug, emmc_debug;
 	wire			sdio_1p8v, emmc_1p8v;
 	wire			ign_sdio_reset_n, emmc_reset_n;
+	// }}}
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//

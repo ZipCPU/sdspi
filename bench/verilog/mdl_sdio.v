@@ -454,7 +454,7 @@ module	mdl_sdio #(
 				multi_block <= 1'b0;
 				// write_en <= 1'b1;
 				reply_valid <= #7 1'b1;
-				reply <= 6'd19;
+				reply <= 6'd17;
 				reply_data <= { {(120-32){1'b0}}, R1};
 
 				if (host_supports_hcs)
@@ -473,7 +473,7 @@ module	mdl_sdio #(
 				multi_block <= 1'b1;
 				// write_en <= 1'b1;
 				reply_valid <= #7 1'b1;
-				reply <= 6'd19;
+				reply <= 6'd18;
 				reply_data <= { {(120-32){1'b0}}, R1};
 
 				if (host_supports_hcs)

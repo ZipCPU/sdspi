@@ -171,7 +171,10 @@ module sdio_top #(
 		// such happen.  Detecting collisions requires a solid
 		// knowledge internal to the front end about the delay through
 		// the system, to avoid false alarms.
-		parameter [0:0]	OPT_COLLISION=OPT_EMMC,
+		//
+		// NOTE: Collisions detection does not (currently) work with
+		//   OPT_SERDES.
+		parameter [0:0]	OPT_COLLISION=OPT_EMMC && !OPT_SERDES,
 		// }}}
 		// LGTIMEOUT
 		// {{{

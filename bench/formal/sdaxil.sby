@@ -9,7 +9,7 @@ cvr opt_serdes opt_dma
 prf: mode prove
 cvr: mode cover
 prf: depth 10
-cvr: depth 150
+cvr: depth 45	# Actually takes 43 steps, and about 4 hrs
 
 [engines]
 smtbmc

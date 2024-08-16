@@ -893,7 +893,7 @@ module	sdtxframe #(
 	// as formal proofs.  They are useful for verifying assumptions.
 	// {{{
 	// Verilator lint_off UNUSED
-	reg	f_pending_half, f_past_tx_valid, f_past_tick;
+	reg	f_pending_half, f_past_tx_valid, f_past_tick, f_ck_started;
 	reg	f_ckstb, f_hlfck;
 	(* keep *)	reg	[9+5:0]	fb_count, fd_offset, fd_count,
 					f_loaded_count;
@@ -974,6 +974,10 @@ module	sdtxframe #(
 		default: fb_count <= fb_count + 32;
 		endcase end
 	endcase
+
+	always @(*)
+	if (!i_reset && i_en && (tx_valid || fb_count > 0))
+		assert(f_ck_started);
 	// }}}
 
 	initial	fs_last = 0;
@@ -1076,6 +1080,23 @@ module	sdtxframe #(
 			assume(!i_ckstb && !i_hlfck);
 	end
 
+	always @(posedge i_clk)
+	if (i_reset || !i_en)
+		f_ck_started <= 0;
+	else if (i_ckstb)
+		f_ck_started <= 1;
+
+	always @(*)
+	if (f_ck_started)
+	begin
+		if (i_cfg_spd < 2)
+			assume(i_ckstb && i_hlfck);
+		else if (i_cfg_spd == 2)
+			assume(i_ckstb ^ i_hlfck);
+	end else if (i_en && i_cfg_spd == 0 && i_ckstb)
+		assume(i_hlfck);
+
+
 	generate if (OPT_SERDES)
 	begin : GEN_SERDES_CLK
 
@@ -1094,9 +1115,14 @@ module	sdtxframe #(
 		always @(posedge i_clk)
 		if (!i_reset && i_en && i_cfg_spd < 2)
 		begin
-			if (f_pending_half)
+			if (f_ck_started)
+			begin
+				assert(!f_pending_half);
+				assume(i_ckstb && i_hlfck);
+			end else if (f_pending_half)
 			begin
 				assume(!i_ckstb);
+				assert(!f_ck_started);
 			end else begin
 				// Clk might also be off
 				assume(i_ckstb == i_hlfck);
@@ -1204,10 +1230,10 @@ module	sdtxframe #(
 	end
 
 	always @(posedge i_clk)
-	if (!OPT_SERDES)
+	if (!f_past_valid || $past(i_reset) || !OPT_SERDES)
 	begin
 		assert(cfg_period == P_1D);
-	end else if (!i_reset && $past(i_en))
+	end else if (!i_reset && (i_en || $past(i_en)))
 	begin
 		if (i_cfg_ddr && i_cfg_spd == 0)
 		begin
@@ -1226,7 +1252,6 @@ module	sdtxframe #(
 	//
 	// Clock interface
 	// {{{
-
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -1684,20 +1709,20 @@ module	sdtxframe #(
 			case(cfg_period)
 			P_1D: case(cfg_width)
 				// {{{
-				WIDTH_1W: cover(1);
-				WIDTH_4W: cover(1);
-				WIDTH_8W: cover(1);
+				WIDTH_1W: cover(1);		//
+				WIDTH_4W: cover(1);		//
+				WIDTH_8W: cover(1);		//
 				default: begin end
 				endcase
 				// }}}
 			P_2D: if(cfg_ddr)
 				// {{{
 				begin
-					// && spd == 1
+					// && spd == 1 && ddr
 					case(cfg_width)
-					WIDTH_1W: cover(1);
-					WIDTH_4W: cover(1);
-					WIDTH_8W: cover(1);
+					WIDTH_1W: cover(1);	// !!!
+					WIDTH_4W: cover(1);	// !!!
+					WIDTH_8W: cover(1);	// !!!
 					default: begin end
 					endcase
 				end else begin
@@ -1743,9 +1768,9 @@ module	sdtxframe #(
 			case(cfg_period)
 			P_1D: case(cfg_width)
 				// {{{
-				WIDTH_1W: cover(1);
-				WIDTH_4W: cover(1);
-				WIDTH_8W: cover(1);
+				WIDTH_1W: cover(1);		//
+				WIDTH_4W: cover(1);		//
+				WIDTH_8W: cover(1);		//
 				default: begin end
 				endcase
 				// }}}

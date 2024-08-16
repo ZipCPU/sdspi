@@ -1,7 +1,7 @@
            iCE40  X7-s   RAW
 Controller  4LUT  6LUT  NANDs
 -----------------------------------
-SDIO(AXIL): 3036  1557  729238
-SDIO(WB):   2958  1508  730197
-SDIO w/DMA: 5474  2752  976528
+SDIO(AXIL): 3077  1575  730021
+SDIO(WB):   2989  1554  728631
+SDIO w/DMA: 5518  2809  985726
 SDSPI:       995   548   12664

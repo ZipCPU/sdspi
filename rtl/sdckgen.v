@@ -42,6 +42,8 @@
 // }}}
 module	sdckgen #(
 		// {{{
+		parameter [0:0]	OPT_SERDES = 0,
+		parameter [0:0]	OPT_DDR = 0,
 		// To hit 100kHz from a 100MHz clock, we'll need to divide by
 		// 4, and then by another 250.  Hence, we'll need Lg(256)-2
 		// bits.  (The first three are special)
@@ -151,21 +153,25 @@ module	sdckgen #(
 		o_ckstb  <= 1;
 		o_hlfck  <= 1;
 		o_ckwide <= 0;
-	end else if ((nxt_clk && i_cfg_shutdown) || (w_ckspd == 0))
+	end else if (nxt_clk && i_cfg_shutdown)
 	begin
-		o_ckstb  <= !i_cfg_shutdown;
-		o_hlfck  <= !i_cfg_shutdown;
-		o_ckwide <= (i_cfg_shutdown) ? 8'h00
-				: (i_cfg_clk90) ? 8'h66 : 8'h33;
-	end else if (w_ckspd == 1)
+		o_ckstb  <= 1'b0;
+		o_hlfck  <= 1'b0;
+		o_ckwide <= 8'h0;
+	end else if (OPT_SERDES && w_ckspd == 0)
+	begin
+		o_ckstb  <= 1;
+		o_hlfck  <= 1;
+		o_ckwide <= (i_cfg_clk90) ? 8'h66 : 8'h33;
+	end else if ((OPT_SERDES || OPT_DDR) && w_ckspd <= 1)
 	begin
 		o_ckstb  <= 1'b1;
 		o_hlfck  <= 1'b1;
-		o_ckwide <= (w_clk90) ? 8'h3c : 8'h0f;
+		o_ckwide <= (OPT_SERDES && w_clk90) ? 8'h3c : 8'h0f;
 	end else if (w_ckspd == 2)
 	begin
 		{ o_ckstb, o_hlfck } <= (!nxt_counter[NCTR-1]) ? 2'b10 : 2'b01;
-		if (w_clk90)
+		if (w_clk90 && (OPT_SERDES || OPT_DDR))
 			o_ckwide <= (!nxt_counter[NCTR-1]) ? 8'h0f : 8'hf0;
 		else
 			o_ckwide <= (!nxt_counter[NCTR-1]) ? 8'h00 : 8'hff;

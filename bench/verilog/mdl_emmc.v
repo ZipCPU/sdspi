@@ -97,7 +97,7 @@ module	mdl_emmc #(
 				ERR_ILLEGALCMD = (32'h1 << 22),
 				ERR_BLOCKLEN   = (32'h1 << 20),
 				ERR_SWITCH     = (32'h1 <<  7);
-	parameter realtime tPROG = 512;	// 512ns, or about a half uS
+	parameter realtime tPROG = 5120;	// 512ns, or about a half uS
 	parameter realtime WRITE_TIME = 512;
 	parameter realtime DS_DELAY = 0.4;
 
@@ -243,6 +243,8 @@ module	mdl_emmc #(
 	//
 	// Read from the card, send to the host/user (read operation)
 	// {{{
+	reg	r_crcack, r_crcnak;
+	reg	pending_ack, pending_nak;
 
 	mdl_sdtx
 	tb_sdtx (
@@ -250,8 +252,11 @@ module	mdl_emmc #(
 		.rst_n(rst_n && (!boot_mode || sd_cmd === 1'b0)),
 			.sd_clk(sd_clk), .sd_dat( sd_dat ), .sd_ds(tx_ds),
 		//
-		.i_en(write_en), .i_width(cfg_width), .i_ddr(cfg_ddr),
+		.i_en(write_en),
+			.i_width(cfg_width), .i_ddr(cfg_ddr),
 			.i_ppull(cfg_ppull),
+		//
+		.i_crcack(r_crcack), .i_crcnak(r_crcnak),
 		//
 		.i_valid(tx_valid), .o_ready(tx_ready),
 			.i_data(tx_data), .i_last(tx_last)
@@ -1285,6 +1290,16 @@ $display("READ-CMD-ERR: Small Sector out of bounds");
 
 	always @(posedge sd_clk or negedge rst_n)
 	if (!rst_n)
+	begin
+		{ r_crcack, pending_ack } <= 0;
+		{ r_crcnak, pending_nak } <= 0;
+	end else begin
+		{ r_crcack,pending_ack }<= { pending_ack, (read_en && rx_good)};
+		{ r_crcnak,pending_nak }<= { pending_nak, (read_en && rx_err) };
+	end
+
+	always @(posedge sd_clk or negedge rst_n)
+	if (!rst_n)
 		rx_addr <= 0;
 	else if ((read_en || bustest_w) && rx_valid)
 	begin
@@ -1456,7 +1471,29 @@ $display("TX-DATA set to %08x", mem_buf[0]);
 
 	// }}}
 
-	assign	sd_dat[0] = (busy_programming && !read_en && !reply_valid) ? 1'b0 : 1'bz;
+	reg		busy_indication;
+	reg	[2:0]	busy_wait;
+
+	always @(negedge sd_clk or negedge rst_n)
+	if (!rst_n)
+	begin
+		busy_indication <= 0;
+		busy_wait <= 0;
+	end else if (!busy_programming || read_en)
+	begin
+		busy_indication <= 1'b0;
+		busy_wait <= 0;
+	end else if (busy_wait > 0)
+	begin
+		busy_wait <= busy_wait - 1;
+		busy_indication <= (busy_wait <= 1);
+	end else if (!busy_indication)
+	begin
+		// busy_indication <= 1'b0;
+		busy_wait <= 6;
+	end
+
+	assign	sd_dat[0] = (busy_indication && !read_en && !reply_valid) ? 1'b0 : 1'bz;
 
 	// assign	sd_ds = #DS_DELAY (ds_enabled
 	assign	#DS_DELAY sd_ds = (ds_enabled

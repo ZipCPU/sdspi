@@ -38,13 +38,13 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-// }}}
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
 #include <stdlib.h>
 
 #include "sdspisim.h"
+// }}}
 
 static	const unsigned
 	MICROSECONDS = 80, // Clocks in a microsecond
@@ -317,7 +317,7 @@ int	SDSPISIM::operator()(const int csn, const int sck, const int mosi) {
 						}
 					} else {
 						m_dat_out = 0x0b;
-						printf("RXCRC Err!  %04x != %04x\n", rxcrc, crc);
+						printf("SDSPISIM: RXCRC Err!  %04x != %04x\n", rxcrc, crc);
 						assert(rxcrc == crc);
 					}
 				}
@@ -488,7 +488,7 @@ int	SDSPISIM::operator()(const int csn, const int sck, const int mosi) {
 						if (m_block_address) {
 							assert(arg < m_devblocks);
 							fseek(m_dev, arg<<LGSECTOR_SIZE, SEEK_SET);
-fprintf(stderr, "READ: Seek to sector %d\n", arg);
+// fprintf(stderr, "READ: Seek to sector %d\n", arg);
 						} else {
 							assert(arg < m_devblocks<<9);
 							fseek(m_dev, arg, SEEK_SET);
@@ -510,7 +510,7 @@ fprintf(stderr, "READ: Seek to sector %d\n", arg);
 						if (m_debug) printf("Going to write to block %08x of %08lx\n", arg, m_devblocks);
 						if (m_block_address) {
 							assert(arg < m_devblocks);
-fprintf(stderr, "WRITE: Seek to sector %d\n", arg);
+// fprintf(stderr, "WRITE: Seek to sector %d\n", arg);
 							fseek(m_dev, arg<<LGSECTOR_SIZE, SEEK_SET);
 						} else {
 							assert(arg < m_devblocks<<9);

@@ -51,6 +51,8 @@ module mdl_sdtx #(
 		input	wire		i_ddr,
 		input	wire		i_ppull,
 		//
+		input	wire		i_crcack, i_crcnak,
+		//
 		input	wire		i_valid,
 		output	wire		o_ready,
 		input	wire	[31:0]	i_data,
@@ -66,11 +68,12 @@ module mdl_sdtx #(
 	genvar		gk;
 
 	reg	[15:0]	crc	[15:0];
-	reg	[47:0]	tx_sreg;
+	reg	[79:0]	tx_sreg;
 	reg	[5:0]	r_count;
 	reg		r_crc, r_active, ds;
-	reg	r_ready;
+	reg		r_ready, r_token;
 
+	wire		w_drive;
 	wire	[7:0]	w_dat;
 	// }}}
 
@@ -91,13 +94,88 @@ module mdl_sdtx #(
 		r_crc   <= 0;
 		ds      <= 0;
 		r_active<= 0;
+		r_token <= 0;
+	end else if (r_token)
+	begin
+		// {{{
+		r_count  <= r_count - 1;
+		r_token  <= (r_count > 1);
+		r_crc    <= 0;
+		r_active <= 0;
+
+		if (r_count > 1)
+			ds <= #FF_HOLD 1'b1;
+
+		if (i_width[0]) // 4b
+			tx_sreg <= { tx_sreg[75:0], 4'hf };
+		else if (i_width[1]) // 8b
+			tx_sreg <= { tx_sreg[71:0], 8'hff };
+		else
+			tx_sreg <= { tx_sreg[78:0], 1'b1 };
+		// }}}
+	end else if (i_crcack || i_crcnak)
+	begin
+		// {{{
+		r_token  <= 1;
+		r_crc    <= 0;
+		r_active <= 0;
+		r_count  <= 5 + (i_ddr ? 1:0);
+
+		ds <= #FF_HOLD 1'b1;
+
+		if (i_width[0]) // 4b
+		begin
+			if (i_ddr)
+				tx_sreg  <= #FF_HOLD { 8'h0,
+					(i_crcnak) ? 4'hf : 4'h0, 4'hx,
+					(i_crcnak) ? 4'h0 : 4'hf, 4'hx,
+					(i_crcnak) ? 4'hf : 4'h0, 4'hx,
+					4'hf, 4'hx, 40'hff_ffff_ffff };
+			else
+				tx_sreg  <= #FF_HOLD { 4'h0,
+					(i_crcnak) ? 4'hf : 4'h0,
+					(i_crcnak) ? 4'h0 : 4'hf,
+					(i_crcnak) ? 4'hf : 4'h0,
+					4'hf, {(60){1'b1}} };
+		end else if (i_width[1]) // 8b
+		begin
+			if (i_ddr)
+				tx_sreg  <= #FF_HOLD { 16'h0,
+					(i_crcnak) ? 8'hff : 8'h00, 8'hx,
+					(i_crcnak) ? 8'h00 : 8'hff, 8'hx,
+					(i_crcnak) ? 8'hff : 8'h00, 8'hx,
+					8'hff, 8'hx };
+			else
+				tx_sreg  <= #FF_HOLD { 8'h0,
+					(i_crcnak) ? 8'hff : 8'h00,
+					(i_crcnak) ? 8'h00 : 8'hff,
+					(i_crcnak) ? 8'hff : 8'h00,
+					8'hff, {(40){1'b1}} };
+		end else if (i_ddr)
+		begin
+			tx_sreg  <= #FF_HOLD { 2'h0,
+					(i_crcnak) ? 1'b1 : 1'b0, 1'hx,
+					(i_crcnak) ? 1'b0 : 1'b1, 1'hx,
+					(i_crcnak) ? 1'b1 : 1'b0, 1'hx,
+					1'b1, 1'hx, {(70){1'b1}} };
+		end else begin
+			tx_sreg  <= #FF_HOLD { 1'h0,
+					(i_crcnak) ? 1'b1 : 1'b0,
+					(i_crcnak) ? 1'b0 : 1'b1,
+					(i_crcnak) ? 1'b1 : 1'b0,
+					1'b1, {(75){1'b1}} };
+		end
+		// }}}
 	end else if (!i_en)
 	begin
+		// {{{
 		tx_sreg <= 0;
 		r_count <= 0;
 		r_crc   <= 0;
 		ds      <= 0;
 		r_active<= 0;
+		r_token <= 0;
+		// }}}
 	end else if (i_valid && o_ready)
 	begin // New data
 		// {{{
@@ -109,27 +187,27 @@ module mdl_sdtx #(
 			if (i_width[0])
 			begin // 4b width
 				if (i_ddr)
-					tx_sreg  <= #FF_HOLD { 4'b0, 4'bx, i_data, 8'hff };
+					tx_sreg  <= #FF_HOLD { 4'b0, 4'bx, i_data, 8'hff, 32'hffff_ffff };
 				else
-					tx_sreg  <= #FF_HOLD { 4'b0, i_data, 12'hfff };
+					tx_sreg  <= #FF_HOLD { 4'b0, i_data, 12'hfff, 32'hffff_ffff };
 				r_count  <= 9 + (i_ddr ? 1:0);
 			end else if (i_width[1])
 			begin // 8b width
 				if (i_ddr)
-					tx_sreg  <= #FF_HOLD { 8'b0, 8'bx, i_data };
+					tx_sreg  <= #FF_HOLD { 8'b0, 8'bx, i_data, 32'hffff_ffff };
 				else
-					tx_sreg  <= #FF_HOLD { 8'b0, i_data, 8'hff };
+					tx_sreg  <= #FF_HOLD { 8'b0, i_data, 8'hff, 32'hffff_ffff };
 				r_count  <= 5 + (i_ddr ? 1:0);
 			end else begin // 1b width
 				if (i_ddr)
-					tx_sreg  <= #FF_HOLD { 1'b0, 1'bx, i_data, 6'h3f, 8'hff };
+					tx_sreg  <= #FF_HOLD { 1'b0, 1'bx, i_data, 6'h3f, 8'hff, 32'hffff_ffff };
 				else
-					tx_sreg  <= #FF_HOLD { 1'b0, i_data, 7'h7f, 8'hff };
+					tx_sreg  <= #FF_HOLD { 1'b0, i_data, 7'h7f, 8'hff, 32'hffff_ffff };
 				r_count  <= 33 + (i_ddr ? 1:0);
 			end
 			// }}}
 		end else begin
-			tx_sreg  <= #FF_HOLD { i_data, 16'hffff };
+			tx_sreg  <= #FF_HOLD { i_data, 16'hffff, 32'hffff_ffff };
 			r_count  <= (i_width[0]) ? 8 : (i_width[1]) ? 4 : 32;
 		end
 		r_active <= 1'b1;
@@ -141,26 +219,26 @@ module mdl_sdtx #(
 
 		r_count <= r_count - 1;
 		if (i_width[0])
-			tx_sreg <= #FF_HOLD { tx_sreg[43:0], 4'hf };
+			tx_sreg <= #FF_HOLD { tx_sreg[75:0], 4'hf };
 		else if (i_width[1])
-			tx_sreg <= #FF_HOLD { tx_sreg[39:0], 8'hff };
+			tx_sreg <= #FF_HOLD { tx_sreg[71:0], 8'hff };
 		else
-			tx_sreg <= #FF_HOLD { tx_sreg[46:0], 1'b1 };
+			tx_sreg <= #FF_HOLD { tx_sreg[78:0], 1'b1 };
 
 		if (r_crc || (!r_crc && r_count <= 1))
 		begin
 			if (i_width[0])
 				tx_sreg <= #FF_HOLD { crc[3][15],
 					crc[2][15], crc[1][15], crc[0][15],
-					44'hfff_ffff_ffff };
+					44'hfff_ffff_ffff, 32'hffff_ffff };
 			else if (i_width[1])
 				tx_sreg <= #FF_HOLD {
 				crc[7][15], crc[6][15], crc[5][15], crc[4][15],
 				crc[3][15], crc[2][15], crc[1][15], crc[0][15],
-					40'hff_ffff_ffff };
+					40'hff_ffff_ffff, 32'hffff_ffff };
 			else
 				tx_sreg <= #FF_HOLD { crc[0][15], 7'h7f,
-					40'hff_ffff_ffff };
+					40'hff_ffff_ffff, 32'hffff_ffff };
 		end
 
 		if (r_count <= 1)
@@ -185,7 +263,7 @@ module mdl_sdtx #(
 	always @(posedge sd_clk)
 	if (!rst_n)
 	begin
-	end else if (i_ddr && r_active)
+	end else if (i_ddr && (r_active || r_token))
 	begin
 		r_count <= #FF_HOLD r_count - 1;
 		if (i_width[0])
@@ -213,7 +291,11 @@ module mdl_sdtx #(
 
 		if (r_count <= 1)
 		begin
-			if (!r_crc)
+			if (r_token)
+			begin
+				if (r_count > 1)
+					r_token <= #FF_HOLD 1'b0;
+			end else if (!r_crc)
 			begin
 				r_crc <= #FF_HOLD 1'b1;
 				r_count <= #FF_HOLD 32;
@@ -223,26 +305,28 @@ module mdl_sdtx #(
 	end
 	// }}}
 
-	assign	w_dat[0] = (i_width[0]) ? tx_sreg[44]
-				: (i_width[1]) ? tx_sreg[40] : tx_sreg[47];
+	assign	w_dat[0] = (i_width[0]) ? tx_sreg[76]
+			: (i_width[1]) ? tx_sreg[72] : tx_sreg[79];
 
-	assign	w_dat[3:1] = i_width[0] ? tx_sreg[47:45]
-						: tx_sreg[43:41];
-	assign	w_dat[7:4] = tx_sreg[47:44];
+	assign	w_dat[3:1] = i_width[0] ? tx_sreg[79:77]
+						: tx_sreg[75:73];
+	assign	w_dat[7:4] = tx_sreg[79:76];
 
-	assign	sd_dat[0] = (!r_active || (!i_ppull && w_dat[0])) ? 1'bz : w_dat[0];
-	assign	sd_dat[1] = (!r_active || (!i_ppull && w_dat[1]) || (i_width == 2'b00)) ? 1'bz : w_dat[1];
-	assign	sd_dat[2] = (!r_active || (!i_ppull && w_dat[2]) || (i_width == 2'b00)) ? 1'bz : w_dat[2];
-	assign	sd_dat[3] = (!r_active || (!i_ppull && w_dat[3]) || (i_width == 2'b00)) ? 1'bz : w_dat[3];
-	assign	sd_dat[4] = (!r_active || (!i_ppull && w_dat[4]) || (!i_width[1])) ? 1'bz : w_dat[4];
-	assign	sd_dat[5] = (!r_active || (!i_ppull && w_dat[5]) || (!i_width[1])) ? 1'bz : w_dat[5];
-	assign	sd_dat[6] = (!r_active || (!i_ppull && w_dat[6]) || (!i_width[1])) ? 1'bz : w_dat[6];
-	assign	sd_dat[7] = (!r_active || (!i_ppull && w_dat[7]) || (!i_width[1])) ? 1'bz : w_dat[7];
+	assign	w_drive = r_active || r_token;
+	assign	sd_dat[0] = (!w_drive || (!i_ppull && w_dat[0])) ? 1'bz : w_dat[0];
+	assign	sd_dat[1] = (!w_drive || (!i_ppull && w_dat[1]) || (i_width == 2'b00)) ? 1'bz : w_dat[1];
+	assign	sd_dat[2] = (!w_drive || (!i_ppull && w_dat[2]) || (i_width == 2'b00)) ? 1'bz : w_dat[2];
+	assign	sd_dat[3] = (!w_drive || (!i_ppull && w_dat[3]) || (i_width == 2'b00)) ? 1'bz : w_dat[3];
+	assign	sd_dat[4] = (!w_drive || (!i_ppull && w_dat[4]) || (!i_width[1])) ? 1'bz : w_dat[4];
+	assign	sd_dat[5] = (!w_drive || (!i_ppull && w_dat[5]) || (!i_width[1])) ? 1'bz : w_dat[5];
+	assign	sd_dat[6] = (!w_drive || (!i_ppull && w_dat[6]) || (!i_width[1])) ? 1'bz : w_dat[6];
+	assign	sd_dat[7] = (!w_drive || (!i_ppull && w_dat[7]) || (!i_width[1])) ? 1'bz : w_dat[7];
 
 	assign	sd_ds = ds;
 
-	assign	o_ready = !r_active || (!r_crc && ((sd_clk && r_count == 1)
-						|| (!sd_clk && r_ready)));
+	assign	o_ready = !r_token && (!r_active
+				|| (!r_crc && ((sd_clk && r_count == 1)
+						|| (!sd_clk && r_ready))));
 
 	// CRC generation
 	// {{{
@@ -253,7 +337,7 @@ module mdl_sdtx #(
 		always @(posedge sd_clk or negedge rst_n)
 		if (!rst_n)
 			crc[gk] <= 0;
-		else if (!i_en)
+		else if (!i_en || r_token)
 			crc[gk] <= 0;
 		else if (!r_crc)
 			crc[gk] <= STEPCRC(crc[gk], w_dat[gk]);
@@ -263,7 +347,7 @@ module mdl_sdtx #(
 		always @(negedge sd_clk or negedge rst_n)
 		if (!rst_n)
 			crc[8+gk] <= 0;
-		else if (!i_ddr || !i_en || !i_ddr)
+		else if (!i_ddr || !i_en || !i_ddr || r_token)
 			crc[8+gk] <= 0;
 		else if (!r_crc)
 			crc[8+gk] <= STEPCRC(crc[8+gk], w_dat[gk]);

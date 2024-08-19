@@ -160,6 +160,8 @@ module	mdl_sdio #(
 		.i_en(write_en), .i_width(cfg_width), .i_ddr(cfg_ddr),
 			.i_ppull(1'b0),
 		//
+		.i_crcack(1'b0), .i_crcnak(1'b0),
+		//
 		.i_valid(tx_valid), .o_ready(tx_ready),
 			.i_data(tx_data), .i_last(tx_last)
 		// }}}

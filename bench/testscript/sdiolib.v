@@ -349,6 +349,225 @@ begin
 end endtask
 // }}}
 
+task	sdcard_discover;
+	// {{{
+	reg	[31:0]	read_data, phy_reg;
+begin
+	// See if we can discover and report various settings properly.
+
+	// First, wait for the card to be detected
+	// {{{
+`ifndef	SDIO_AXI
+	// Tell the GPIO to generate a card present signal
+	read_data = 32'h0; read_data[18] = 1'b1; read_data[2] = 1'b1;
+	u_bfm.write_f(GPIO_ADDR, read_data);
+`endif
+	u_bfm.readio(ADDR_SDCARD, read_data);
+	while (1'b1 === read_data[19])
+	begin
+		u_bfm.readio(ADDR_SDCARD, read_data);
+	end
+	// Clear any card removed signal
+	if (1'b1 == read_data[18])
+	begin
+		read_data = 32'h000c_8080;
+		u_bfm.write_f(ADDR_SDCARD, read_data);
+	end
+	// }}}
+
+	// OPT_SERDES, OPT_DDR
+	// {{{
+	// !OPT_SERDES && OPT_DDR
+	// !OPT_SERDES && !OPT_DDR
+	u_bfm.readio(ADDR_SDPHY, read_data);
+	phy_reg = read_data;
+	phy_reg[20:16] = 5'h1f;
+	phy_reg[7:0] = 8'h0;
+	phy_reg[8] = 1'b0;	// Turn off DDR
+	u_bfm.write_f(ADDR_SDPHY, phy_reg);
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	while(phy_reg[7:0] === read_data[7:0])
+	begin
+		u_bfm.readio(ADDR_SDPHY, phy_reg);
+	end
+
+	if (phy_reg[20:16] === 5'h1f)
+	begin
+		$display("Front-end:      OPT_SERDES");
+	end else if (5'h1c === phy_reg[20:16])
+	begin
+		$display("Front-end:      OPT_DDR");
+	end else if (5'h18 === phy_reg[20:16])
+	begin
+		$display("Front-end:      Raw");
+	end else begin
+		$display("ERROR: Front end support UNKNOWN, 0x%08x", phy_reg);
+		error_flag = 1;
+	end
+	u_bfm.writeio(ADDR_SDPHY, read_data);
+	// }}}
+
+	// Max clock speed
+	// {{{
+	if (8'h00 === phy_reg[7:0])
+	begin
+		$display("Max-Speed:      200MHz");
+	end else if (phy_reg[7:0] === 8'h01)
+	begin
+		$display("Max-Speed:      100MHz");
+	end else if (phy_reg[7:0] === 8'h02)
+	begin
+		$display("Max-Speed:       50MHz");
+	end else if (phy_reg[7:0] === 8'h03)
+	begin
+		$display("Max-Speed:       25MHz");
+	end else begin
+		$display("ERROR: Unexpected maximum speed, 0x%08x", phy_reg);
+		error_flag = 1;
+	end
+
+	phy_reg[9] = 1'b1;
+	phy_reg[8] = 1'b1;
+	phy_reg[7:0] = 8'h0;
+	u_bfm.writeio(ADDR_SDPHY, phy_reg);
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	while(phy_reg[7:0] === read_data[7:0])
+	begin
+		u_bfm.readio(ADDR_SDPHY, phy_reg);
+	end
+
+	if (phy_reg[8] === 1'b0)
+	begin
+		$display("DDR:            Unsupported");
+	end else if (phy_reg[7:0] === 5'h00)
+	begin
+		$display("Max DDR Speed:  200MHz (HS400)");
+	end else if (phy_reg[7:0] === 8'h01)
+	begin
+		$display("Max DDR Speed:  100MHz");
+	end else if (phy_reg[7:0] === 8'h02)
+	begin
+		$display("Max DDR Speed:   50MHz");
+	end else if (phy_reg[7:0] === 8'h03)
+	begin
+		$display("Max DDR Speed:   25MHz");
+	end else begin
+		$display("ERROR: Unexpected maximum speed, 0x%08x", phy_reg);
+		error_flag = 1;
+	end
+
+	if (phy_reg[9] === 1'b1)
+	begin
+		$display("Data-Strobe:    Yes, Supported");
+	end else if (phy_reg[9] === 1'b0)
+	begin
+		$display("Data-Strobe:    No support");
+	end else begin
+		$display("ERR: Invalid data-strobe response");
+	end
+
+	u_bfm.writeio(ADDR_SDPHY, read_data);
+	// }}}
+
+	// OPT_DMA (Is the DMA enabled?)
+	// {{{
+	read_data = 32'hffff_ffff;
+	u_bfm.writeio(ADDR_DMALEN, read_data);
+	u_bfm.readio(ADDR_DMALEN, read_data);
+	if (read_data === 32'h0)
+	begin
+		$display("DMA      :      No DMA support");
+	end else begin
+		$display("DMA      :      Yes, Supported");
+		read_data = 32'hffff_ffff;
+		u_bfm.writeio(ADDR_DMABUS, read_data);
+		u_bfm.readio(ADDR_DMABUS, read_data);
+		// How ... do we handle AW detection?  Stream detection?
+		//	Upper address bits in AXI mode?
+		assert(read_data !== 32'h0);
+		$display("DMA-MASK :      0x%08x", read_data);
+	end
+	// }}}
+
+	// OPT_STREAM (Is the DMA+Stream interface enabled?)
+
+	// OPT_HWRESET
+	// {{{
+	read_data = 32'h00_8080;	// Resets errors and FIFOs
+	read_data[25] = 1'b1;		// Hardware reset request
+	u_bfm.writeio(ADDR_SDCARD, read_data);
+	u_bfm.readio(ADDR_SDCARD, read_data);
+	if (1'b1 === read_data[25])
+	begin
+		$display("HW-Reset :      Yes, Supported");
+`ifndef	SDIO_AXI
+		u_bfm.readio(GPIO_ADDR, read_data);
+		assert(1'b1 === read_data[2]);
+		read_data = 32'h00_8080;	// Clear the reset
+		u_bfm.writeio(ADDR_SDCARD, read_data);
+		u_bfm.readio(GPIO_ADDR, read_data);
+		assert(1'b0 === read_data[2]);
+`endif
+	end else begin
+		$display("HW-Reset :      No support");
+	end
+	// }}}
+
+	// OPT_CARD_DETECT (? Can this be detected?)
+	// {{{
+	// First, "Remove" the card
+`ifndef	SDIO_AXI
+	// Remove the card
+	read_data = 32'h0; read_data[18] = 1'b1; read_data[2] = 1'b0;
+	u_bfm.write_f(GPIO_ADDR, read_data);
+
+	// Verify it is now seen as "removed"
+	repeat (5)
+		@(posedge clk);
+	u_bfm.readio(ADDR_SDCARD, read_data);
+	if (1'b1 === read_data[18])
+	begin
+		// We detected the card was removed.  Good.
+		$display("CardDetection:  Supported");
+		assert(read_data[19:18] === 2'b11);
+
+		// Now let's see if we can insert it.
+		read_data = 32'h0; read_data[18] = 1'b1; read_data[2] = 1'b1;
+		u_bfm.write_f(GPIO_ADDR, read_data);
+		repeat (1536)
+			@(posedge clk);
+		u_bfm.readio(ADDR_SDCARD, read_data);
+		if (2'b01 === read_data[19:18])
+		begin
+			$display("CardDetection:  Insertion detected");
+		end else begin
+			$display("CardDetection:  ERROR!  No insertion detected, 0x%08x", read_data);
+			error_flag = 1;
+		end
+		assert(read_data[19:18] === 2'b01);
+
+		read_data = 32'h00_8080;	// Clear the reset
+		read_data[18] = 1'b1;
+		u_bfm.write_f(ADDR_SDCARD, read_data);
+		repeat(5) @(posedge clk);
+		u_bfm.readio(ADDR_SDCARD, read_data);
+		if (2'b00 === read_data[19:18])
+		begin
+			$display("CardDetection:  Insertion acknowledged");
+		end else begin
+			$display("CardDetection:  ERROR!  No acknowledgment, 0x%08x", read_data);
+			error_flag = 1;
+		end
+	end else begin
+		$display("CardDetection:  No support");
+	end
+`endif
+	// }}}
+
+	// OPT_CRCTOKEN (? Can this be detected? -- only following a write req)
+end endtask
+// }}}
+
 task	sdcard_write_dma(input [31:0] nblocks, input[31:0] sector,	// CMD25
 				input[31:0] wbaddr);
 	// {{{

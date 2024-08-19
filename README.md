@@ -15,18 +15,18 @@ controller](rtl/sdio.v) in this respository, this controller focuses on the SPI
 interface of the SD Card.  While this is a slower interface, the SPI interface
 is necessary to access the card when using a [XuLA2
 board](http://www.xess.com/shop/product/xula2-lx25/) (for which it was
-originally written), or in general any time the full 9--bit, bi--directional
+originally written), or in general any time the full 7--bit, bi--directional
 interface to the SD card has not been implemented.  Further, for those who are
 die--hard Verilog authors, this core is written in Verilog as opposed to the
 [XESS provided demonstration SD Card controller found on
 GitHub](https://github.com/xesscorp/VHDL\_Lib/SDCard.vhd), which was written
 in VHDL.  For those who are not such die--hard Verilog authors, this controller
-provides a lower level interface to the card than these other controllers. 
+provides a lower level interface to the card than other controllers. 
 Whereas the [XESS controller](https://github.com/xesscorp/VHDL\_Lib/SDCard.vhd)
 will automatically start up the card and interact with it, this controller
-requires external software to be used when interacting with the card.  This
-makes this SDSPI controller both more versatile, in the face of potential
-changes to the card interface, but also less turn-key.
+requires [external software](sw/sdspidrv.c) to be used when interacting with
+the card.  This makes this SDSPI controller both more versatile, in the face
+of potential changes to the card interface, but also less turn-key.
 
 While this core was written for the purpose of being used with the
 [ZipCPU](https://github.com/ZipCPU/zipcpu), as enhanced by the Wishbone DMA
@@ -40,12 +40,25 @@ sense.  This design choice, however, also restricts the core from being able to
 use the multiple block write or multiple block read commands, restricting it to 
 single block read and write commands alone.
 
+### Roadmap and TODO items
+
 *Status*: The SDSPI IP is **silicon proven**.  It is no longer under active
   development.  It has been used successfully in several FPGA projects.  The
   components of this IP have formal proofs, which they are known to pass.  A
-  Verilator C++ model also exists which can fairly faithfully represent an SD
-  card's SPI interface.  A software library also exists which can act as a
-  back end when using the [FATFS library](http://elm-chan.org/fsw/ff/00index_e.html).
+  Verilator [C++ model](bench/cpp/sdspisim.cpp) also exists which can fairly
+  faithfully represent an SD card's SPI interface.  A [software
+  library](sw/sdspidrv.c) also exists which can act as a back end when using
+  the [FATFS library](http://elm-chan.org/fsw/ff/00index_e.html).
+
+- **AXI Support**: The [SDSPI controller](doc/sdspi.pdf) has no support for
+  an AXI environment.  The RTL modifications required to provide AXI-Lite
+  support to this controller would be minor.  Testbench modifications would
+  be more significant.
+
+- **All-Verilog Test bench**: The [SDSPI controller](doc/sdspi.pdf) has a
+  [C++ model](bench/cpp/sdspisim.cpp) only for simulation based testing.
+  There is no all Verilog test bench at present, nor do I have any plans to
+  develop one.
 
 For more information, please consult the [SDSPI user guide](doc/sdspi.pdf).
 
@@ -79,17 +92,22 @@ Both Wishbone and AXI-Lite interfaces are supported.
 *Status*: The SDIO controller has now been **silicon proven**.  It is currently
   working successfully in [its first FPGA
   project](https://github.com/ZipCPU/eth10g), where it is being used to control
-  both an SD card as well as an eMMC chip.  Many of the components of this IP
-  have formal proofs, which they are known to pass.
+  both an SD card as well as an eMMC chip.  It is also now working successfully
+  in a [second project](https://github.com/ZipCPU/videozip/).  Many of the
+  components of this IP have formal proofs, which they are known to pass.
 
-  Notably missing among the component proofs is a proof of the [front
+  Notably missing among the formal component proofs is a proof of the [front
   end](rtl/sdfrontend.v).  The [front end](rtl/sdfrontend.v)'s verification
   depends upon integrated simulation testing.
 
   Both [Verilog](bench/verilog/mdl_sdio.v) and [C++](bench/cpp/sdiosim.cpp)
   models have been built which can be used to test this controller in
-  simulation, although only the Verilog [SDIO](bench/verilog/mdl_sdio.v) and
-  [eMMC](bench/verilog/mdl_emmc.v) models have been tested to date.
+  simulation.  Unlike the [Verilog SDIO](bench/verilog/mdl_sdio.v) model, the
+  [C++ SDIO](bench/cpp/sdiosim.cpp) supports a file-backed memory, allowing
+  full software testing with filesystem(s) present.  All three simulation
+  components have been now been tested successfully: the Verilog
+  [SDIO](bench/verilog/mdl_sdio.v) and [eMMC](bench/verilog/mdl_emmc.v)
+  models, as well as the [SDIO C++](bench/cpp/sdiosim.cpp) model.
 
 For more information, please consult the [SDIO user guide](doc/sdio.pdf).
 
@@ -100,63 +118,112 @@ tested, this project is far from finished.  Several key steps remain before
 this controller will be a completed product:
 
 - **Multi-block**: Multiple block commands have been demonstrated in
-  simulation for the SDIO model.  While eMMC multiblock support exists, it
-  hasn't yet been tested, and will likely fail.
+  simulation when using the Verilog [SDIO model](bench/verilog/mdl_sdio.v).
+  Multiblock simulation support is lacking in both the Verilog [eMMC
+  model](bench/verilog/mdl_emmc.v) as well as the [C++ SDIO
+  model](bench/cpp/sdiosim.cpp).
 
   Multiblock commands form the basis for the DMA's operation.
+
+- **OPT\_SERDES**: Three front end options are available: `OPT_SERDES=1`,
+  which provides access to speeds > 100MHz, `OPT_DDR=1` for speeds > 25MHz,
+  and a basic front end using neither of these components.
+
+  Currently the `OPT_SERDES=1` front end is having trouble closing timing.
+  (See [here for details](issues/11).)
 
 - **OPT\_DMA**: An optional DMA is now available, and passing tests in silicon.
 
   Only the Wishbone version of the DMA controller exists at present.  Although
-  some components exist in my [wb2axip
+  components exist in my [wb2axip
   repository](https://github.com/ZipCPU/wb2axip) which could support an AXI
   DMA, these components have neither been integrated nor tested as part of this
-  design.
-
-  Since the [eMMC model](bench/verilog/mdl_emmc.v) doesn't yet support the
-  multi-block commands required by the DMA, DMA simulation testing has been
-  limited to the [SDIO model](bench/verilog/mdl_sdio.v).
+  design.  Other user's have successfully connected external AXI
+  [MM2S](https://github.com/ZipCPU/wb2axip/blob/master/rtl/aximm2s.v) and
+  [S2MM](https://github.com/ZipCPU/wb2axip/blob/master/rtl/axis2mm.v)
+  components to the AXI stream interface, and have thus demonstrated successful
+  DMA support in AXI environments.
 
 - **STREAM DMA**: At customer request, hooks now exist for an (optional)
   stream DMA interface.  This interface will accept an AXI stream input,
   and/or an AXI stream output.  Data present on the AXI stream input may
   then be written directly to the device.  Reads from the device may also
-  produce data at the output stream.  At present, the stream inputs must
-  be a minimum of 32bits, and a power of two in width.  The stream outputs
-  must either be 32bits or the full bus width.  No provision exist for stream
-  data less than a word in size.
+  produce data at the output stream.
 
-  This interface will need to be tested together with the pending hardware
-  tests for the DMA.
+  This interface is now supported and [tested via
+  simulation](bench/testscript/sdstream.v).  No known issues exist.  It does
+  have some software quirks:
 
-- **C++ Model**: An early [Verilator C++ model of an SDIO
-  component](bench/cpp/sdiosim.cpp) has been drafted.  It needs to be finished
-  and tested.  No C++ eMMC model exists at present, nor is any data strobe
-  support is planned.
+  - When using the stream interface, the DMA address should be set to -1.  This
+    selects the stream interface as either source or destination.  (The actual
+    controller command will indicate the direction of the transfer.)
+  - Any memory source
+    ([MM2S](https://github.com/ZipCPU/wb2axip/blob/master/rtl/aximm2s.v))
+    should be configured for the full transfer length--potentially many blocks.
+  - There is no TLAST stream input (slave).
+  - When the external device is the source
+    ([S2MM](https://github.com/ZipCPU/wb2axip/blob/master/rtl/axis2mm.v)),
+    the TLAST signal will be set at the end of each 512B block.  This may
+    require the external DMA to be configured to transfer data one block at a
+    time, or perhaps to ignore the TLAST signal.
+  - Transfer errors (failing CRCs, non-responsive cards, etc.) may cause the streams to be unsynchronized.  To fix, the design may be given a soft reset (if necessary), and the external [MM2S](https://github.com/ZipCPU/wb2axip/blob/master/rtl/aximm2s.v)/[S2MM](https://github.com/ZipCPU/wb2axip/blob/master/rtl/axis2mm.v) DMAs may also need to be given similar resets.
+
+- **C++ Model**: A [Verilator C++ model of an SDIO
+  component](bench/cpp/sdiosim.cpp) is now a part of the repository.  While it
+  still needs multiblock support, it has already demonstrated tremendous utility
+  when doing software testing.
+
+  No C++ eMMC model exists at present.
 
 - **SW Testing**: [Control software](sw/) has been written, and has been
   used to demonstrate both [SDIO](sw/sdiodrv.c) and [EMMC](sw/emmcdrvr.c)
   performance.  This software is designed to work with the [FATFS
   library](http://elm-chan.org/fsw/ff/00index_e.html).
 
-  An integrated test bench exists for testing this software from a
-  [ZipCPU](https://zipcpu.com/about/zipcpu.html), it just hasn't (yet) been
-  tested.  Because this integrated test bench will require integration with an
-  external project (i.e. the [ZipCPU](https://zipcpu.com/about/zipcpu.html),
-  further work is on hold pending a decision on how to integrate multiple
-  dissimilar design components together for this purpose.
+  Software testing is currently taking place as part of the integrated test
+  benches associated with separate repositories, such as the
+  [VideoZip](https://github.com/ZipCPU/videozip) repository that contains both
+  this component and the [ZipCPU](https://zipcpu.com/about/zipcpu.html).
 
-- **AXI Support**: A version exists in the dev branch that supports an AXI-Lite
-  interface.
+- **AXI Support**: This design has also been demonstrated in AXI environments.
+  The control interface has an AXI-Lite port which can be used to interact
+  with the IP.  A flag exists to swap endianness, so that the design will be
+  properly little endian when using this interface.  At present, however,
+  there is no integrated AXI DMA master capability--only AXI stream ports.
+  (Integrated AXI DMA master support is planned, just not funded at present.)
+  When coupled with external AXI
+  [MM2S](https://github.com/ZipCPU/wb2axip/blob/master/rtl/aximm2s.v) and
+  [S2MM](https://github.com/ZipCPU/wb2axip/blob/master/rtl/axis2mm.v)
+  components, the IP may sufficiently provide for the needs of most AXI
+  environments.
+
+- **eMMC CRC Tokens**: CRC token's are 5b response values, indicating whether
+  or not a page has transferred successfully.  Initial support exists in the
+  [frontend](rtl/sdfrontend.v) for ignoring CRC tokens returned by eMMC devices
+  following block write transfers.  No support yet exists for generating CRC
+  tokens to be sent to an eMMC device.
+
+  Note: My biggest problem with the "CRC Token's" is that the eMMC standard I
+  have isn't clear regarding when they are used and when they are not.  Nor is
+  it necessarily clear regarding what will happen following a NAK (negative
+  acknowledgment) token.  This confusion, perhaps on my part alone, has
+  hindered the development of this support.
+
+  [My current plan](https://github.com/ZipCPU/sdspi/issues/14) is to support
+  CRC tokens when writing to the eMMC device, beyond simply ignoring them.
+  The plan is to generate an error condition after receiving any NAK from the
+  eMMC chip.  Any ongoing DMA operation will then be aborted, and the CPU will
+  be able to read the failure status from the controller.
 
 - **eMMC Boot mode**: No plan exists to support eMMC boot mode (at present).
   This decision will likely be revisited in the future.
 
-  Boot mode may require support for eMMC CRC tokens, which aren't (yet)
-  supported.  These are 8'bit return values, indicating whether or not a
-  page has been read or written and passes its CRC check.
+  Some (untested) support exists for boot mode in the Verilog [eMMC
+  model](bench/verilog/mdl_emmc.v).
 
-  Some (untested) support exists for boot mode in the eMMC model.
+- **eMMC Collision Detection**: [Collision detection remains an ongoing issue
+  with eMMC support](https://github.com/ZipCPU/sdspi/issues/13)
+
 
 # Logic usage
 

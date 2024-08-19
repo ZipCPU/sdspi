@@ -49,6 +49,8 @@ begin
 		@(posedge clk);
 	@(posedge clk);
 
+	sdcard_discover;
+
 	// Read our capabilities back from the controller
 	// {{{
 	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_200MHZ

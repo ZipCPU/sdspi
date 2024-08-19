@@ -1130,7 +1130,6 @@ int	sdio_write_block(SDIODRV *dev, uint32_t sector, uint32_t *buf){// CMD 24
 		uint32_t	phy = dev->d_dev->sd_phy;
 
 		if (SECTOR_512B != (phy & SECTOR_MASK)) {
-			uint32_t	phy = dev->d_dev->sd_phy;
 			phy &= ~SECTOR_MASK;
 			phy |= SECTOR_512B;
 			dev->d_dev->sd_phy = phy;
@@ -1232,7 +1231,8 @@ int	sdio_read_block(SDIODRV *dev, uint32_t sector, uint32_t *buf){// CMD 17
 	// {{{
 	{
 		uint32_t	phy = dev->d_dev->sd_phy;
-		if (SECTOR_512B != (dev->d_dev->sd_phy & SECTOR_MASK)) {
+
+		if (SECTOR_512B != (phy & SECTOR_MASK)) {
 			phy &= ~SECTOR_MASK;
 			phy |= SECTOR_512B;
 			dev->d_dev->sd_phy = phy;
@@ -1580,7 +1580,7 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 	{
 		unsigned phy = dev->d_dev->sd_phy;
 
-		if (SECTOR_512B != ((phy >> 24) & SECTOR_MASK)) {
+		if (SECTOR_512B != (phy & SECTOR_MASK)) {
 			// Here, we don't care if the clock is shut down as
 			// well, since we control the write speed.
 			phy &= ~SECTOR_MASK;

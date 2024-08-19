@@ -139,7 +139,8 @@ module	tb_wb
 	wire	[DW-1:0]	gpio_data, gpio_idata;
 	wire	[DW/8-1:0]	gpio_sel;
 
-	wire			gpio_vcd_flag, gpio_error_flag;
+	wire			gpio_sdcard_present,
+				gpio_vcd_flag, gpio_error_flag;
 	// }}}
 
 	// Console bus-slave definitions
@@ -453,7 +454,7 @@ module	tb_wb
 		.OPT_ISTREAM(OPT_STREAM), .OPT_OSTREAM(OPT_STREAM),
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
-		.OPT_CARD_DETECT(0), .LGTIMEOUT(10),
+		.OPT_CARD_DETECT(1'b1), .LGTIMEOUT(10),
 		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b0)
 		// }}}
 	) u_sdio (
@@ -506,7 +507,7 @@ module	tb_wb
 		.o_ck(sd_ck), .i_ds(1'b0), .io_cmd(sd_cmd), .io_dat(sd_dat),
 `endif
 		// }}}
-		.i_card_detect(1'b1), .o_int(sdio_interrupt),
+		.i_card_detect(gpio_sdcard_present), .o_int(sdio_interrupt),
 		.o_hwreset_n(ign_sdio_reset_n), .o_1p8v(sdio_1p8v),
 		.o_debug(sdio_debug)
 		// }}}
@@ -782,7 +783,7 @@ module	tb_wb
 	// really need to downsize.
 
 	wbgpio #(
-		.NOUT(2), .NIN(2), .DEFAULT((OPT_CPU) ? 2'b0 : 2'b1)
+		.NOUT(3), .NIN(3), .DEFAULT((OPT_CPU) ? 3'b100 : 3'b101)
 	) u_gpio (
 		// {{{
 		.i_clk(clk),
@@ -793,8 +794,8 @@ module	tb_wb
 			.i_wb_sel(gpio_sel[DW/8-1:DW/8-4]),
 		.o_wb_stall(gpio_stall), .o_wb_ack(gpio_ack),
 		.o_wb_data(gpio_idata[DW-1:DW-32]),
-		.i_gpio({ stream_error_flag, OPT_VCD && gpio_vcd_flag }),
-		.o_gpio({ gpio_error_flag, gpio_vcd_flag }),
+		.i_gpio({ !emmc_reset_n, stream_error_flag, OPT_VCD && gpio_vcd_flag }),
+		.o_gpio({ gpio_sdcard_present, gpio_error_flag, gpio_vcd_flag }),
 		.o_int(gpio_interrupt)
 		// }}}
 	);

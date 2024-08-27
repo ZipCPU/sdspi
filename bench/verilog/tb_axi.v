@@ -649,7 +649,8 @@ module	tb_axi;
 	wire	[32-1:0]	GPIO_RDATA;
 	wire	[1:0]		GPIO_RRESP;
 
-	wire			gpio_vcd_flag, gpio_error_flag;
+	wire			gpio_sdcard_present,
+				gpio_vcd_flag, gpio_error_flag;
 	// }}}
 
 	// RAM model declarations
@@ -1279,7 +1280,7 @@ module	tb_axi;
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.DW(DW), .AXI_IW(AXI_IW),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
-		.OPT_CARD_DETECT(0), .LGTIMEOUT(10),
+		.OPT_CARD_DETECT(1'b1), .LGTIMEOUT(10),
 		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b0)
 		// }}}
 	) u_sdio (
@@ -1374,7 +1375,7 @@ module	tb_axi;
 		// {{{
 		.o_ck(sd_ck), .i_ds(1'b0), .io_cmd(sd_cmd), .io_dat(sd_dat),
 		// }}}
-		.i_card_detect(1'b1), .o_int(sdio_interrupt),
+		.i_card_detect(gpio_sdcard_present), .o_int(sdio_interrupt),
 		.o_hwreset_n(ign_sdio_reset_n), .o_1p8v(sdio_1p8v),
 		.o_debug(sdio_debug)
 		// }}}
@@ -2213,7 +2214,7 @@ module	tb_axi;
 
 	// Actual AXI-Lite Peripheral set
 	axilgpio #(
-		.NIN(2), .NOUT(2), .DEFAULT_OUTPUT((OPT_CPU) ? 2'b0: 2'b01)
+		.NIN(3), .NOUT(3), .DEFAULT_OUTPUT((OPT_CPU) ? 2'b0: 2'b01)
 	) u_gpio (
 		.S_AXI_ACLK(clk), .S_AXI_ARESETN(!reset),
 		// AXI-Lite interface
@@ -2242,8 +2243,8 @@ module	tb_axi;
 		.S_AXI_RDATA( GPIO_RDATA),
 		.S_AXI_RRESP( GPIO_RRESP),
 		// }}}
-		.i_gpio({ stream_error_flag, OPT_VCD && gpio_vcd_flag }),
-		.o_gpio({ gpio_error_flag, gpio_vcd_flag }),
+		.i_gpio({ !emmc_reset_n, stream_error_flag, OPT_VCD && gpio_vcd_flag }),
+		.o_gpio({ gpio_sdcard_present, gpio_error_flag, gpio_vcd_flag }),
 		.o_int(gpio_interrupt)
 	);
 

@@ -56,6 +56,8 @@ module	sdfrontend #(
 		parameter [0:0]	OPT_DS = OPT_SERDES,
 		parameter [0:0]	OPT_COLLISION = 1'b0,
 		parameter [0:0]	OPT_CRCTOKEN = 1'b0,
+		parameter 	BUSY_CLOCKS = 4,
+		parameter	HWBIAS = 0,
 		parameter	NUMIO = 8
 		// }}}
 	) (
@@ -125,7 +127,7 @@ module	sdfrontend #(
 	// {{{
 	genvar		gk;
 	reg		dat0_busy, wait_for_busy;
-	reg	[2:0]	busy_count;
+	reg	[$clog2(BUSY_CLOCKS+1)-1:0]	busy_count;
 	wire		raw_cmd;
 	wire	[NUMIO-1:0]	raw_iodat;
 	wire		w_cmd_collision;
@@ -133,6 +135,19 @@ module	sdfrontend #(
 	wire			io_cmd_tristate, i_cmd, o_cmd;
 	wire	[NUMIO-1:0]	io_dat_tristate, i_dat, o_dat;
 `endif
+	reg		last_ck;
+	wire	[7:0]	w_pedges, next_pedge, next_nedge, next_dedge;
+	// }}}
+
+	// Common setup
+	// {{{
+	initial	last_ck = 1'b0;
+	always @(posedge i_clk)
+		last_ck <= i_sdclk[0];
+
+	assign	next_pedge = ~{ last_ck, i_sdclk[7:1] } &  i_sdclk[7:0];
+	assign	next_nedge =  { last_ck, i_sdclk[7:1] } & ~i_sdclk[7:0];
+	assign	next_dedge = next_pedge | (i_cfg_ddr ? next_nedge : 8'h0);
 	// }}}
 	generate if (!OPT_SERDES && !OPT_DDR)
 	begin : GEN_NO_SERDES
@@ -148,12 +163,12 @@ module	sdfrontend #(
 		// to land close enough to the middle of the eye at this
 		// frequency.
 		//
-		wire		next_pedge, next_dedge;
-		reg		resp_started, last_ck;
+		reg		resp_started;
 		reg	[1:0]	io_started;
 		reg		r_cmd_data, r_cmd_strb, r_rx_strb;
 		reg	[7:0]	r_rx_data;
-		reg	[2:0]	ck_sreg, pck_sreg, ck_psreg;
+		wire	[HWBIAS+3:0]	wide_dedge, wide_pedge, wide_cmdedge;
+		reg	[HWBIAS+3:0]	ck_sreg, pck_sreg, ck_psreg;
 		reg		sample_ck, cmd_sample_ck, sample_pck;
 
 		assign	o_ck = i_sdclk[7];
@@ -166,12 +181,8 @@ module	sdfrontend #(
 
 		assign	io_dat_tristate = {(NUMIO){i_data_tristate}};
 
-		assign	next_pedge = !last_ck && o_ck;
-		assign	next_dedge = next_pedge || (i_cfg_ddr
-					&& last_ck && !o_ck);
-
 		assign	w_cmd_collision = OPT_COLLISION && io_cmd_tristate
-				&& i_cmd_en && !i_cmd && next_pedge;
+				&& i_cmd_en && !i_cmd && |next_pedge;
 
 		if (OPT_COLLISION)
 		begin : GEN_COLLISION
@@ -193,18 +204,16 @@ module	sdfrontend #(
 			// Verilator lint_on  UNUSED
 		end
 
-		initial	last_ck = 1'b0;
-		always @(posedge i_clk)
-			last_ck <= o_ck;
-
 		// sample_ck
 		// {{{
+		assign	wide_dedge = { ck_sreg[HWBIAS+2:0], |next_dedge };
+
 		initial	ck_sreg = 0;
 		always @(posedge i_clk)
 		if (i_reset || i_data_en)
 			ck_sreg <= 0;
 		else
-			ck_sreg <= { ck_sreg[1:0], next_dedge };
+			ck_sreg <= wide_dedge[HWBIAS+2:0];
 
 		initial	sample_ck = 0;
 		always @(*)
@@ -212,18 +221,20 @@ module	sdfrontend #(
 			sample_ck = 0;
 		else
 			// Verilator lint_off WIDTH
-			sample_ck = { ck_sreg[2:0], next_dedge } >> i_sample_shift[4:3];
+			sample_ck = wide_dedge[HWBIAS +: 4] >> i_sample_shift[4:3];
 			// Verilator lint_on  WIDTH
 		// }}}
 
 		// sample_pck
 		// {{{
+		assign	wide_pedge = { ck_psreg[HWBIAS+2:0], |next_pedge };
+
 		initial	ck_sreg = 0;
 		always @(posedge i_clk)
 		if (i_reset || i_data_en)
 			ck_psreg <= 0;
 		else
-			ck_psreg <= { ck_psreg[1:0], next_pedge };
+			ck_psreg <= wide_pedge[HWBIAS+2:0];
 
 		initial	sample_ck = 0;
 		always @(*)
@@ -231,24 +242,26 @@ module	sdfrontend #(
 			sample_pck = 0;
 		else
 			// Verilator lint_off WIDTH
-			sample_pck = { ck_psreg[2:0],next_pedge } >> i_sample_shift[4:3];
+			sample_pck = wide_pedge[HWBIAS +: 4] >> i_sample_shift[4:3];
 			// Verilator lint_on  WIDTH
 		// }}}
 
 		// cmd_sample_ck: When do we sample the command line?
 		// {{{
+		assign	wide_cmdedge = { pck_sreg[HWBIAS+2:0], |next_pedge };
+
 		always @(posedge i_clk)
-		if (i_reset || i_cmd_en || i_cfg_dscmd)
+		if (i_reset || i_cmd_en)
 			pck_sreg <= 0;
 		else
-			pck_sreg <= { pck_sreg[1:0], next_pedge };
+			pck_sreg <= wide_cmdedge[HWBIAS+2:0];
 
 		always @(*)
 		if (i_cmd_en)
 			cmd_sample_ck = 0;
 		else
 			// Verilator lint_off WIDTH
-			cmd_sample_ck = { pck_sreg[2:0], next_pedge } >> i_sample_shift[4:3];
+			cmd_sample_ck = wide_cmdedge[HWBIAS +: 4] >> i_sample_shift[4:3];
 			// Verilator lint_on  WIDTH
 		// }}}
 
@@ -297,18 +310,14 @@ module	sdfrontend #(
 		end
 		*/
 
-		initial	busy_count = (OPT_CRCTOKEN) ? 3'h0 : 3'h4;
+		initial	busy_count = 0;
 		always @(posedge i_clk)
-		if (!OPT_CRCTOKEN)
+		if (i_reset || i_cmd_en || i_data_en)
 		begin
-			busy_count <= 3'h4;
-		end else if (i_reset || i_cmd_en || i_data_en || i_dat[0])
+			busy_count <= BUSY_CLOCKS;
+		end else if (sample_pck && busy_count > 0)
 		begin
-			busy_count <= 0;
-		end else if (sample_pck && !busy_count[2])
-		begin
-			if (!i_dat[0])
-				busy_count <= busy_count+1;
+			busy_count <= busy_count-1;
 		end
 
 		initial	{ dat0_busy, wait_for_busy } = 2'b01;
@@ -317,11 +326,11 @@ module	sdfrontend #(
 		begin
 			dat0_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
-		end else if (wait_for_busy && (!OPT_CRCTOKEN || busy_count[2]) && !i_dat[0])
+		end else if (wait_for_busy)
 		begin
 			dat0_busy <= 1'b1;
-			wait_for_busy <= 1'b0;
-		end else if (!wait_for_busy && i_dat[0])
+			wait_for_busy <= (busy_count > 1);
+		end else if (i_dat[0])
 			dat0_busy <= 1'b0;
 
 		assign	o_data_busy = dat0_busy;
@@ -416,17 +425,17 @@ module	sdfrontend #(
 		// {{{
 		wire	[1:0]	w_cmd;
 		wire	[15:0]	w_dat;
-		wire	[1:0]	next_pedge, next_dedge;
 
 		reg	[5:0]	ck_sreg;
 		reg	[6:0]	pck_sreg, ck_psreg;
 		reg	[1:0]	sample_ck, cmd_sample_ck, sample_pck;
-		reg		resp_started, last_ck, r_last_cmd_enabled,
+		reg		resp_started, r_last_cmd_enabled,
 				r_cmd_strb, r_cmd_data, r_rx_strb;
 		wire	[1:0]	my_cmd_data;
 		reg	[1:0]	io_started;
 		reg	[7:0]	r_rx_data;
 		reg	[1:0]	busy_delay;
+		wire	[HWBIAS+7:0]	wide_pedge, wide_dedge, wide_cmdedge;
 		// Verilator lint_off UNUSED
 		wire		io_clk_tristate, ign_clk;
 		assign		ign_clk = o_ck;
@@ -519,19 +528,16 @@ module	sdfrontend #(
 		end
 		// }}}
 
-		assign	next_pedge = { !last_ck && i_sdclk[7],
-				!i_sdclk[7] && i_sdclk[3] };
-		assign	next_dedge = next_pedge | (!i_cfg_ddr ? 2'b00
-			: {last_ck && !i_sdclk[7], i_sdclk[7] && !i_sdclk[3]});
-
 		// sample_ck
 		// {{{
+		assign	wide_dedge = { ck_sreg[HWBIAS+5:0], |next_dedge[7:4], |next_dedge[3:0] };
+
 		initial	ck_sreg = 0;
 		always @(posedge i_clk)
 		if (i_data_en || i_cfg_ds)
 			ck_sreg <= 0;
 		else
-			ck_sreg <= { ck_sreg[3:0], next_dedge };
+			ck_sreg <= wide_dedge[HWBIAS+5:0];
 
 		initial	sample_ck = 0;
 		always @(*)
@@ -539,43 +545,47 @@ module	sdfrontend #(
 			sample_ck = 0;
 		else
 			// Verilator lint_off WIDTH
-			sample_ck = { ck_sreg[5:0], next_dedge } >> i_sample_shift[4:2];
+			sample_ck = wide_dedge[HWBIAS +: 8] >> i_sample_shift[4:2];
 			// Verilator lint_on  WIDTH
 		// }}}
 
 		// sample_pck -- positive edge data sampl clock
 		// {{{
+		assign	wide_pedge = { ck_psreg[HWBIAS+5:0], |next_pedge[7:4], |next_pedge[3:0] };
+
 		initial	ck_psreg = 0;
 		always @(posedge i_clk)
-		if (i_data_en || i_cfg_ds)
+		if (i_data_en)
 			ck_psreg <= 0;
 		else
-			ck_psreg <= { ck_psreg[4:0], next_pedge };
+			ck_psreg <= wide_pedge[HWBIAS+5:0];
 
 		initial	sample_pck = 0;
 		always @(*)
-		if (i_data_en || i_cfg_ds)
+		if (i_data_en)
 			sample_pck = 0;
 		else
 			// Verilator lint_off WIDTH
-			sample_pck = { ck_psreg[6:0], next_pedge } >> i_sample_shift[4:2];
+			sample_pck = wide_pedge[HWBIAS +: 8] >> i_sample_shift[4:2];
 			// Verilator lint_on  WIDTH
 		// }}}
 
 		// cmd_sample_ck: When do we sample the command line?
 		// {{{
+		assign	wide_cmdedge = { pck_sreg[HWBIAS+5:0], |next_pedge[7:4], |next_pedge[3:0] };
+
 		always @(posedge i_clk)
 		if (i_reset || i_cmd_en || r_last_cmd_enabled || i_cfg_dscmd)
 			pck_sreg <= 0;
 		else
-			pck_sreg <= { pck_sreg[4:0], next_pedge };
+			pck_sreg <= wide_cmdedge[HWBIAS + 5:0];
 
 		always @(*)
 		if (i_cmd_en || r_last_cmd_enabled || i_cfg_dscmd)
 			cmd_sample_ck = 0;
 		else
 			// Verilator lint_off WIDTH
-			cmd_sample_ck = { pck_sreg[6:0], next_pedge } >> i_sample_shift[4:2];
+			cmd_sample_ck = wide_cmdedge[HWBIAS +: 8] >> i_sample_shift[4:2];
 			// Verilator lint_on  WIDTH
 		// }}}
 
@@ -603,51 +613,39 @@ module	sdfrontend #(
 		// {{{
 		initial	busy_count = (OPT_CRCTOKEN) ? 3'h0 : 3'h4;
 		always @(posedge i_clk)
-		if (!OPT_CRCTOKEN)
+		if (i_reset || i_cmd_en || i_data_en)
 		begin
-			busy_count <= 3'h4;
-		end else if (i_reset || i_cmd_en || i_data_en)
+			busy_count <= BUSY_CLOCKS;
+		end else if (sample_pck != 0 && busy_count > 0)
 		begin
-			busy_count <= 0;
-		end else if (sample_pck != 0 && !busy_count[2])
-		begin
-			if ((sample_pck & { w_dat[8], w_dat[0] }) == 2'b00)
-				busy_count <= busy_count+1;
-			else
-				// Restart the counter on receiving any ones
-				busy_count <= 0;
+			busy_count <= busy_count - 1;
 		end
 
 		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
-		if (i_cmd_en || i_data_en)
+		if (i_reset || i_cmd_en || i_data_en)
 		begin
 			dat0_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
 			busy_delay <= -1;
 		end else if (busy_delay != 0)
 		begin
-			dat0_busy <= 1'b0;
+			dat0_busy <= 1'b1;
 			wait_for_busy <= 1'b1;
 			busy_delay <= busy_delay - 1;
-		end else if (wait_for_busy && (!OPT_CRCTOKEN || busy_count[2])
-				&& (cmd_sample_ck != 0)
-				&& ({ cmd_sample_ck[1], cmd_sample_ck[0] }
-						& {w_dat[8],w_dat[0]})==2'b0)
+		end else if (wait_for_busy)
 		begin
 			dat0_busy <= 1'b1;
-			wait_for_busy <= 1'b0;
-		end else if (!wait_for_busy && (cmd_sample_ck != 0)
-				&& (cmd_sample_ck & {w_dat[8],w_dat[0]})!=2'b0)
+			wait_for_busy <= (busy_count > 1);
+		end else if ((sample_pck != 0)
+				&& (sample_pck & {w_dat[8],w_dat[0]})!=2'b0)
 			dat0_busy <= 1'b0;
 
 		assign	o_data_busy = dat0_busy;
 		// }}}
 
-		initial	last_ck = 1'b0;
 		always @(posedge i_clk)
 		begin
-			last_ck <= i_sdclk[3];
 
 			// The command response
 			// {{{
@@ -737,10 +735,9 @@ module	sdfrontend #(
 		reg	[1:0]	w_cmd_data;
 		reg	[15:0]	r_rx_data;
 		wire	[15:0]	w_rx_data;
-		reg		last_ck;
 		wire	[7:0]	next_ck_sreg, next_ck_psreg;
 		reg	[24:0]	ck_sreg, ck_psreg;
-		wire	[7:0]	next_pedge, next_nedge, wide_cmd_data;
+		wire	[7:0]	wide_cmd_data;
 		reg	[7:0]	sample_ck, sample_pck;
 		reg	[1:0]	r_cmd_data;
 		reg		busy_strb;
@@ -753,6 +750,7 @@ module	sdfrontend #(
 		reg	[7:0]	cmd_sample_ck;
 		wire		busy_pin;
 		reg	[1:0]	busy_delay;
+		wire	[HWBIAS+31:0]	wide_pedge, wide_dedge, wide_cmdedge;
 		// Verilator lint_off UNUSED
 		wire	[7:0]	my_cmd_data;
 		// Verilator lint_on  UNUSED
@@ -781,53 +779,49 @@ module	sdfrontend #(
 		);
 		// }}}
 
-		assign	next_pedge = { ~{last_ck, i_sdclk[7:1] } &  i_sdclk[7:0] };
-		assign	next_nedge = i_cfg_ddr ? {  {last_ck, i_sdclk[7:1] } & ~i_sdclk[7:0] } : 8'h0;
-
-		assign	next_ck_sreg = (i_data_en) ? 8'h0
-				: { next_pedge | next_nedge };
+		assign	next_ck_sreg  = (i_data_en) ? 8'h0 : next_dedge;
 		assign	next_ck_psreg = (i_data_en) ? 8'h0 : next_pedge;
-
-		initial	last_ck = 0;
-		always @(posedge i_clk)
-			last_ck <= i_sdclk[0];
 
 		// sample_ck
 		// {{{
+		assign	wide_dedge = { ck_sreg[HWBIAS+23:0], next_dedge };
+
 		// We use this for busy detection, as well as reception
 		always @(posedge i_clk)
-		if (i_reset || i_data_en
-				|| (!wait_for_busy && (!i_rx_en || i_cfg_ds)))
+		if (i_reset || i_data_en)
+				//||(!wait_for_busy && (!i_rx_en || i_cfg_ds)))
 			ck_sreg <= 0;
 		else
-			ck_sreg <= { ck_sreg[16:0], next_ck_sreg };
+			ck_sreg <= wide_dedge[HWBIAS+23:0];
 
 		initial	sample_ck = 0;
 		always @(posedge i_clk)
-		if (i_reset || i_data_en
-				|| (!wait_for_busy && (!i_rx_en || i_cfg_ds)))
+		if (i_reset || i_data_en)
+				//||(!wait_for_busy && (!i_rx_en || i_cfg_ds)))
 			sample_ck <= 0;
 		else
 			// Verilator lint_off WIDTH
-			sample_ck <= { ck_sreg[24:0], next_ck_sreg } >> i_sample_shift;
+			sample_ck <= wide_dedge[HWBIAS +: 32] >> i_sample_shift;
 			// Verilator lint_on  WIDTH
 		// }}}
 
 		// sample_pck
 		// {{{
+		assign	wide_pedge = { ck_psreg[HWBIAS+23:0], next_pedge };
+
 		always @(posedge i_clk)
-		if (i_reset || !i_rx_en || i_data_en || i_cfg_ds)
+		if (i_reset || i_data_en)
 			ck_psreg <= 0;
 		else
-			ck_psreg <= { ck_psreg[16:0], next_ck_psreg };
+			ck_psreg <= wide_pedge[HWBIAS + 23:0];
 
 		initial	sample_pck = 0;
 		always @(posedge i_clk)
-		if (i_reset || !i_rx_en || i_data_en || i_cfg_ds)
+		if (i_reset || i_data_en)
 			sample_pck <= 0;
 		else
 			// Verilator lint_off WIDTH
-			sample_pck <= { ck_psreg[24:0], next_ck_psreg } >> i_sample_shift;
+			sample_pck <= wide_pedge[HWBIAS +: 32] >> i_sample_shift;
 			// Verilator lint_on  WIDTH
 		// }}}
 
@@ -963,44 +957,29 @@ module	sdfrontend #(
 		// o_data_busy, dat0_busy, wait_for_busy, busy_delay
 		// {{{
 		always @(posedge i_clk)
-		if (!OPT_CRCTOKEN)
+		if (i_reset || i_cmd_en || i_data_en || i_rx_en)
 		begin
-			busy_count <= 3'h4;
-		end else if (i_reset || i_cmd_en || i_data_en)
-		begin
-			busy_count <= 0;
-		end else if (busy_strb != 0 && !busy_count[2])
-		begin
-			if (busy_pin)
-				busy_count <= busy_count+1;
-			else
-				// Restart the counter on receiving any ones
-				busy_count <= 0;
-		end
+			busy_count <= BUSY_CLOCKS;
+		end else if (busy_strb != 0 && busy_count > 0)
+			busy_count <= busy_count - 1;
 
 		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
-		if (i_cmd_en || i_data_en)
+		if (i_reset || i_cmd_en || i_data_en || i_rx_en)
 		begin
 			dat0_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
 			busy_delay <= -1;
 		end else if (busy_delay != 0)
 		begin
-			dat0_busy <= 1'b0;
+			dat0_busy <= 1'b1;
 			wait_for_busy <= 1'b1;
 			busy_delay <= busy_delay - 1;
 		end else if (wait_for_busy)
 		begin
-			if (busy_pin && (!OPT_CRCTOKEN || busy_count[2]))
-			begin
-				// Once busy is activated, we stop waiting for
-				// it, mark ourselves as busy, and then follow
-				// the pin for our busy indicators.
-				dat0_busy <= 1'b1;
-				wait_for_busy <= 1'b0;
-			end
-		end else if (!wait_for_busy && !busy_pin)
+			dat0_busy <= 1'b1;
+			wait_for_busy <= (busy_count > 1);
+		end else if (!busy_pin)
 			// Once busy is released, we don't become busy again
 			// until we reset
 			dat0_busy <= 1'b0;
@@ -1015,18 +994,20 @@ module	sdfrontend #(
 		always @(posedge i_clk)
 			r_last_cmd_enabled <= i_cmd_en;
 
+		assign	wide_cmdedge = { pck_sreg[HWBIAS+23:0], next_pedge };
+
 		always @(posedge i_clk)
 		if (i_reset || i_cfg_dscmd || i_cmd_en)
 			pck_sreg <= 0;
 		else
-			pck_sreg <= { pck_sreg[16:0], next_pedge };
+			pck_sreg <= wide_cmdedge[HWBIAS+23:0];
 
 		always @(posedge i_clk)
 		if (i_reset || i_cfg_dscmd || i_cmd_en || r_last_cmd_enabled)
 			cmd_sample_ck <= 0;
 		else
 			// Verilator lint_off WIDTH
-			cmd_sample_ck <= { pck_sreg[24:0], next_pedge } >> i_sample_shift;
+			cmd_sample_ck <= wide_cmdedge[HWBIAS +: 32] >> i_sample_shift;
 			// Verilator lint_on  WIDTH
 
 		xsdserdes8x #(
@@ -1171,16 +1152,19 @@ module	sdfrontend #(
 
 		// Local declarations
 		// {{{
-		wire	afifo_reset_n;
-		wire	cmd_ds_en;
+		wire		afifo_reset_n, cmd_ds_en;
 		reg		af_started_p, af_started_n, acmd_started;
-		reg		af_count_p, af_count_n, acmd_count;
+		reg		af_count_p, af_count_n, acmd_count,
+				af_waiting;
 		wire	[3:0]	ign_afifo_full, afifo_empty;
 		wire	[31:0]	af_data;
 		wire	[1:0]	acmd_empty, ign_acmd_full;
 		wire	[1:0]	af_cmd;
 		// }}}
 
+		// Need to keep this from triggering on CRC tokens, which
+		//   might also toggle the DS.  Either that, or ... we need
+		//   to clear after the CRC tokens.
 		assign	afifo_reset_n = i_cfg_ds && !i_data_en && i_rx_en;
 		assign	cmd_ds_en = i_cfg_dscmd && !i_cmd_en;
 

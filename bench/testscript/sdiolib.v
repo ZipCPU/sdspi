@@ -247,6 +247,7 @@ task	sdcard_send_op_cond(inout [31:0] op_cond);	// ACMD41
 begin
 $display("SEND-OP-COND");
 	sdcard_send_app_cmd;
+	sdio_wait_while_busy;
 
 	// Send a command 41
 	u_bfm.writeio(ADDR_SDDATA, op_cond);			// 0x4000_0000
@@ -357,11 +358,16 @@ begin
 
 	// First, wait for the card to be detected
 	// {{{
-`ifndef	SDIO_AXI
 	// Tell the GPIO to generate a card present signal
+`ifdef	SDIO_AXI
+	read_data = 32'h0; read_data[2] = 1'b1;
+	u_bfm.write_f(GPIO_ADDR+4, read_data);
+`else
 	read_data = 32'h0; read_data[18] = 1'b1; read_data[2] = 1'b1;
 	u_bfm.write_f(GPIO_ADDR, read_data);
 `endif
+
+	// Let the card present signal to activate (low)
 	u_bfm.readio(ADDR_SDCARD, read_data);
 	while (1'b1 === read_data[19])
 	begin
@@ -464,6 +470,7 @@ begin
 		$display("Data-Strobe:    No support");
 	end else begin
 		$display("ERR: Invalid data-strobe response");
+		error_flag = 1;
 	end
 
 	u_bfm.writeio(ADDR_SDPHY, read_data);
@@ -500,14 +507,25 @@ begin
 	if (1'b1 === read_data[25])
 	begin
 		$display("HW-Reset :      Yes, Supported");
-`ifndef	SDIO_AXI
-		u_bfm.readio(GPIO_ADDR, read_data);
+`ifdef	SDIO_AXI
+		u_bfm.readio(GPIO_ADDR+16, read_data);
 		assert(1'b1 === read_data[2]);
+`else
+		u_bfm.readio(GPIO_ADDR, read_data);
+		assert(1'b1 === read_data[18]);
+`endif
 		read_data = 32'h00_8080;	// Clear the reset
 		u_bfm.writeio(ADDR_SDCARD, read_data);
-		u_bfm.readio(GPIO_ADDR, read_data);
+		repeat (1536)
+			@(posedge clk);
+`ifdef	SDIO_AXI
+		u_bfm.readio(GPIO_ADDR+16, read_data);
 		assert(1'b0 === read_data[2]);
+`else
+		u_bfm.readio(GPIO_ADDR, read_data);
+		assert(1'b0 === read_data[18]);
 `endif
+		$display("HW-Reset :      Cleared");
 	end else begin
 		$display("HW-Reset :      No support");
 	end
@@ -516,10 +534,13 @@ begin
 	// OPT_CARD_DETECT (? Can this be detected?)
 	// {{{
 	// First, "Remove" the card
-`ifndef	SDIO_AXI
-	// Remove the card
+`ifdef	SDIO_AXI
+	read_data = 32'h0; read_data[2] = 1'b1;
+	u_bfm.write_f(GPIO_ADDR+8, read_data);
+`else
 	read_data = 32'h0; read_data[18] = 1'b1; read_data[2] = 1'b0;
 	u_bfm.write_f(GPIO_ADDR, read_data);
+`endif
 
 	// Verify it is now seen as "removed"
 	repeat (5)
@@ -532,8 +553,13 @@ begin
 		assert(read_data[19:18] === 2'b11);
 
 		// Now let's see if we can insert it.
+`ifdef	SDIO_AXI
+		read_data = 32'h0; read_data[2] = 1'b1;
+		u_bfm.write_f(GPIO_ADDR+4, read_data);
+`else
 		read_data = 32'h0; read_data[18] = 1'b1; read_data[2] = 1'b1;
 		u_bfm.write_f(GPIO_ADDR, read_data);
+`endif
 		repeat (1536)
 			@(posedge clk);
 		u_bfm.readio(ADDR_SDCARD, read_data);
@@ -561,10 +587,10 @@ begin
 	end else begin
 		$display("CardDetection:  No support");
 	end
-`endif
 	// }}}
 
 	// OPT_CRCTOKEN (? Can this be detected? -- only following a write req)
+	$display("Discovery complete");
 end endtask
 // }}}
 

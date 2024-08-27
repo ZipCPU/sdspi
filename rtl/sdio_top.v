@@ -89,6 +89,7 @@ module sdio_top #(
 		parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,
 		localparam	AW = ADDRESS_WIDTH-$clog2(DW/8),
 `endif
+		parameter	HWDELAY=0,
 		// OPT_ISTREAM: Enable an incoming AXI stream to specify data
 		// {{{
 		// to the DMA, separate from any data that may be read from
@@ -520,9 +521,12 @@ module sdio_top #(
 	);
 
 	sdfrontend #(
+		// {{{
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR), .NUMIO(NUMIO),
 		.OPT_DS(OPT_DS), .OPT_COLLISION(OPT_COLLISION),
-		.OPT_CRCTOKEN(OPT_CRCTOKEN)
+		.OPT_CRCTOKEN(OPT_CRCTOKEN), .HWBIAS(HWDELAY),
+		.BUSY_CLOCKS(OPT_EMMC ? 16 : 4)
+		// }}}
 	) u_sdfrontend (
 		// {{{
 		.i_clk(i_clk), .i_hsclk(i_hsclk), .i_reset(i_reset),

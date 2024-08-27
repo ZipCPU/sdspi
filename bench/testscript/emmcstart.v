@@ -52,6 +52,8 @@ begin
 		@(posedge clk);
 	@(posedge clk);
 
+	emmc_discover;
+
 	// u_bfm.writeio(ADDR_SDPHY, SECTOR_16B | SPEED_100KHZ | EMMC_W1);
 
 	// Read our capabilities back from the controller
@@ -63,7 +65,7 @@ begin
 
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
-	end while(read_data[7:0] > 8'h2);
+	end while(read_data[7:0] > 8'h3);
 
 	u_bfm.readio(ADDR_SDPHY, read_data);
 	case(read_data[11:10])
@@ -76,11 +78,15 @@ begin
 
 	max_spd = read_data[7:0];
 	if (3'h0 == read_data[18:16])
-		sample_shift = { 11'h0, 5'h08, 16'h0 };
-	else if (2'b00 == read_data[17:16])
+	begin // Raw
+		sample_shift = { 11'h0, 5'h10, 16'h0 };
+	end else if (2'b00 == read_data[17:16])
+	begin // DDR
 		sample_shift = { 11'h0, 5'h0c, 16'h0 };
-	else
+	end else begin
+		// SERDES
 		sample_shift = { 11'h0, 5'h08, 16'h0 };
+	end
 	// }}}
 
 	// Now set up for the capabilities we will be using

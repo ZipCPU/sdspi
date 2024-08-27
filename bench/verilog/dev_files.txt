@@ -45,3 +45,4 @@ wb2axip/wbxbar.v
 ../../rtl/sddma.v
 ../../rtl/sdtxframe.v
 ../../rtl/sdrxframe.v
+../formal/fclk.v

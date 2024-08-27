@@ -267,26 +267,26 @@ module mdl_sdtx #(
 	begin
 		r_count <= #FF_HOLD r_count - 1;
 		if (i_width[0])
-			tx_sreg <= #FF_HOLD { tx_sreg[43:0], 4'hf };
+			tx_sreg <= #FF_HOLD { tx_sreg[75:0], 4'hf };
 		else if (i_width[1])
-			tx_sreg <= #FF_HOLD { tx_sreg[39:0], 8'hff };
+			tx_sreg <= #FF_HOLD { tx_sreg[71:0], 8'hff };
 		else
-			tx_sreg <= #FF_HOLD { tx_sreg[46:0], 1'b1 };
+			tx_sreg <= #FF_HOLD { tx_sreg[78:0], 1'b1 };
 
 		if (r_crc)
 		begin
 			if (i_width[0])
 				tx_sreg <= #FF_HOLD { crc[11][15],
 					crc[10][15], crc[9][15], crc[8][15],
-					44'hfff_ffff_ffff };
+					44'hfff_ffff_ffff, 32'hffff_ffff };
 			else if (i_width[1])
 				tx_sreg <= #FF_HOLD {
 				crc[15][15],crc[14][15],crc[13][15],crc[12][15],
 				crc[11][15],crc[10][15],crc[ 9][15],crc[ 8][15],
-					40'hff_ffff_ffff };
+					40'hff_ffff_ffff, 32'hffff_ffff };
 			else
 				tx_sreg <= #FF_HOLD { crc[8][15], 7'h7f,
-					40'hff_ffff_ffff };
+					40'hff_ffff_ffff, 32'hffff_ffff };
 		end
 
 		if (r_count <= 1)

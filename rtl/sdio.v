@@ -244,8 +244,8 @@ module	sdio #(
 	wire	[7:0]		cfg_ckspeed;
 	wire	[1:0]		cfg_width;
 
-	wire			clk_stb, clk_half;
-	wire	[7:0]		w_sdclk, clk_ckspd;
+	wire			clk_stb, clk_half, clk_clk90;
+	wire	[7:0]		clk_wide, clk_ckspd;
 
 	wire			cmd_request, cmd_err, cmd_busy, cmd_done;
 	wire			cmd_selfreply;
@@ -506,25 +506,29 @@ module	sdio #(
 
 	assign	o_rx_en = rx_en && rx_active;
 
-	sdckgen
-	u_clkgen (
+	sdckgen #(
+		.OPT_SERDES(OPT_SERDES),
+		.OPT_DDR(OPT_DDR)
+	) u_clkgen (
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset),
 		//
 		.i_cfg_clk90(cfg_clk90), .i_cfg_ckspd(cfg_ckspeed),
 		.i_cfg_shutdown(cfg_clk_shutdown && !rx_active),
 
-		.o_ckstb(clk_stb), .o_hlfck(clk_half), .o_ckwide(w_sdclk),
-		.o_ckspd(clk_ckspd)
+		.o_ckstb(clk_stb), .o_hlfck(clk_half), .o_ckwide(clk_wide),
+		.o_clk90(clk_clk90), .o_ckspd(clk_ckspd)
 		// }}}
 	);
 
 	sdcmd #(
+		// {{{
 		.OPT_DS(OPT_DS),
 		.OPT_EMMC(OPT_EMMC),
 		.OPT_SERDES(OPT_SERDES),
 		.MW(MW),
 		.LGLEN(LGFIFO-$clog2(MW/8))
+		// }}}
 	) u_sdcmd (
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset || soft_reset),
@@ -555,19 +559,24 @@ module	sdio #(
 	);
 
 	sdtxframe #(
+		// {{{
 		.OPT_SERDES(OPT_SERDES || OPT_DDR),
 		.OPT_SERDES(OPT_SERDES),
 		.OPT_CRCTOKEN(OPT_CRCTOKEN)
 		// .MW(MW)
+		// }}}
 	) u_txframe (
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset || soft_reset),
 		//
-		.i_cfg_spd(cfg_ckspeed),
+		.i_cfg_spd(clk_ckspd),
 		.i_cfg_width(cfg_width),
 		.i_cfg_ddr(o_cfg_ddr),
 		.i_cfg_pp(cfg_data_pp),
 		.i_cfg_expect_ack(cfg_expect_ack),
+		// Extra insights, for assertion checking
+		.i_cfg_clk90(clk_clk90),
+		.i_ckwide(clk_wide),
 		//
 		.i_en(tx_en), .i_ckstb(clk_stb), .i_hlfck(clk_half),
 		//
@@ -607,8 +616,26 @@ module	sdio #(
 		// }}}
 	);
 
+	// Delay the clock by one cycle, to match the data
+	// {{{
+	// The following criteria are really redundant.  We could just set
+	// o_sdclk to clk_wide in all conditions.  The extra criteria are here
+	// to simply help ensure minimum logic where available, and to help
+	// guarantee that minimum logic means the same to the tool as it does
+	// to me.  It's also here as a bit of reminder-documentation of what
+	// our various OPT* criteria can generate and handle.
+	initial	o_sdclk = 0;
 	always @(posedge i_clk)
-		o_sdclk <= w_sdclk;
+	if (OPT_SERDES)
+		// Could be one of: 0x66, 0x33, 0x3c, 0x0f, 0x00, or 0xff
+		o_sdclk <= clk_wide;
+	else if (OPT_DDR)
+		// One of 0x0f, 0xf0, 0x00, or 0xff
+		o_sdclk <= { {(4){clk_wide[7]}}, {(4){clk_wide[3]}} };
+	else
+		// Can only be one of 0x00 or 0x0ff
+		o_sdclk <= {(8){ clk_wide[7] }};
+	// }}}
 
 	////////////////////////////////////////////////////////////////////////
 	//

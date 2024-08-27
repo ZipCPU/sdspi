@@ -51,14 +51,24 @@ begin
 
 	sdcard_discover;
 
+$display("Starting with CMD=0x%08x, PHY=0x%08x",
+		u_sdio.u_sdio.u_control.w_cmd_word,
+		u_sdio.u_sdio.u_control.w_phy_ctrl);
+
 	// Read our capabilities back from the controller
 	// {{{
 	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_200MHZ
 				| SDPHY_WTEST | SPEED_CLKOFF
 				| SDPHY_DDR | SDPHY_SHFTMSK);
+repeat(5) @(posedge clk);
+$display("Post write, CMD=0x%08x, PHY=0x%08x",
+		u_sdio.u_sdio.u_control.w_cmd_word,
+		u_sdio.u_sdio.u_control.w_phy_ctrl);
+
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);
-	end while(read_data[7:0] > 8'h2);
+	end while(read_data[7:0] > 8'h3);
+$display("Done waiting on initial clock change");
 
 	case(read_data[11:10])
 	2'b00: numio = 1;

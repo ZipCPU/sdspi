@@ -79,6 +79,27 @@ begin
 		@(posedge clk);
 	@(posedge clk);
 
+	// Start by "inserting" an SD card
+	// {{{
+`ifdef	SDIO_AXI
+	read_data = 32'h0; read_data[2] = 1'b1;
+	u_bfm.write_f(GPIO_ADDR+4, read_data);
+`else
+	read_data = 32'h0; read_data[18] = 1'b1; read_data[2] = 1'b1;
+	u_bfm.write_f(GPIO_ADDR, read_data);
+`endif
+	// }}}
+
+	// Then wait for that card to be detected
+	// {{{
+	wait(sdio_interrupt);
+	u_bfm.readio(ADDR_SDCARD, read_data);
+	assert(1'b0 === read_data[19]);
+	// Clear the SD card removed bit
+	read_data = 32'h0c_8080;
+	u_bfm.write_f(ADDR_SDCARD, read_data);
+	// }}}
+
 	// Set clock speed = 25MHz
 	// {{{
 	// We can start at 25MHz b/c the simulation model allows us to.  We
@@ -174,10 +195,19 @@ $display("Set speed to 25MHz");
 
 	// Test at SPEED_200=200MHZ SDR = 100MB/s, or 32b / 4 clocks
 	// {{{
-$display("Set speed to 200MHz");
-	u_bfm.write_f(ADDR_SDPHY, SECTOR_512B | SPEED_SDR200 | SDPHY_W4 | sample_shift);
-	sdcard_write_stream(6, 32'h4);
-	sdcard_read_stream(6, 32'h4);
+	if (OPT_SERDES)
+	begin
+		$display("Set speed to 200MHz");
+		u_bfm.write_f(ADDR_SDPHY, SECTOR_512B | SPEED_SDR200 | SDPHY_W4 | sample_shift);
+		u_bfm.readio(ADDR_SDPHY, read_data);
+		while(read_data[7:0] != SPEED_SDR200[7:0])
+		begin
+			u_bfm.readio(ADDR_SDPHY, read_data);
+		end
+
+		sdcard_write_stream(6, 32'h4);
+		sdcard_read_stream(6, 32'h4);
+	end
 	// }}}
 
 	repeat(512)

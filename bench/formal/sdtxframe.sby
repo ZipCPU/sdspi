@@ -15,6 +15,7 @@ smtbmc
 
 [script]
 read -formal sdtxframe.v
+read -formal fclk.v
 --pycode-begin--
 cmd = "hierarchy -top sdtxframe"
 cmd += " -chparam OPT_SERDES %d" % (1 if "serdes" in tags else 0)
@@ -25,3 +26,4 @@ prep -top sdtxframe
 
 [files]
 ../../rtl/sdtxframe.v
+fclk.v

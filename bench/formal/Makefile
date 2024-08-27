@@ -162,24 +162,33 @@ $(SDAXIL)_cvr/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_registe
 
 .PHONY: $(SDCK)
 ## {{{
-$(SDCK): $(SDCK)_prf/PASS # $(SDCK)_cvr/PASS
-$(SDCK)_prf/PASS: $(SDCK).sby $(RTL)/$(SDCK).v
+$(SDCK): $(SDCK)_prf/PASS $(SDCK)_prfd/PASS $(SDCK)_prf8/PASS
+$(SDCK): $(SDCK)_cvr/PASS $(SDCK)_cvrd/PASS $(SDCK)_cvr8/PASS
+$(SDCK)_prf/PASS: $(SDCK).sby fclk.v $(RTL)/$(SDCK).v
 	sby -f $(SDCK).sby prf
-$(SDCK)_cvr/PASS: $(SDCK).sby $(RTL)/$(SDCK).v
+$(SDCK)_prfd/PASS: $(SDCK).sby fclk.v $(RTL)/$(SDCK).v
+	sby -f $(SDCK).sby prfd
+$(SDCK)_prf8/PASS: $(SDCK).sby fclk.v $(RTL)/$(SDCK).v
+	sby -f $(SDCK).sby prf8
+$(SDCK)_cvr/PASS: $(SDCK).sby fclk.v $(RTL)/$(SDCK).v
 	sby -f $(SDCK).sby cvr
+$(SDCK)_cvrd/PASS: $(SDCK).sby fclk.v $(RTL)/$(SDCK).v
+	sby -f $(SDCK).sby cvrd
+$(SDCK)_cvr8/PASS: $(SDCK).sby fclk.v $(RTL)/$(SDCK).v
+	sby -f $(SDCK).sby cvr8
 ## }}}
 
 .PHONY: $(SDTX)
 ## {{{
 $(SDTX): $(SDTX)_prf/PASS  $(SDTX)_cvr/PASS
 $(SDTX): $(SDTX)_prfs/PASS $(SDTX)_cvrs/PASS
-$(SDTX)_prf/PASS: $(RTL)/$(SDTX).v $(SDTX).sby
+$(SDTX)_prf/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
 	sby -f $(SDTX).sby prf
-$(SDTX)_prfs/PASS: $(RTL)/$(SDTX).v $(SDTX).sby
+$(SDTX)_prfs/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
 	sby -f $(SDTX).sby prfs
-$(SDTX)_cvr/PASS: $(RTL)/$(SDTX).v $(SDTX).sby
+$(SDTX)_cvr/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
 	sby -f $(SDTX).sby cvr
-$(SDTX)_cvrs/PASS: $(RTL)/$(SDTX).v $(SDTX).sby
+$(SDTX)_cvrs/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
 	sby -f $(SDTX).sby cvrs
 ## }}}
 

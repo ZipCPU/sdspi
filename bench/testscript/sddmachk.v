@@ -69,10 +69,12 @@ begin
 		@(posedge clk);
 	@(posedge clk);
 
+	sdcard_discover;
+
 	// Set clock speed = 25MHz
 	// {{{
-	// We can start at 25MHz b/c the simulation model allows us to.  We
-	// might not do this with real hardware.
+	// We can immediately start at 25MHz b/c our own simulation model
+	// allows us to.  We might not do this with real hardware.
 	sample_shift = { 11'h0, 5'h08, 16'h0 };
 	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_25MHZ | SDPHY_W1 | { 11'h0, 5'h1f, 16'h0 });
 	u_bfm.readio(ADDR_SDPHY, read_data);
@@ -168,6 +170,12 @@ $display("Set speed to 25MHz");
 	// {{{
 $display("Set speed to 200MHz");
 	u_bfm.write_f(ADDR_SDPHY, SECTOR_512B | SPEED_SDR200 | SDPHY_W4 | sample_shift);
+	u_bfm.readio(ADDR_SDPHY, read_data);
+	while(read_data[7:0] != SPEED_SDR200[7:0])
+	begin
+		u_bfm.readio(ADDR_SDPHY, read_data);
+	end
+
 	sdcard_write_dma(6, 32'h4, MEM_ADDR);
 	sdcard_read_dma(4, 32'h5, MEM_ADDR + ((6+4)<<9));
 	// }}}

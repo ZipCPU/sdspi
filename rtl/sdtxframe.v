@@ -64,6 +64,9 @@ module	sdtxframe #(
 		input	wire			i_cfg_pp,
 		input	wire			i_cfg_expect_ack,
 		//
+		input	wire			i_cfg_clk90,
+		input	wire	[7:0]		i_ckwide,
+		//
 		input	wire			i_en, i_ckstb, i_hlfck,
 		//
 		input	wire			S_VALID,
@@ -875,8 +878,8 @@ module	sdtxframe #(
 	// {{{
 	// verilator coverage_off
 	// verilator lint_off UNUSED
-	// wire	unused;
-	// assign	unused = i_wb_cyc;
+	wire	unused;
+	assign	unused = &{ 1'b0, i_ckwide, i_cfg_clk90 };
 	// verilator lint_on  UNUSED
 	// verilator coverage_on
 	// }}}
@@ -893,7 +896,8 @@ module	sdtxframe #(
 	// as formal proofs.  They are useful for verifying assumptions.
 	// {{{
 	// Verilator lint_off UNUSED
-	reg	f_pending_half, f_past_tx_valid, f_past_tick, f_ck_started;
+	wire		f_pending_half, f_pending_reset;
+	reg		f_past_tx_valid, f_past_tick, f_ck_started;
 	reg	f_ckstb, f_hlfck;
 	(* keep *)	reg	[9+5:0]	fb_count, fd_offset, fd_count,
 					f_loaded_count;
@@ -976,8 +980,11 @@ module	sdtxframe #(
 	endcase
 
 	always @(*)
-	if (!i_reset && i_en && (tx_valid || fb_count > 0))
-		assert(f_ck_started);
+	if (!i_reset && (tx_valid || fb_count > 0))
+	begin
+		assert(i_en);
+		// assert(i_ckstb || f_ck_started);
+	end
 	// }}}
 
 	initial	fs_last = 0;
@@ -1046,40 +1053,26 @@ module	sdtxframe #(
 
 	// Clock assumptions
 	// {{{
-	initial	f_pending_half = 1'b0;
-	always @(posedge i_clk)
-	if (i_reset)
-		f_pending_half <= 1'b0;
-	else if (i_ckstb)
-		f_pending_half <= !i_hlfck;
-	else if (i_hlfck)
-		f_pending_half <= 1'b0;
-
-	always @(*)
-	if (i_en && i_cfg_spd == 2)
-		assume({ i_ckstb, i_hlfck } == (f_pending_half ? 2'b01:2'b10));
+	fclk #(
+		.OPT_SERDES(OPT_SERDES), .OPT_DDR(1'b1)
+	) u_clock (
+		.i_clk(i_clk), .i_reset(i_reset),
+		.i_en(i_en), .i_ckspd(i_cfg_spd), .i_clk90(i_cfg_clk90),
+		.i_ckstb(i_ckstb), .i_hlfck(i_hlfck),
+			.i_ckwide(i_ckwide),
+		.f_pending_reset(f_pending_reset),
+		.f_pending_half(f_pending_half)
+	);
 
 	always @(posedge i_clk)
-	if (!i_reset && i_en)
-	begin
-		if (cfg_period == P_1D)
-		begin
-			assume(!i_ckstb || (!cfg_ddr || !i_hlfck));
-		end else
-			assume(i_ckstb == i_hlfck);	// On every clock period
-	end
+	if (!i_reset && i_en && i_cfg_ddr)
+		assume(i_cfg_clk90);
 
-	initial	f_past_tick = 0;
-	always @(posedge i_clk)
-		f_past_tick <= i_ckstb || i_hlfck;
+	// always @(*)
+	// if (i_en && i_cfg_spd == 2 && !f_pending_reset)
+	//	assume({ i_ckstb, i_hlfck } == (f_pending_half ? 2'b01:2'b10));
 
-	always @(posedge i_clk)
-	if (!i_reset && i_en && i_cfg_spd > 2)
-	begin
-		if (f_past_tick)
-			assume(!i_ckstb && !i_hlfck);
-	end
-
+	/*
 	always @(posedge i_clk)
 	if (i_reset || !i_en)
 		f_ck_started <= 0;
@@ -1095,25 +1088,13 @@ module	sdtxframe #(
 			assume(i_ckstb ^ i_hlfck);
 	end else if (i_en && i_cfg_spd == 0 && i_ckstb)
 		assume(i_hlfck);
-
+	*/
 
 	generate if (OPT_SERDES)
 	begin : GEN_SERDES_CLK
 
-		always @(*)
-		if (f_pending_half)
-		begin
-			// Had the clock, not the half clock
-			assume(!i_ckstb);
-		end else begin
-			// Clock strobe is next.  Can't have the half
-			// clock w/o first having the strobe.  Both can
-			// take place on the same cycle.
-			assume(i_ckstb || !i_hlfck);
-		end
-
 		always @(posedge i_clk)
-		if (!i_reset && i_en && i_cfg_spd < 2)
+		if (!i_reset && i_en && i_cfg_spd < 2 && !f_pending_reset)
 		begin
 			if (f_ck_started)
 			begin
@@ -1129,31 +1110,8 @@ module	sdtxframe #(
 			end
 		end
 
-	end else begin : NO_SERDES_CLK
-
-		// always @(posedge i_clk)
-		// if (!i_reset && i_en)
-		//	assume(!i_ckstb || !i_hlfck);
-
-		always @(*)
-		if (f_pending_half)
-			assume(!i_ckstb);
-		else if (i_hlfck)
-			assume(i_ckstb);
-
 	end endgenerate
 
-
-	always @(posedge i_clk)
-	if (!i_reset && i_en) case(i_cfg_spd)
-	// Both clocks might be zero if off initially.  f_pending_half might
-	//   also be true if the clocks are in the middle of being
-	//   adjusted.
-	0: assume((f_pending_half && !i_ckstb) || i_ckstb == i_hlfck);
-	1: assume((f_pending_half && !i_ckstb) || i_ckstb == i_hlfck);
-	2: assume(i_ckstb ^ i_hlfck);
-	default: assume(!i_ckstb || !i_hlfck);
-	endcase
 	// }}}
 	// }}}
 `ifdef	FORMAL
@@ -1252,6 +1210,28 @@ module	sdtxframe #(
 	//
 	// Clock interface
 	// {{{
+	always @(*)
+	if (i_en)
+		assume(!f_pending_reset);
+
+	always @(posedge i_clk)
+	if (!i_reset && i_en && (fb_count > 0 || pstate != P_IDLE))
+	begin
+		if (!OPT_SERDES)
+		begin
+			assert(cfg_period == P_1D);
+		end else if (f_cfg_ddr && f_cfg_spd == 0)
+		begin
+			assert(cfg_period == P_4D);
+		end else if ((f_cfg_ddr && f_cfg_spd == 1)
+				||(!f_cfg_ddr && f_cfg_spd == 0))
+		begin
+			assert(cfg_period == P_2D);
+		end else begin
+			assert(cfg_period == P_1D);
+		end
+	end
+
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -1658,6 +1638,10 @@ module	sdtxframe #(
 			|| (!pre_valid && pstate == P_LAST && ck_counts==0));
 	end
 	// }}}
+
+	always @(*)
+	if (!i_reset && tx_valid && fb_count > 0)
+		assert(!f_pending_reset);
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////

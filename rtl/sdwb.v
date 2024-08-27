@@ -227,6 +227,7 @@ module	sdwb #(
 				FIFO_ID_BIT      = 12,
 				USE_FIFO_BIT     = 11,
 				FIFO_WRITE_BIT   = 10;	// Write to SD card
+	localparam		DDR_BIT = 8, CLK90_BIT=14;
 
 	localparam	[1:0]	WIDTH_1W = 2'b00,
 				WIDTH_4W = 2'b01,
@@ -317,12 +318,18 @@ module	sdwb #(
 	// {{{
 	initial	o_soft_reset = 1'b1;
 	always @(posedge i_clk)
-	if (i_reset || !card_present)
+	if (i_reset || !card_present || (OPT_HWRESET && !o_hwreset_n))
+	begin
 		o_soft_reset <= 1'b1;
-	else
-		o_soft_reset <= (bus_write && bus_wraddr == ADDR_CMD)
-			&&((bus_wstrb[3] && bus_wdata[25])
-			 ||(&bus_wstrb[3:0]) &&(bus_wdata==32'h52_00_00_00));
+	end else if (bus_write && bus_wraddr == ADDR_CMD)
+	begin
+		o_soft_reset <= 1'b0;
+		if (OPT_HWRESET && bus_wstrb[3])
+			o_soft_reset <= bus_wdata[25];
+		if (&bus_wstrb[3:0] && bus_wdata == 32'h5200_0000)
+			o_soft_reset <= (bus_wdata == 32'h5200_0000);
+	end else
+		o_soft_reset <= 1'b0;
 	// }}}
 
 	// mem_busy
@@ -1114,11 +1121,10 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		{ r_clk_shutdown, o_cfg_clk90 } <= 2'b00;
-	else if (bus_phy_stb && bus_wstrb[1])
+	else if (bus_phy_stb && bus_wstrb[CLK90_BIT/8])
 	begin
-		{ r_clk_shutdown, o_cfg_clk90 } <= bus_wdata[15:14];
-		if (bus_wdata[8])
-			o_cfg_clk90 <= 1'b1;
+		r_clk_shutdown <= bus_wdata[15];
+		o_cfg_clk90 <= bus_wdata[CLK90_BIT] || bus_wdata[DDR_BIT];
 	end
 
 	always @(posedge i_clk)
@@ -1226,8 +1232,8 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		o_cfg_ddr <= 1'b0;
-	else if (bus_phy_stb && bus_wstrb[1])
-		o_cfg_ddr <= bus_wdata[8];
+	else if (bus_phy_stb && bus_wstrb[DDR_BIT/8])
+		o_cfg_ddr <= bus_wdata[DDR_BIT];
 	// }}}
 
 	// o_cfg_width: Control the number of data bits, whether 1, 4, or 8
@@ -1257,17 +1263,38 @@ module	sdwb #(
 
 	// o_cfg_ckspeed: Clock speed control
 	// {{{
+	wire	w_clk90;
+	assign	w_clk90 = (bus_phy_stb && bus_wstrb[CLK90_BIT/8])
+		? (bus_wdata[DDR_BIT]||bus_wdata[CLK90_BIT]) : o_cfg_clk90;
+
 	initial	r_ckspeed = 252;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
 		r_ckspeed <= 252;
-	else if (bus_phy_stb && bus_wstrb[0])
+	else if (bus_phy_stb)
 	begin
-		r_ckspeed <= bus_wdata[7:0];
-		if (!OPT_SERDES && !OPT_DDR && bus_wdata[7:0] < 2)
-			r_ckspeed <= 8'h2;
-		else if (!OPT_SERDES && bus_wdata[7:0] == 0)
-			r_ckspeed <= 8'h1;
+		if (bus_wstrb[0])
+		begin
+			r_ckspeed <= bus_wdata[7:0];
+			if (!OPT_SERDES && !OPT_DDR && bus_wdata[7:0] <= 2)
+			begin
+				r_ckspeed <= 8'h2;
+				if (w_clk90)
+					r_ckspeed <= 8'h3;
+			end else if (!OPT_SERDES && bus_wdata[7:0] <= 1)
+			begin
+				r_ckspeed <= 8'h1;
+				if (w_clk90)
+					r_ckspeed <= 8'h2;
+			end
+		end else if (!OPT_SERDES && bus_wstrb[CLK90_BIT/8]
+				&& (bus_wdata[CLK90_BIT] || bus_wdata[DDR_BIT]))
+		begin
+			if (OPT_DDR && r_ckspeed <= 1)
+				r_ckspeed <= 2;
+			if (!OPT_DDR && r_ckspeed <= 2)
+				r_ckspeed <= 3;
+		end
 	end
 
 	assign	o_cfg_ckspeed = r_ckspeed;
@@ -1279,6 +1306,16 @@ module	sdwb #(
 	always @(*)
 	if (!i_reset && !OPT_SERDES)
 		assert(o_cfg_ckspeed >= 1);
+
+	always @(*)
+	if (!i_reset && o_cfg_clk90 && !OPT_SERDES)
+	begin
+		if (OPT_DDR)
+		begin
+			assert(o_cfg_ckspeed >= 2);
+		end else
+			assert(o_cfg_ckspeed >= 3);
+	end
 `endif
 	// }}}
 
@@ -1435,6 +1472,10 @@ module	sdwb #(
 			o_int <= 1'b1;
 		if (OPT_CARD_DETECT && card_present && card_removed)
 			o_int <= 1'b1;
+		//
+		// F) When the hardware reset clears?
+		// if (HWRESETN && !last_hwreset_n && o_hwreset_n)
+		//	o_int <= 1'b1;
 	end
 
 	// }}}

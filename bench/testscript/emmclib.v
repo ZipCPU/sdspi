@@ -40,7 +40,13 @@ localparam	[AW+$clog2(DW/8)-1:0]	ADDR_SDCARD = EMMC_ADDR +  0,
 					ADDR_SDDATA = EMMC_ADDR +  4,
 					ADDR_FIFOA  = EMMC_ADDR +  8,
 					ADDR_FIFOB  = EMMC_ADDR + 12,
-					ADDR_SDPHY  = EMMC_ADDR + 16;
+					ADDR_SDPHY  = EMMC_ADDR + 16,
+`ifdef	SDIO_AXI
+					ADDR_DMABUS = EMMC_ADDR + 20,
+`else
+					ADDR_DMABUS = EMMC_ADDR + 24,
+`endif
+					ADDR_DMALEN = EMMC_ADDR + 28;
 
 localparam [31:0]	EMMC_RNONE = 32'h0000000,
 			EMMC_R1    = 32'h0000100,
@@ -408,6 +414,192 @@ begin
 	// do begin
 	//	emmc_send_status(rca, status_reg);
 	// end while(status_reg);
+end endtask
+// }}}
+
+task	emmc_discover;
+	// {{{
+	reg	[31:0]	read_data, phy_reg;
+begin
+	// Check for HWRESET, and wait if we are still resetting
+	// {{{
+	u_bfm.readio(ADDR_SDCARD, read_data);
+	while (1'b1 === read_data[25])
+	begin
+		u_bfm.readio(ADDR_SDCARD, read_data);
+	end
+	// }}}
+
+	// OPT_SERDES, OPT_DDR
+	// {{{
+	u_bfm.readio(ADDR_SDPHY, read_data);
+	phy_reg = read_data;
+	phy_reg[20:16] = 5'h1f;
+	phy_reg[7:0] = 8'h0;
+	phy_reg[8] = 1'b0; // Turn off any DDR
+	u_bfm.write_f(ADDR_SDPHY, phy_reg);
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	while(phy_reg[7:0] === read_data[7:0])
+	begin
+		u_bfm.readio(ADDR_SDPHY, phy_reg);
+	end
+
+	if (5'h1f === phy_reg[20:16])
+	begin
+		$display("Front-end:      OPT_SERDES");
+		assert(OPT_SERDES) else error_flag = 1;
+	end else if (5'h1c === phy_reg[20:16])
+	begin
+		$display("Front-end:      OPT_DDR");
+		assert(!OPT_SERDES) else error_flag = 1;
+		assert(OPT_DDR) else error_flag = 1;
+	end else if (5'h18 === phy_reg[20:16])
+	begin
+		assert(!OPT_SERDES) else error_flag = 1;
+		assert(!OPT_DDR) else error_flag = 1;
+		$display("Front-end:      Raw");
+	end else begin
+		$display("ERROR: Front end support UNKNOWN, PHY=0x%08x", phy_reg);
+		error_flag = 1;
+	end
+	u_bfm.writeio(ADDR_SDPHY, read_data);
+	// }}}
+
+	// Max clock speed
+	// {{{
+	if (8'h00 === phy_reg[7:0])
+	begin
+		$display("Max-Speed:      200MHz");
+	end else if (8'h01 === phy_reg[7:0])
+	begin
+		$display("Max-Speed:      100MHz");
+	end else if (8'h02 === phy_reg[7:0])
+	begin
+		$display("Max-Speed:       50MHz");
+	end else if (8'h02 === phy_reg[7:0])
+	begin
+		$display("Max-Speed:       25MHz");
+	end else begin
+		$display("ERROR: Unexpected maximum speed, PHY=0x%08x", phy_reg);
+		error_flag = 1;
+	end
+
+	phy_reg[9:0] = 10'h300;
+	u_bfm.write_f(ADDR_SDPHY, phy_reg);
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	while(phy_reg[7:0] === read_data[7:0])
+	begin
+		u_bfm.readio(ADDR_SDPHY, phy_reg);
+	end
+
+	if (1'b0 === phy_reg[8])
+	begin
+		$display("DDR:            Unsupported");
+	end else if (8'h00 === phy_reg[7:0])
+	begin
+		$display("Max DDR Speed:  200MHz (HS400)");
+	end else if (8'h01 === phy_reg[7:0])
+	begin
+		$display("Max DDR Speed:  100MHz");
+	end else if (8'h02 === phy_reg[7:0])
+	begin
+		$display("Max DDR Speed:   50MHz");
+	end else if (8'h03 === phy_reg[7:0])
+	begin
+		$display("Max DDR Speed:   25MHz");
+	end else begin
+		$display("ERROR: Unexpected maximum speed, PHY=0x%08x", phy_reg);
+		error_flag = 1;
+	end
+
+	if (1'b1 === phy_reg[9])
+	begin
+		$display("Data-strobe:    Yes, Supported");
+	end else if (1'b0 === phy_reg[9])
+	begin
+		$display("Data-strobe:    No support");
+	end else begin
+		$display("ERR Invalid data-strobe response");
+		error_flag = 1;
+	end
+
+	u_bfm.writeio(ADDR_SDPHY, read_data);
+
+	// }}}
+
+	// OPT_DMA (Is the DMA enabled?)
+	// {{{
+	read_data = 32'hffff_ffff;
+	u_bfm.write_f(ADDR_DMALEN, read_data);
+	u_bfm.readio(ADDR_DMALEN, read_data);
+	if (32'h0 === read_data)
+	begin
+		$display("DMA      :      No DMA support");
+	end else begin
+		$display("DMA      :      Yes, Supported");
+		read_data = 32'hffff_ffff;
+		u_bfm.write_f(ADDR_DMABUS, read_data);
+		u_bfm.readio(ADDR_DMABUS, read_data);
+		// How ... do we handle AW detection?  Stream detection?
+		//	Upper address bits in AXI mode?
+		assert(read_data !== 32'h0);
+		$display("DMA-MASK :      0x%08x", read_data);
+	end
+	// }}}
+
+	// OPT_STREAM(Is the DMA+Stream interface enabled?)
+
+	// OPT_HWRESET
+	// {{{
+	read_data = 32'h00_8080;	// Resets errors and FIFOs
+	read_data[25] = 1'b1;		// Hardware reset request
+	u_bfm.write_f(ADDR_SDCARD, read_data);
+	u_bfm.readio(ADDR_SDCARD, read_data);
+	if (1'b1 === read_data[25])
+	begin
+		$display("HW-Reset :      Yes, Supported");
+`ifdef	SDIO_AXI
+		u_bfm.readio(GPIO_ADDR+16, read_data);
+		assert(1'b1 === read_data[2]) else begin
+			error_flag = 1;
+			$display("GPIO-ERR: Data = 0x%08x indicates no reset", read_data);
+		end
+		read_data = 32'h00_8080;	// Clear the reset
+		u_bfm.write_f(ADDR_SDCARD, read_data);
+		u_bfm.readio(GPIO_ADDR+16, read_data);
+		while(1'b1 === read_data[2])
+		begin
+			u_bfm.readio(GPIO_ADDR+16, read_data);
+		end
+`else
+		u_bfm.readio(GPIO_ADDR, read_data);
+		assert(1'b1 === read_data[18]) else begin
+			error_flag = 1;
+			$display("GPIO-ERR: Data = 0x%08x indicates no reset", read_data);
+		end
+		read_data = 32'h00_8080;	// Clear the reset
+		u_bfm.write_f(ADDR_SDCARD, read_data);
+		u_bfm.readio(GPIO_ADDR, read_data);
+		while(1'b1 === read_data[18])
+		begin
+			u_bfm.readio(GPIO_ADDR, read_data);
+		end
+`endif
+		$display("HW-Reset :      Cleared");
+	end else begin
+		$display("HW-Reset :      ERR, No support");
+		error_flag = 1;	// EMMC *should* have a HW reset capability
+	end
+	// }}}
+
+	// OPT_CARD_DETECT (? eMMC cards should never be able to be inserted)
+	// {{{
+	u_bfm.readio(ADDR_SDCARD, read_data);
+	assert(2'b0 === read_data[19:18]) else error_flag = 1;
+	// }}}
+
+	// OPT_CRCTOKEN (? Can this even be detected?)
+	$display("Discovery complete");
 end endtask
 // }}}
 

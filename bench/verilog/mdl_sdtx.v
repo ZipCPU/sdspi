@@ -119,7 +119,7 @@ module mdl_sdtx #(
 		r_token  <= 1;
 		r_crc    <= 0;
 		r_active <= 0;
-		r_count  <= 5 + (i_ddr ? 1:0);
+		r_count  <= i_ddr ? 6'd10 : 6'd5;
 
 		ds <= #FF_HOLD 1'b1;
 

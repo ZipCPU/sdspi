@@ -135,8 +135,10 @@ module	sdfrontend #(
 	wire			io_cmd_tristate, i_cmd, o_cmd;
 	wire	[NUMIO-1:0]	io_dat_tristate, i_dat, o_dat;
 `endif
-	reg		last_ck;
+	reg		last_ck, sync_ack, sync_nak;
 	wire	[7:0]	w_pedges, next_pedge, next_nedge, next_dedge;
+	wire		async_ack, async_nak;
+	reg	[4:0]	acknak_sreg;
 	// }}}
 
 	// Common setup
@@ -266,6 +268,26 @@ module	sdfrontend #(
 		// }}}
 
 		assign	raw_iodat = i_dat;
+
+		// CRC TOKEN detection
+		// {{{
+		always @(posedge i_clk)
+		if(i_reset || i_data_en || i_cfg_ds || !OPT_CRCTOKEN)
+			acknak_sreg <= -1;
+		else if (acknak_sreg[4] && sample_pck)
+			acknak_sreg <= { acknak_sreg[3:0], raw_iodat[0] };
+
+		initial	{ sync_ack, sync_nak } = 2'b00;
+		always @(posedge i_clk)
+		if(i_reset || i_data_en || i_cfg_ds || !OPT_CRCTOKEN)
+		begin
+			sync_ack <= 1'b0;
+			sync_nak <= 1'b0;
+		end else begin
+			sync_ack <= (acknak_sreg == 5'b00101);
+			sync_nak <= (acknak_sreg == 5'b01011);
+		end
+		// }}}
 
 		always @(posedge i_clk)
 		if (i_reset || i_cmd_en || i_cfg_dscmd)
@@ -588,6 +610,34 @@ module	sdfrontend #(
 			cmd_sample_ck = wide_cmdedge[HWBIAS +: 8] >> i_sample_shift[4:2];
 			// Verilator lint_on  WIDTH
 		// }}}
+
+		// CRC TOKEN detection
+		// {{{
+		always @(posedge i_clk)
+		if(i_reset || i_data_en || i_cfg_ds || !OPT_CRCTOKEN)
+			acknak_sreg <= -1;
+		else if (acknak_sreg[4])
+		begin
+			if (sample_pck[1:0] == 2'b11 && acknak_sreg[3])
+				acknak_sreg <= { acknak_sreg[2:0], w_dat[8], w_dat[0] };
+			else if (sample_pck[1])
+				acknak_sreg <= { acknak_sreg[3:0], w_dat[8] };
+			else if (sample_pck[0])
+				acknak_sreg <= { acknak_sreg[3:0], w_dat[0] };
+		end
+
+		initial	{ sync_ack, sync_nak } = 2'b00;
+		always @(posedge i_clk)
+		if(i_reset || i_data_en || i_cfg_ds || !OPT_CRCTOKEN)
+		begin
+			sync_ack <= 1'b0;
+			sync_nak <= 1'b0;
+		end else begin
+			sync_ack <= (acknak_sreg == 5'b00101);
+			sync_nak <= (acknak_sreg == 5'b01011);
+		end
+		// }}}
+
 
 		always @(posedge i_clk)
 		if (i_reset || i_cmd_en || r_last_cmd_enabled || i_cfg_dscmd)
@@ -987,6 +1037,34 @@ module	sdfrontend #(
 		assign	o_data_busy = dat0_busy;
 		// }}}
 
+		// CRC TOKEN detection
+		// {{{
+		always @(posedge i_clk)
+		if(i_reset || i_data_en || i_cfg_ds || !OPT_CRCTOKEN)
+			acknak_sreg <= -1;
+		else if (acknak_sreg[4])
+		begin
+			if ((|sample_pck[7:4] && |sample_pck[3:0])
+							&& acknak_sreg[3])
+				acknak_sreg <= { acknak_sreg[2:0], w_rx_data[8], w_rx_data[0] };
+			else if (|sample_pck[7:4])
+				acknak_sreg <= { acknak_sreg[3:0], w_rx_data[8] };
+			else if (|sample_pck[3:0])
+				acknak_sreg <= { acknak_sreg[3:0], w_rx_data[0] };
+		end
+
+		initial	{ sync_ack, sync_nak } = 2'b00;
+		always @(posedge i_clk)
+		if(i_reset || i_data_en || i_cfg_ds || !OPT_CRCTOKEN)
+		begin
+			sync_ack <= 1'b0;
+			sync_nak <= 1'b0;
+		end else begin
+			sync_ack <= acknak_sreg == 5'b00101;
+			sync_nak <= acknak_sreg == 5'b01011;
+		end
+		// }}}
+
 		////////////////////////////////////////////////////////////////
 		//
 		// CMD
@@ -1119,7 +1197,28 @@ module	sdfrontend #(
 		// }}}
 	end endgenerate
 
-	assign	{ o_crcack, o_crcnak } = 2'b00;
+	reg	ackd, ck_ack, ck_nak, pipe_ack, pipe_nak;
+
+	always @(posedge i_clk)
+	if (i_reset || i_data_en || !i_cfg_ds || !OPT_DS || !OPT_CRCTOKEN)
+	begin
+		{ ck_ack, pipe_ack } <= 0;
+		{ ck_nak, pipe_nak } <= 0;
+	end else begin
+		{ ck_ack, pipe_ack } <= { pipe_ack, async_ack };
+		{ ck_nak, pipe_nak } <= { pipe_nak, async_nak };
+	end
+
+	initial	ackd = 0;
+	always @(posedge i_clk)
+	if (i_reset || i_data_en || !OPT_CRCTOKEN)
+	begin
+		ackd <= 0;
+	end else if (sync_ack || sync_nak || ck_ack || ck_nak)
+		ackd <= 1'b1;
+
+	assign	o_crcack = OPT_CRCTOKEN && (sync_ack || ck_ack) && !ackd;
+	assign	o_crcnak = OPT_CRCTOKEN && (sync_nak || ck_nak) && !ackd;
 
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -1215,6 +1314,29 @@ module	sdfrontend #(
 
 		assign	MAC_VALID = (acmd_empty == 2'h0);
 		assign	MAC_DATA  = af_cmd;
+		// }}}
+
+		// ACK/NAK checking
+		// {{{
+		if (OPT_CRCTOKEN)
+		begin : GEN_ASYNCTOKEN
+			wire		acknak_reset;
+			reg	[4:0]	atok_sreg;
+
+			assign		acknak_reset = i_reset || i_data_en;
+
+			always @(posedge i_ds or posedge acknak_reset)
+			if (acknak_reset)
+				atok_sreg <= -1;
+			else if (atok_sreg[4])
+				atok_sreg <= { atok_sreg, raw_iodat[0] };
+
+			assign	async_ack = (atok_sreg == 5'b00101);
+			assign	async_nak = (atok_sreg == 5'b01011);
+		end else begin : NO_ASYNCTOKEN
+			assign	async_ack = 1'b0;
+			assign	async_nak = 1'b0;
+		end
 		// }}}
 
 		// af_started_*, af_count_*
@@ -1341,6 +1463,9 @@ module	sdfrontend #(
 		assign	MAC_DATA  = 2'b0;
 		assign	MAD_VALID = 1'b0;
 		assign	MAD_DATA  = 32'h0;
+
+		assign	async_ack = 1'b0;
+		assign	async_nak = 1'b0;
 
 		// Keep Verilator happy
 		// {{{

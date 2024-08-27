@@ -852,11 +852,11 @@ module	sdtxframe #(
 		if (i_reset || (i_en && S_VALID) || tx_valid || !i_en)
 		begin
 			{ r_err, r_ercode } <= 2'b00;
-		end else if (i_en && !r_done && !o_err)
+		end else if (i_en && !r_done && !o_err && !r_ackd)
 		begin
 			if (r_timeout <= 1 && i_cfg_expect_ack)
 				{ r_err, r_ercode } <= 2'b10;
-			if (i_crcnak && !i_crcack && !r_ackd)
+			if (i_crcnak && !i_crcack)
 				{ r_err, r_ercode } <= 2'b11;
 		end
 

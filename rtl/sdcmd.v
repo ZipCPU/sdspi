@@ -122,6 +122,8 @@ module	sdcmd #(
 	reg		active;
 	reg	[5:0]	srcount;
 	reg	[47:0]	tx_sreg, tx_tristate;
+	reg		last_tristate, cmd_tristate;
+
 
 	reg		waiting_on_response, cfg_ds, cfg_dbl, r_frame_err,
 			response_active, cfg_pp;
@@ -201,8 +203,6 @@ module	sdcmd #(
 			tx_sreg <= { tx_sreg[46:0], 1'b1 };
 	end
 
-	reg	last_tristate, cmd_tristate;
-
 	// The "current" tristate would nominally be tx_tristate[47].  However,
 	// our IO elements don't necessarily tristate on a dime, hence the
 	// reason why we have last_tristate and cmd_tristate--to guarantee that
@@ -221,7 +221,7 @@ module	sdcmd #(
 		cmd_tristate  <= 1'b1;
 	end else if (lcl_accept)
 	begin
-		if (cfg_pp || i_cfg_dbl)
+		if (i_cfg_pp || i_cfg_dbl)
 			tx_tristate <= 48'h0;
 		else
 			tx_tristate <= { 1'b0, i_cmd, i_arg,
@@ -230,20 +230,19 @@ module	sdcmd #(
 		cmd_tristate  <= 1'b0;
 	end else if (i_ckstb)
 	begin
+		last_tristate <= tx_tristate[47];
 		if (cfg_dbl)
 		begin
 			tx_tristate   <= { tx_tristate[45:0], 2'b11 };
-			last_tristate <= tx_tristate[47];
 			tx_tristate[47] <= &tx_tristate[45:44];
 			cmd_tristate  <= (&tx_tristate[45:44]) && (!OPT_SERDES || last_tristate);
 		end else begin
 			tx_tristate <= { tx_tristate[46:0], 1'b1 };
-			last_tristate <= tx_tristate[47];
 			cmd_tristate  <= tx_tristate[46] && (!OPT_SERDES || last_tristate);
 		end
 	end else begin
 		last_tristate <= tx_tristate[47];
-		cmd_tristate  <= tx_tristate[47]; // && last_tristate;
+		cmd_tristate  <= tx_tristate[47] && (!OPT_SERDES || last_tristate);
 	end
 
 	assign	o_cmd_en = active;
@@ -1036,6 +1035,47 @@ module	sdcmd #(
 		end
 
 	end
+
+	// Tristate checks
+	// {{{
+	reg	[47:0]	f_tristate, f_tristate_p1, f_tristate_msk,
+			f_tristate_active;
+	always @(*)
+	begin
+		f_tristate_p1 = tx_tristate + 1;
+		f_tristate = (~tx_tristate) + f_tristate_p1;
+
+		f_tristate_msk = (tx_tristate << srcount) + (48'h1 << srcount);
+		f_tristate_active = tx_tristate >> (48-srcount);
+	end
+
+	always @(*)
+	if (!i_reset && o_cmd_en)
+	begin
+		assert(tx_tristate == (tx_tristate & tx_sreg));
+		assert(f_tristate == 0);
+		assert(f_tristate_msk == 48'h0);
+		if (cfg_pp || cfg_dbl)
+		begin
+			assert(f_tristate_active == 0);
+		end else begin
+			assert(tx_tristate == tx_sreg);
+		end
+	end
+
+	always @(*)
+	if (!i_reset && !o_cmd_en)
+		assert(&tx_tristate);
+
+	always @(*)
+	if (!i_reset && o_cmd_en && (o_cmd_data != 2'b11 || cfg_pp))
+		assert(!o_cmd_tristate);
+
+	always @(posedge i_clk)
+	if (!i_reset && OPT_SERDES && $past(!i_reset && o_cmd_en
+					&& (o_cmd_data != 2'b11 || cfg_pp)))
+		assert(!o_cmd_tristate);
+	// }}}
 
 	always @(*)
 		assert(srcount <= 48);

@@ -121,8 +121,8 @@ module	sdtxframe #(
 	reg	[NCRC* 8-1:0]	di_crc_8w, nxt_crc_8w, new_crc_8w, crc_8w_reg;
 	reg	[NCRC*16-1:0]	di_crc_8d, nxt_crc_8d, new_crc_8d, crc_8d_reg;
 
-	reg		ck_valid, ck_tristate;
-	reg		r_tristate, last_tristate;
+	reg		ck_valid, ck_tristate, ck_stop_bit;
+	reg		r_tristate;
 
 	reg	[4:0]	ck_counts;
 	reg	[31:0]	ck_data, ck_sreg;
@@ -247,6 +247,11 @@ module	sdtxframe #(
 			pstate <= P_IDLE;
 		end
 	endcase
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset && !pre_valid && pstate != P_IDLE)
+		assert(&pre_data);
+`endif
 
 	initial	pre_count = 0;
 	always @(posedge i_clk)
@@ -496,8 +501,6 @@ module	sdtxframe #(
 	// Clock divider, data shift register
 	// {{{
 
-	reg	ck_stop_bit;
-
 	// ck_valid
 	// {{{
 	initial	ck_valid = 0;
@@ -521,6 +524,12 @@ module	sdtxframe #(
 	always @(*)
 	if (!i_reset && (ck_stop_bit || pre_valid))
 		assert(ck_valid);
+	always @(*)
+	if (!i_reset && ck_valid && pre_valid)
+		assert(ck_stop_bit);
+	always @(*)
+	if (!i_reset && !ck_stop_bit && !pre_valid)
+		assert(!ck_valid || (&tx_data));
 `endif
 	// }}}
 
@@ -721,74 +730,70 @@ module	sdtxframe #(
 			endcase end
 		endcase
 	end
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset && ck_valid && !pre_valid && !ck_stop_bit)
+		assert(&ck_sreg);
+`endif
 
-	initial {r_tristate, last_tristate, ck_tristate } = 3'h7;
+	initial {r_tristate, ck_tristate } = 2'h3;
 
 	always @(posedge i_clk)
 	if (i_reset) // pstate == P_IDLE)
 	begin
 		ck_tristate <= 1'b1;
-		last_tristate <= 1'b1;
 		r_tristate <= 1'b1;
 	end else if (i_ckstb && pre_valid && ck_counts == 0) // && tx_ready
 	begin
-		last_tristate <= ck_tristate;
 		if (cfg_pp || cfg_period != P_1D)
 		begin
 			ck_tristate <= 1'b0;
-			last_tristate <= 1'b0;
 			r_tristate <= 1'b0;
 		end else case(cfg_width) // One clock period of data
 		WIDTH_1W: begin
 			ck_tristate <= pre_data[31];
-			r_tristate <= pre_data[31] && (!OPT_SERDES || last_tristate);
+			r_tristate <= pre_data[31] && (!OPT_SERDES || ck_tristate);
 			end
 		WIDTH_4W: begin
-			ck_tristate <= !(&pre_data[31:28]);
-			r_tristate <= !(&pre_data[31:28]) && (!OPT_SERDES || last_tristate);
+			ck_tristate <= (&pre_data[31:28]);
+			r_tristate <= (&pre_data[31:28]) && (!OPT_SERDES || ck_tristate);
 			end
 		default:  begin
-			ck_tristate <= !(&pre_data[31:24]);
-			r_tristate <= !(&pre_data[31:24]) && (!OPT_SERDES || last_tristate);
+			ck_tristate <= (&pre_data[31:24]);
+			r_tristate <= (&pre_data[31:24]) && (!OPT_SERDES || ck_tristate);
 			end
 		endcase
 	end else if ((i_ckstb || (i_hlfck && cfg_ddr)) && ck_counts > 0)
 	begin
-		last_tristate <= ck_tristate;
 		if (cfg_pp || cfg_period != P_1D)
 		begin
 			ck_tristate <= 1'b0;
-			last_tristate <= 1'b0;
 			r_tristate <= 1'b0;
 		end else case(cfg_width) // One clock period of data
 		WIDTH_1W: begin
 			ck_tristate <= ck_sreg[31];
-			r_tristate <= ck_sreg[31] && (!OPT_SERDES || last_tristate);
+			r_tristate <= ck_sreg[31] && (!OPT_SERDES || ck_tristate);
 			end
 		WIDTH_4W: begin
-			ck_tristate <= !(&ck_sreg[31:28]);
-			r_tristate <= !(&ck_sreg[31:28]) && (!OPT_SERDES || last_tristate);
+			ck_tristate <= (&ck_sreg[31:28]);
+			r_tristate <= (&ck_sreg[31:28]) && (!OPT_SERDES || ck_tristate);
 			end
 		default:  begin
-			ck_tristate <= !(&ck_sreg[31:24]);
-			r_tristate <= !(&ck_sreg[31:24]) && (!OPT_SERDES || last_tristate);
+			ck_tristate <= (&ck_sreg[31:24]);
+			r_tristate <= (&ck_sreg[31:24]) && (!OPT_SERDES || ck_tristate);
 			end
 		endcase
 	end else if (i_ckstb && ck_counts == 0)
 	begin
 		ck_tristate <= 1'b1;
-		last_tristate <= ck_tristate;
-		r_tristate <= (!OPT_SERDES || last_tristate);
+		r_tristate <= (!OPT_SERDES || ck_tristate);
 		if (start_packet)
 		begin
 			ck_tristate <= 1'b0;
-			last_tristate <= 1'b0;
 			r_tristate <= 1'b0;
 		end
-	end else begin
-		last_tristate <= ck_tristate;
+	end else
 		r_tristate <= ck_tristate;
-	end
 
 	assign	pre_ready = (ck_counts == 0) && i_ckstb; // && tx_ready;
 	// }}}
@@ -1642,6 +1647,85 @@ module	sdtxframe #(
 	always @(*)
 	if (!i_reset && tx_valid && fb_count > 0)
 		assert(!f_pending_reset);
+
+	// Tristate checks
+	// {{{
+	always @(*)
+	if (!tx_valid && !OPT_SERDES)
+		assert(tx_tristate);
+
+	always @(posedge i_clk)
+	if (0&&OPT_SERDES && !tx_valid && f_past_valid && !$past(tx_valid))
+		assert(tx_tristate);
+
+	always @(*)
+	if (!i_reset && tx_valid)
+	begin
+		if (cfg_pp || cfg_period != P_1D)
+		begin
+			assert(!tx_tristate || !ck_stop_bit);
+		end else case(cfg_width) // One clock period of data
+		WIDTH_1W: begin
+			assert(ck_data[ 7: 1] == 7'h7f);
+			assert(ck_data[31:24] == { 7'h7f, ck_data[ 0] });
+			assert(ck_data[23:16] == { 7'h7f, ck_data[ 0] });
+			assert(ck_data[15: 8] == { 7'h7f, ck_data[ 0] });
+			if (!OPT_SERDES)
+			begin
+				assert(tx_tristate == tx_data[24]);
+			end else if (!tx_data[24])
+			begin
+				assert(!tx_tristate);
+			end end
+		WIDTH_4W: begin
+			assert(ck_data[ 7: 4] == 4'hf);
+			assert(ck_data[31:24] == { 4'hf, ck_data[3:0] });
+			assert(ck_data[23:16] == { 4'hf, ck_data[3:0] });
+			assert(ck_data[15: 8] == { 4'hf, ck_data[3:0] });
+			if (!OPT_SERDES)
+			begin
+				assert(tx_tristate == (&tx_data[27:24]));
+			end else if (!(&tx_data[27:24]))
+			begin
+				assert(!tx_tristate);
+			end end
+		WIDTH_8W: begin
+			assert(ck_data[31:24] == ck_data[7:0]);
+			assert(ck_data[23:16] == ck_data[7:0]);
+			assert(ck_data[15: 8] == ck_data[7:0]);
+			if (!OPT_SERDES)
+			begin
+				assert(tx_tristate == (&tx_data[31:24]));
+			end else if (!&(tx_data[31:24]))
+			begin
+				assert(!tx_tristate);
+			end end
+		default: assert(0);
+		endcase
+	end
+
+	always @(posedge i_clk)
+	if (OPT_SERDES && f_past_valid && !$past(i_reset) && $past(tx_valid))
+	begin
+		if ($past(cfg_pp || cfg_period != P_1D))
+		begin
+			if ($past(ck_stop_bit))
+				assert(!tx_tristate);
+		end else case(cfg_width) // One clock period of data
+		WIDTH_1W: if (!$past(tx_data[24]))
+				assert(!tx_tristate);
+		WIDTH_4W: if (!$past(&tx_data[27:24]))
+				assert(!tx_tristate);
+		WIDTH_8W: if (!$past(&tx_data[31:24]))
+				assert(!tx_tristate);
+		default: assert(0);
+		endcase
+	end
+
+	// always @(posedge i_clk)
+	// if (!i_reset && OPT_SERDES && $past(!i_reset && tx_valid && (cfg_pp || cfg_period != P_1D || !(&tx_data))))
+	//	assert(!tx_tristate);
+	// }}}
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////

@@ -1068,8 +1068,17 @@ module	sdcmd #(
 		assert(&tx_tristate);
 
 	always @(*)
-	if (!i_reset && o_cmd_en && (o_cmd_data != 2'b11 || cfg_pp))
-		assert(!o_cmd_tristate);
+	if (!i_reset && o_cmd_en)
+	begin
+		if (cfg_pp || cfg_dbl)
+		begin
+			assert(!o_cmd_tristate);
+		end else if (o_cmd_data != 2'b11)
+		begin
+			assert(!o_cmd_tristate);
+		end else if (!OPT_SERDES)
+			assert(o_cmd_tristate);
+	end
 
 	always @(posedge i_clk)
 	if (!i_reset && OPT_SERDES && $past(!i_reset && o_cmd_en

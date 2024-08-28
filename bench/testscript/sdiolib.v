@@ -44,8 +44,7 @@ localparam	[ADDRESS_WIDTH-1:0]
 				ADDR_SDPHY  = SDIO_ADDR +16,
 				ADDR_DMABUS = SDIO_ADDR +24,
 				ADDR_DMALEN = SDIO_ADDR +28;
-localparam [ADDRESS_WIDTH:0] ADDR_STREAM = { 1'b1, {(ADDRESS_WIDTH){1'b0}} };
-localparam [31:0] ADDR_STREAM_WORD = {{(32-ADDRESS_WIDTH-1){1'b0}}, ADDR_STREAM };
+localparam [31:0] ADDR_STREAM = { 1'b1, 31'h0 };
 
 localparam [31:0]	SDIO_RNONE    = 32'h000000,
 			SDIO_R1       = 32'h000100,
@@ -645,7 +644,7 @@ begin
 	u_bfm.writeio(SCK_ADDR, { 1'b1, 1'b0, nblocks[20:0], 9'h0 });
 
 	u_bfm.writeio(ADDR_SDDATA, sector);
-	u_bfm.writeio(ADDR_DMABUS, ADDR_STREAM_WORD);
+	u_bfm.writeio(ADDR_DMABUS, ADDR_STREAM);
 	u_bfm.writeio(ADDR_DMALEN, nblocks);
 $display("Commanding DMA stream transaction");
 	u_bfm.write_f(ADDR_SDCARD, SDIO_WRITEDMA);
@@ -739,7 +738,7 @@ begin
 	u_bfm.writeio(SCK_ADDR, { 1'b0, 1'b0, nblocks[20:0], 9'h0 });
 
 	u_bfm.writeio(ADDR_SDDATA, sector);
-	u_bfm.writeio(ADDR_DMABUS, ADDR_STREAM_WORD);
+	u_bfm.writeio(ADDR_DMABUS, ADDR_STREAM);
 	u_bfm.writeio(ADDR_DMALEN, nblocks);
 	u_bfm.write_f(ADDR_SDCARD, SDIO_READDMA);
 

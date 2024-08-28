@@ -357,7 +357,7 @@ module spitxdata #(
 	// {{{
 	always @(*)
 	begin
-		next_crc_data = crc_data << 1;;
+		next_crc_data = crc_data << 1;
 
 		if (crc_data[15] ^ crc_gearbox[31])
 			next_crc_data = next_crc_data ^ CRC_POLYNOMIAL;

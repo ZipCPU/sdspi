@@ -134,8 +134,9 @@ this controller will be a completed product:
 
 - **OPT\_DMA**: An optional DMA is now available, and passing tests in silicon.
 
-  Only the Wishbone version of the DMA controller exists at present.  Although
-  components exist in my [wb2axip
+  Only the Wishbone version of the DMA controller exists at present.
+
+  Although components exist in my [wb2axip
   repository](https://github.com/ZipCPU/wb2axip) which could support an AXI
   DMA, these components have neither been integrated nor tested as part of this
   design.  Other user's have successfully connected external AXI
@@ -157,12 +158,10 @@ this controller will be a completed product:
   - When using the stream interface, the DMA address should be set to -1.  This
     selects the stream interface as either source or destination.  (The actual
     controller command will indicate the direction of the transfer.)
-  - Any memory source
-    ([MM2S](https://github.com/ZipCPU/wb2axip/blob/master/rtl/aximm2s.v))
+  - Any memory source ([MM2S](https://github.com/ZipCPU/wb2axip/blob/master/rtl/aximm2s.v))
     should be configured for the full transfer length--potentially many blocks.
   - There is no TLAST stream input (slave).
-  - When the external device is the source
-    ([S2MM](https://github.com/ZipCPU/wb2axip/blob/master/rtl/axis2mm.v)),
+  - When the external (SD or eMMC) device is the data source ([S2MM](https://github.com/ZipCPU/wb2axip/blob/master/rtl/axis2mm.v)),
     the TLAST signal will be set at the end of each 512B block.  This may
     require the external DMA to be configured to transfer data one block at a
     time, or perhaps to ignore the TLAST signal.
@@ -191,6 +190,7 @@ this controller will be a completed product:
   properly little endian when using this interface.  At present, however,
   there is no integrated AXI DMA master capability--only AXI stream ports.
   (Integrated AXI DMA master support is planned, just not funded at present.)
+
   When coupled with external AXI
   [MM2S](https://github.com/ZipCPU/wb2axip/blob/master/rtl/aximm2s.v) and
   [S2MM](https://github.com/ZipCPU/wb2axip/blob/master/rtl/axis2mm.v)
@@ -198,32 +198,35 @@ this controller will be a completed product:
   environments.
 
 - **eMMC CRC Tokens**: CRC token's are 5b response values, indicating whether
-  or not a page has transferred successfully.  Initial support exists in the
-  [frontend](rtl/sdfrontend.v) for ignoring CRC tokens returned by eMMC devices
-  following block write transfers.  No support yet exists for generating CRC
-  tokens to be sent to an eMMC device.
+  or not a page has transferred successfully.  They are only used by eMMC
+  devices.  The [frontend](rtl/sdfrontend.v) can now recognize those CRC tokens
+  returned by eMMC devices following block write transfers.  Failure to receive
+  a CRC token when one is expected will (now) generate an error condition.
+
+  No support yet exists for generating CRC tokens to be sent to an eMMC device.
+  This final missing support may only be necessary for boot mode--or perhaps
+  not at all.
 
   Note: My biggest problem with the "CRC Token's" is that the eMMC standard I
   have isn't clear regarding when they are used and when they are not.  Nor is
-  it necessarily clear regarding what will happen following a NAK (negative
-  acknowledgment) token.  This confusion, perhaps on my part alone, has
-  hindered the development of this support.
-
-  [My current plan](https://github.com/ZipCPU/sdspi/issues/14) is to support
-  CRC tokens when writing to the eMMC device, beyond simply ignoring them.
-  The plan is to generate an error condition after receiving any NAK from the
-  eMMC chip.  Any ongoing DMA operation will then be aborted, and the CPU will
-  be able to read the failure status from the controller.
+  it necessarily clear regarding what will or should happen following a NAK
+  (negative acknowledgment) token.  For example, will the device automatically
+  set up to repeat the last sector?  I can't (yet) tell.  This confusion,
+  perhaps on my part alone, has hindered the development of this support.
 
 - **eMMC Boot mode**: No plan exists to support eMMC boot mode (at present).
   This decision will likely be revisited in the future.
 
-  Some (untested) support exists for boot mode in the Verilog [eMMC
-  model](bench/verilog/mdl_emmc.v).
+  Some (untested, preliminary) support exists for boot mode in the Verilog
+  [eMMC model](bench/verilog/mdl_emmc.v).
 
 - **eMMC Collision Detection**: [Collision detection remains an ongoing issue
-  with eMMC support](https://github.com/ZipCPU/sdspi/issues/13)
-
+  with eMMC support](https://github.com/ZipCPU/sdspi/issues/13).  This issue
+  is limited to the `GO_IRQ_STATE` command, and specifically to the case where
+  both controller and device attempt to leave the IRQ state at the same time.
+  Without collision support, the message to leave the IRQ state may be
+  corrupted on return.  This should be detectable via a bad CRC on the command
+  line.
 
 # Logic usage
 

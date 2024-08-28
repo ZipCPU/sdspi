@@ -561,7 +561,6 @@ module	sdio #(
 	sdtxframe #(
 		// {{{
 		.OPT_SERDES(OPT_SERDES || OPT_DDR),
-		.OPT_SERDES(OPT_SERDES),
 		.OPT_CRCTOKEN(OPT_CRCTOKEN)
 		// .MW(MW)
 		// }}}

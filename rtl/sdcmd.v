@@ -124,7 +124,6 @@ module	sdcmd #(
 	reg	[47:0]	tx_sreg, tx_tristate;
 	reg		last_tristate, cmd_tristate;
 
-
 	reg		waiting_on_response, cfg_ds, cfg_dbl, r_frame_err,
 			response_active, cfg_pp;
 	wire		self_request;

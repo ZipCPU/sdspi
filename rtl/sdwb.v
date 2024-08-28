@@ -77,7 +77,7 @@ module	sdwb #(
 		localparam	LGFIFOW=LGFIFO-$clog2(MW/8),
 		parameter [0:0]	OPT_DMA = 1'b0,
 		parameter	DMA_AW = 30,
-		// parameter [0:0]	OPT_STREAM = 1'b0,
+		parameter [0:0]	OPT_STREAM = 1'b0,
 		// Set OPT_HWRESET if a reset pin exists for this H/W
 		parameter [0:0]	OPT_HWRESET = OPT_EMMC,	// eMMC has resets
 		parameter [0:0]	OPT_1P8V= 1'b0,	// 1.8V voltage switch capable?
@@ -443,12 +443,13 @@ module	sdwb #(
 			// }}}
 		end else if ((bus_wdata[7:6] == CMD_PREFIX
 					|| bus_wdata[7:6] == NUL_PREFIX)
-			&& (bus_wdata[USE_DMA_BIT] &&(!dma_busy || !dma_write)))
+			&& bus_wdata[USE_DMA_BIT])
 		begin // DMA request
 			// {{{
-			new_cmd_request  = (bus_wdata[7:6] == CMD_PREFIX);
-			new_data_request = 1'b1;
-			new_dma_request  = 1'b1;
+			new_cmd_request  = (bus_wdata[7:6] == CMD_PREFIX)
+						&& (!dma_busy || !dma_write);
+			new_data_request = (!dma_busy || !dma_write);
+			new_dma_request  = (!dma_busy || !dma_write);
 			new_r2_request   = 1'b0;
 
 			if (!OPT_DMA || dma_busy || r_mem_busy || o_tx_en
@@ -463,7 +464,8 @@ module	sdwb #(
 				new_data_request = 1'b0;
 			// }}}
 		end else if ((bus_wdata[7:6] == CMD_PREFIX || bus_wdata[7:6] == NUL_PREFIX)
-			&& (bus_wdata[USE_FIFO_BIT]))
+				&& !bus_wdata[USE_DMA_BIT]
+				&& bus_wdata[USE_FIFO_BIT])
 		begin // FIFO request
 			// {{{
 			new_cmd_request  = (bus_wdata[7:6] == CMD_PREFIX);
@@ -1994,6 +1996,8 @@ module	sdwb #(
 					wide_dma_addr[23:16] = bus_wdata[23:16];
 				if (bus_wstrb[3])
 					wide_dma_addr[31:24] = bus_wdata[31:24];
+				if (OPT_STREAM && DMA_AW <= 32)
+					wide_dma_addr[DMA_AW-1] = (bus_wstrb[3]) ? wide_dma_addr[31] : r_dma_addr[DMA_AW-1];
 			end
 
 			if (bus_write && bus_wraddr == DMA_ADDR_HI)
@@ -2006,6 +2010,8 @@ module	sdwb #(
 					wide_dma_addr[55:48] = bus_wdata[23:16];
 				if (bus_wstrb[3])
 					wide_dma_addr[63:56] = bus_wdata[31:24];
+				if (OPT_STREAM && DMA_AW > 32 && bus_wstrb[3])
+					wide_dma_addr[DMA_AW-1] = (bus_wstrb[3]) ? wide_dma_addr[63] : r_dma_addr[DMA_AW-1];
 			end
 		end
 
@@ -2013,10 +2019,30 @@ module	sdwb #(
 		if (i_reset)
 			r_dma_addr <= 0;
 		else if (!dma_busy && bus_write)
+		begin
 			r_dma_addr <= wide_dma_addr[DMA_AW-1:0];
-		else if ((i_s2sd_valid && o_s2sd_ready)
+			//
+			// Can't zero the unused address here, lest we prevent
+			// a two step address update--low address then upper,
+			// where the prior stream address prevents the lower
+			// addresses from updating.
+			// if (OPT_STREAM && wide_dma_addr[DMA_AW-1])
+			//	r_dma_addr[DMA_AW-2:0] <= 0;
+		end else if (OPT_STREAM && r_dma_addr[DMA_AW-1])
+		begin
+			// Stream operations don't adjust the address
+		end else if ((i_s2sd_valid && o_s2sd_ready)
 				|| (o_sd2s_valid && i_sd2s_ready))
+		begin
 			r_dma_addr <= r_dma_addr + 4;
+
+			// Prevent the stream bit from getting enabled
+			// mid-transaction.  This means that we might still
+			// wrap around memory should the DMA transfer size be
+			// large enough.
+			if (OPT_STREAM)
+				r_dma_addr[DMA_AW-1] <= 1'b0;
+		end
 
 		assign	o_dma_addr = r_dma_addr;
 		// }}}
@@ -2811,6 +2837,16 @@ module	sdwb #(
 	begin
 		dma_addr_return = 0;
 		dma_addr_return[DMA_AW-1:0] = o_dma_addr;
+		if (OPT_STREAM && o_dma_addr[DMA_AW-1])
+		begin
+			dma_addr_return = 0;
+			if (DMA_AW <= 32)
+			begin
+				dma_addr_return[31] = 1'b1;
+				// dma_addr_return[63] = 1'b1;
+			end else
+				dma_addr_return[63] = 1'b1;
+		end
 	end
 
 	always @(posedge i_clk)

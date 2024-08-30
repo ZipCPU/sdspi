@@ -74,7 +74,7 @@ module	sdckgen #(
 	reg	[LGMAXDIV-1:0]	ckspd;
 	wire			w_clk90;
 	wire	[LGMAXDIV-1:0]	w_ckspd;
-	reg	[LGMAXDIV:0]	new_ckspd;
+	reg	[LGMAXDIV-1:0]	new_ckspd;
 	// }}}
 
 	// nxt_stb, nxt_clk, nxt_counter
@@ -107,13 +107,13 @@ module	sdckgen #(
 
 		if (nxt_clk)
 		begin
-			if ((OPT_DDR || OPT_SERDES) && w_ckspd <= 1)
+			if ((OPT_DDR || OPT_SERDES) && new_ckspd <= 1)
 				nxt_counter = {2'b11, {(NCTR-2){1'b0}} };
-			else if (w_ckspd <= 2)
+			else if (new_ckspd <= 2)
 				nxt_counter = { 2'b01, {(NCTR-2){1'b0}} };
 			else begin
 				nxt_counter[NCTR-1:NCTR-2] = 0;
-				nxt_counter[NCTR-3:0] = w_ckspd-3;
+				nxt_counter[NCTR-3:0] = new_ckspd-3;
 			end end
 	end
 

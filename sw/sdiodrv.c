@@ -191,7 +191,7 @@ static	const	uint32_t
 		SDIO_REMOVED  = 0x00040000,
 		SDIO_PRESENTN = 0x00080000,
 		SDIO_CARDBUSY = 0x00100000,
-		SDIO_BUSY     = 0x00104800,	// SDIO_CARDBUSY|SDIO_CMDBUSY|SDIO_MEM
+		SDIO_BUSY     = (SDIO_CARDBUSY|SDIO_CMDBUSY|SDIO_DMA|SDIO_MEM),
 		SDIO_CMDERR   = 0x00200000,
 		SDIO_RXERR    = 0x00400000,	// RX Error present
 		SDIO_RXECODE  = 0x00800000,	// RX Error code
@@ -341,7 +341,7 @@ void	sdio_all_send_cid(SDIODRV *dev) {	// CMD2
 	dev->d_CID[2] = dev->d_dev->sd_fifa;
 	dev->d_CID[3] = dev->d_dev->sd_fifa;
 
-	if (c & SDIO_ERR) {
+	if (SDDEBUG && (c & SDIO_ERR)) {
 		TRIGGER_SCOPE;
 		txstr("  SD-ERR: "); txhex(c); txstr("\n");
 	}
@@ -1124,6 +1124,13 @@ int	sdio_write_block(SDIODRV *dev, uint32_t sector, uint32_t *buf){// CMD 24
 	// {{{
 	unsigned	dev_stat, card_stat, err = 0;
 
+	if (SDDEBUG) {
+		txstr("SDIO-WRITE(BLK): ");
+		txhex(sector);
+		txstr("\n");
+	}
+
+
 	GRAB_MUTEX;
 
 	{
@@ -1322,6 +1329,7 @@ SDIODRV *sdio_init(SDIO *dev) {
 
 	// Start by resetting the interface--in case we're being called
 	// to restart from an uncertain state.
+	dv->d_dev->sd_cmd = SDIO_REMOVED;
 	dv->d_dev->sd_cmd = SDIO_RESET;
 
 	dv->d_dev->sd_phy = SPEED_SLOW | SECTOR_512B | CKPHASE;
@@ -1560,6 +1568,21 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 		} return RES_OK;
 	}
 
+	if (SDDEBUG) {
+		// {{{
+		txstr("SDIO-WRITE(MNY): ");
+		txhex(sector);
+		txstr(", ");
+		txhex(count);
+		txstr(", ");
+		txhex(buf);
+		txstr("-- [DEV ");
+		txhex(dev->d_dev->sd_cmd);
+		txstr("]\n");
+	}
+	// }}}
+
+
 	GRAB_MUTEX;
 
 	// Make sure our device is idle
@@ -1612,10 +1635,7 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 
 		// Command the transfer, setting SDIO_DMA to use the DMA
 		// {{{
-		if (count > 1)
-			dev->d_dev->sd_cmd  = SDIO_WRDMA | SDIO_ERR;
-		else
-			dev->d_dev->sd_cmd  = SDIO_WRITEBLK | SDIO_DMA;
+		dev->d_dev->sd_cmd  = SDIO_WRMULTI | SDIO_DMA;
 		// }}}
 
 		// The DMA will end the transfer with a STOP_TRANSMISSION
@@ -1756,6 +1776,7 @@ int	sdio_read(SDIODRV *dev, const unsigned sector,
 		return RES_OK;
 
 	if (!SDMULTI) {
+		// {{{
 		for(unsigned k=0; k<count; k++) {
 			unsigned	st;
 
@@ -1768,10 +1789,11 @@ int	sdio_read(SDIODRV *dev, const unsigned sector,
 			}
 		} return RES_OK;
 	}
+	// }}}
 
 	if (SDDEBUG) {
 		// {{{
-		txstr("SDIO-READ(BLK): ");
+		txstr("SDIO-READ(MNY): ");
 		txhex(sector);
 		txstr(", ");
 		txhex(count);
@@ -1795,8 +1817,7 @@ int	sdio_read(SDIODRV *dev, const unsigned sector,
 		unsigned	phy;
 
 		phy = dev->d_dev->sd_phy;
-		if ((0 == (phy & SDIOCK_SHUTDN))
-				|| (SECTOR_512B != ((phy >> 24) & SECTOR_MASK))) {
+		if (SECTOR_512B != (phy & (SECTOR_MASK | SDIOCK_SHUTDN))) {
 			// Read multiple *requires* the clock be shut down
 			// between pages, to make sure the device doesn't try
 			// to produce data before we are ready for it.
@@ -1821,12 +1842,7 @@ int	sdio_read(SDIODRV *dev, const unsigned sector,
 		// Activate the SDIO DMA
 		// {{{
 		dev->d_dev->sd_dma_addr = buf;
-		dev->d_dev->sd_dma_length = count;
-		if (1 == count)
-			dev->d_dev->sd_cmd = SDIO_ERR | SDIO_READBLK | SDIO_DMA;
-		else
-			// STOP_TRANSMISSION is required
-			dev->d_dev->sd_cmd = SDIO_ERR | SDIO_READDMA;
+		dev->d_dev->sd_cmd = SDIO_ERR | SDIO_READDMA;
 		// }}}
 	} else {
 		// Issue the read multiple command

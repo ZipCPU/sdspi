@@ -119,20 +119,12 @@ this controller will be a completed product:
 
 - **Multi-block**: Multiple block commands have been demonstrated in
   simulation when using the Verilog [SDIO model](bench/verilog/mdl_sdio.v).
-  Multiblock simulation support is lacking in both the Verilog [eMMC
-  model](bench/verilog/mdl_emmc.v) as well as the [C++ SDIO
-  model](bench/cpp/sdiosim.cpp).
+  Multiblock simulation support is still lacking in the Verilog [eMMC
+  model](bench/verilog/mdl_emmc.v).
 
   Multiblock commands form the basis for the DMA's operation.
 
-- **OPT\_SERDES**: Three front end options are available: `OPT_SERDES=1`,
-  which provides access to speeds > 100MHz, `OPT_DDR=1` for speeds > 25MHz,
-  and a basic front end using neither of these components.
-
-  Currently the `OPT_SERDES=1` front end is having trouble closing timing.
-  (See [here for details](issues/11).)
-
-- **OPT\_DMA**: An optional DMA is now available, and passing tests in silicon.
+- **`OPT_DMA`**: An optional DMA is now available, and passing tests in silicon.
 
   Only the Wishbone version of the DMA controller exists at present.
 
@@ -168,9 +160,8 @@ this controller will be a completed product:
   - Transfer errors (failing CRCs, non-responsive cards, etc.) may cause the streams to be unsynchronized.  To fix, the design may be given a soft reset (if necessary), and the external [MM2S](https://github.com/ZipCPU/wb2axip/blob/master/rtl/aximm2s.v)/[S2MM](https://github.com/ZipCPU/wb2axip/blob/master/rtl/axis2mm.v) DMAs may also need to be given similar resets.
 
 - **C++ Model**: A [Verilator C++ model of an SDIO
-  component](bench/cpp/sdiosim.cpp) is now a part of the repository.  While it
-  still needs multiblock support, it has already demonstrated tremendous utility
-  when doing software testing.
+  component](bench/cpp/sdiosim.cpp) is now a part of the repository.  This
+  model has demonstrated tremendous utility when doing software testing.
 
   No C++ eMMC model exists at present.
 

@@ -48,13 +48,16 @@ class	SDIOSIM {
 	FILE		*m_fp;
 	uint32_t	m_buf[512/sizeof(uint32_t)];
 	bool		m_readonly, m_reply_active, m_open_drain, m_ddr,
-			m_data_started, m_cmd_started, m_reply_started;
+			m_cmd_started, m_reply_started;
+	bool		m_data_started, m_multiblock;
+	uint32_t	m_sector, m_data_posn;
+
 	uint32_t	m_last_dat, m_last_cmd, m_lastck, m_app_cmd,
 			m_selected, m_RCA, m_width, m_drive, m_data_count;
 	char		m_cmd_buf[8], m_cid[16], m_reply_buf[20],
 			m_dbuf[DBUFLN], m_csd[16], m_scr[8];
 	uint32_t	m_cmd_pos, m_reply_posn, m_reply_count, m_R1,
-			m_reply_delay, m_sector, m_data_delay, m_data_posn;
+			m_reply_delay, m_data_delay, m_busy_cycles;
 	bool		m_debug;
 protected:
 	void		init(void);
@@ -74,6 +77,7 @@ public:
 	SDIOSIM(const char *fname);
 	void	load(const unsigned addr, const char *fname);
 	void	load(const char *fname) { load(0, fname); }
+	bool	card_busy(void) const { return m_busy_cycles > 0; };
 	void	apply(unsigned sdclk, unsigned ddr,
 			unsigned cmd_en, unsigned cmd_data,
 			unsigned data_en, unsigned rx_en, unsigned tx_data,

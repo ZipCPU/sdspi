@@ -42,16 +42,21 @@
 #include <assert.h>
 #include "sdiosim.h"
 
+constexpr	unsigned	COM_CRC_ERROR	= 0x00800000;
+
 SDIOSIM::SDIOSIM(const char *fname) : m_debug(false) {
 	// {{{
 	HCS = true;
 
 	if (0 == access(fname, R_OK|W_OK)) {
-		m_fp = fopen(fname, "rw");
+		m_fp = fopen(fname, "r+");
 		m_readonly = false;
+		if (m_debug)
+			printf( "SDIOSIM: %s opened for read and write\n", fname);
 	} else if (0 == access(fname, R_OK)) {
 		m_fp = fopen(fname, "r");
 		m_readonly = true;
+		printf( "SDIOSIM: WARNING: %s opened read only\n", fname);
 	} else {
 		fprintf(stderr, "ERR: Could not open SDIOSIM backing file, %s\n", fname);
 		exit(EXIT_FAILURE);
@@ -82,6 +87,8 @@ void	SDIOSIM::init(void) {
 	m_data_started = false;
 	m_cmd_started = false;
 	m_reply_started = false;
+	m_multiblock = false;
+	m_busy_cycles = 0;
 
 	CID();
 	CSD();
@@ -234,6 +241,21 @@ void	SDIOSIM::appendcrc(unsigned len_bytes) {
 	unsigned	fill;
 
 	//unsigned	SDIOSIM::blockcrc(unsigned fill, unsigned bit) {
+	if (false && m_debug) {
+		// {{{
+		printf("SDIOSIM: Preparing block to receive:\n");
+		for(unsigned k=0; k<len_bytes; k++) {
+			printf("%02x", m_dbuf[k] & 0x0ff);
+			if (15 == (k&15))
+				printf("\n");
+			else if (7 == (k & 7))
+				printf("  ");
+			else
+				printf(" ");
+		}
+	}
+	// }}}
+
 	if (m_ddr) {
 		if (m_width >= 8) {
 			// {{{
@@ -538,6 +560,7 @@ void	SDIOSIM::accept_command(void) {
 		m_reply_active = 0;
 		m_ddr = false;
 		m_drive = false;
+		m_busy_cycles = 0;
 		break; // Go idle
 		// }}}
 	case 6:
@@ -547,6 +570,7 @@ void	SDIOSIM::accept_command(void) {
 				m_width=((arg&0x03)==2) ? 4:1;
 				// printf("SDIOSIM: Setting width to %d bits\n", m_width);
 				load_reply(6, m_R1);
+				m_R1 &= ~(COM_CRC_ERROR);
 			} else printf("SDIOSIM::ACMD6, ERR -- Not selected!!\n");
 			m_app_cmd = 0;
 			// }}}
@@ -557,6 +581,7 @@ void	SDIOSIM::accept_command(void) {
 			// Ignore this command for now.
 			// printf("SDIOSIM::CMD-SWITCH\n");
 			load_reply(6, m_R1);
+			m_R1 &= ~(COM_CRC_ERROR);
 
 			// arg
 
@@ -624,8 +649,10 @@ void	SDIOSIM::accept_command(void) {
 		// {{{
 		m_app_cmd = 0;
 		m_selected = (m_RCA == ((arg>>16)&0x0ffff));
-		if (m_selected)
+		if (m_selected) {
 			load_reply(7,m_R1);
+			m_R1 &= ~(COM_CRC_ERROR);
+		}
 		break;
 		// }}}
 	case 8: // SEND_IF_COND
@@ -680,6 +707,17 @@ void	SDIOSIM::accept_command(void) {
 		m_app_cmd = 0;
 		break;
 		// }}}
+	case 12: // STOP_TRANSMISSION
+		// {{{
+		m_sector = 0;
+		m_drive = 0;
+		m_data_posn = 8*DBUFLN;
+		m_multiblock = false;
+		m_data_started = false;
+		load_reply(12,m_R1);
+		m_R1 &= ~(COM_CRC_ERROR);
+		break;
+		// }}}
 	// case 16: // SET_BLOCKLEN	-- We only support 512B blocks
 	case 17: // READ_SINGLE_BLOCK
 		// {{{
@@ -688,23 +726,48 @@ void	SDIOSIM::accept_command(void) {
 			__attribute__((unused)) size_t	sz;
 			m_drive = 1;
 			load_reply(17,m_R1);
+			m_R1 &= ~(COM_CRC_ERROR);
 
 			m_sector     = arg;
+			if (!HCS)
+				m_sector >>= 9;
 			m_data_delay = rand() & 1023;
 			m_data_posn  = 0;
-			// m_data_count = 512;
+			m_multiblock = true;
 
-			if (!HCS)
-				(void)fseek(m_fp, (long)m_sector, SEEK_SET);
-			else
-				(void)fseek(m_fp, (long)(m_sector * 512l), SEEK_SET);
+			(void)fseek(m_fp, (long)(m_sector * 512l), SEEK_SET);
 			sz = fread(m_dbuf, sizeof(char), 512, m_fp);
 			for(unsigned k=512; k<DBUFLN; k++)
 				m_dbuf[k] = 0x0ff;
 			appendcrc(512);
+			assert(m_busy_cycles == 0);
 		} break;
 		// }}}
-	// case 18: // READ_MULTIPLE_BLOCK
+	case 18: // READ_MULTIPLE_BLOCK
+		// {{{
+		m_app_cmd = 0;
+		if (m_selected) {
+			__attribute__((unused)) size_t	sz;
+			m_drive = 1;
+			load_reply(18,m_R1);
+			m_R1 &= ~(COM_CRC_ERROR);
+
+			m_sector     = arg;
+			if (!HCS)
+				m_sector >>= 9;
+			m_data_delay = rand() & 1023;
+			m_data_posn  = 0;
+			m_multiblock = true;
+
+			(void)fseek(m_fp, (long)(m_sector * 512l), SEEK_SET);
+			sz = fread(m_dbuf, sizeof(char), 512, m_fp);
+			m_sector++;
+			for(unsigned k=512; k<DBUFLN; k++)
+				m_dbuf[k] = 0x0ff;
+			appendcrc(512);
+			assert(m_busy_cycles == 0);
+		} break;
+		// }}}
 	// case 19: // SEND_TUNING_BLOCK
 	// case 20: // SPEED_CLASS_CONTROL
 	// case 23: // SET_BLOCK_COUNT
@@ -712,17 +775,44 @@ void	SDIOSIM::accept_command(void) {
 		// {{{
 		m_app_cmd = 0;
 		if (m_selected) {
+			if (m_debug)
+				printf("SDIOSIM::WRITE-BLOCK (data_posn was %d)\n", m_data_posn);
 			m_drive = 0;
 			load_reply(24,m_R1);
+			m_R1 &= ~(COM_CRC_ERROR);
 
 			m_sector     = arg;
+			if (!HCS)
+				m_sector >>= 9;
 			m_data_delay = rand() & 1023;
 			m_data_posn  = 0;
 			m_data_started = false;
+			m_multiblock = false;
+
+			assert(m_busy_cycles == 0);
 			// m_data_count = 512;
 		} break;
 		// }}}
-	// case 25: // WRITE_MULTIPLE_BLOCK
+	case 25: // WRITE_MULTIPLE_BLOCK
+		// {{{
+		m_app_cmd = 0;
+		if (m_selected) {
+			if (m_debug)
+				printf("SDIOSIM::WRITE-MULTI-BLOCK (data_posn was %d)\n", m_data_posn);
+			m_drive = 0;
+			load_reply(25,m_R1);
+			m_R1 &= ~(COM_CRC_ERROR);
+
+			m_sector     = arg;
+			if (!HCS)
+				m_sector >>= 9;
+			m_data_delay = rand() & 1023;
+			m_data_posn  = 0;
+			m_data_started = false;
+			m_multiblock = true;
+			assert(m_busy_cycles == 0);
+		} break;
+		// }}}
 	case 41: // ACMD41: SEND_OP_COND
 		if (m_app_cmd) { // ACMD41
 		// {{{
@@ -754,6 +844,7 @@ void	SDIOSIM::accept_command(void) {
 				__attribute__((unused)) size_t	sz;
 				m_drive = 1;
 				load_reply(51,m_R1);
+				m_R1 &= ~(COM_CRC_ERROR);
 
 				m_sector     = 0;
 				m_data_delay = rand() & 1023;
@@ -772,6 +863,7 @@ void	SDIOSIM::accept_command(void) {
 		if (m_selected && (m_RCA == (arg >> 16))) {
 			m_app_cmd = 1;
 			load_reply(55, m_R1 | 0x20);
+			m_R1 &= ~(COM_CRC_ERROR);
 		} break;
 		// }}}
 	default:
@@ -819,7 +911,7 @@ unsigned SDIOSIM::cmdbit(unsigned in) {
 					m_cmd_buf[4]&0x0ff, m_cmd_buf[5]&0x0ff);
 			} else if ((m_cmd_buf[0] & 0x0c0) != 0x040) {
 				printf("SDIOSIM::CMD FRAME FAILURE: %02x\n",
-					m_cmd_buf[0]);
+					m_cmd_buf[0] & 0x0ff);
 			} else {
 				accept_command();
 				m_cmd_started = false;
@@ -831,7 +923,8 @@ unsigned SDIOSIM::cmdbit(unsigned in) {
 
 unsigned SDIOSIM::datp(unsigned in) {
 	// {{{
-	if (m_drive) {
+	if (m_drive) {	// Read operations
+		// {{{
 		unsigned	r;
 
 		if (m_data_delay > 0) {
@@ -839,7 +932,9 @@ unsigned SDIOSIM::datp(unsigned in) {
 			return 0x0ff;
 		}
 
-		if (m_width == 8) {
+		if (m_data_posn >= 8*DBUFLN) {
+			r = 0x0ff;
+		} else if (m_width == 8) {
 			r = m_dbuf[m_data_posn>>3];
 			r = (r & 0x0ff);
 			m_data_posn += 8;
@@ -858,90 +953,162 @@ unsigned SDIOSIM::datp(unsigned in) {
 			m_data_posn ++;
 		}
 
-		if (m_data_posn >= 8*DBUFLN)
-			m_drive = false;
-
 		if (m_open_drain) {
 			return r & in;
 		} else {
 			return r;
 		}
-	} else if (!m_data_started) {
-		if (m_width >= 8) {
-			if (0 == in)
-				m_data_started = true;
-		} else if (m_width >= 4) {
-			if (0 == (in & 0x0f))
-				m_data_started = true;
-		} else if (0 == (in & 0x01))
-			m_data_started = true;
-	} else if (m_data_posn < 512*8 + 8*16) {
-		unsigned	idx = m_data_posn >> 3;
-		if (m_width >= 8) {
-			m_dbuf[idx] = in & 0x0ff;
-			m_data_posn += 8;
-		} else if (m_width >= 4) {
-			unsigned	tmp;
+		// }}}
+	} else { // Write (to card) operations
+		if (m_busy_cycles > 0) { // Busy bits
+			// {{{
+			m_busy_cycles--;
 
-			tmp = m_dbuf[idx];
-			if (m_data_posn & 4)
-				m_dbuf[idx] = (in << 4);
-			else
-				m_dbuf[idx] = (tmp & 0x0f0) | (in & 0x0f);
-			m_data_posn += 4;
-		} else {
-			unsigned	tmp;
-
-			in &= 1;
-			tmp = m_dbuf[idx];
-			if (0 == (m_data_posn & 7))
-				m_dbuf[idx] = (in << 7);
-			else
-				m_dbuf[idx] = tmp | (in << (7-(m_data_posn&7)));
-			m_data_posn += 1;
-		}
-
-		if (m_data_posn == 512*8 + (16 * m_width)) {
-			bool		crc_fail = false;
-			unsigned	fill;
-
-			// Check CRCs
-			if (m_width >= 8) {
-				for(unsigned w=0; w<8 && !crc_fail; w++) {
-					fill = 0;
-					for(unsigned k=0; k<m_data_posn; k+=8) {
-						unsigned b;
-						b = (m_dbuf[k>>3] >> w) & 1;
-						fill = blockcrc(fill, b);
-					} if (fill != 0)
-						crc_fail = true;
-				}
-			} else if (m_width >= 4) {
-				for(unsigned w=0; w<4 && !crc_fail; w++) {
-					fill = 0;
-					for(unsigned k=0; k<m_data_posn; k+=8) {
-						unsigned v = m_dbuf[k>>3];
-
-						v >>= w;
-						if (v & 0x010)
-							fill = blockcrc(fill,1);
-						else
-							fill = blockcrc(fill,0);
-						fill = blockcrc(fill,(v&1));
-					} if (fill != 0)
-						crc_fail = true;
-				}
-			} else { // if (m_width == 1)
-				fill = 0;
-				for(unsigned k=0; k<m_data_posn; k++) {
-					unsigned	b;
-
-					b = (m_dbuf[k>>3] >> (7-(k&7))) & 1;
-					fill = blockcrc(fill, b);
-				}
-				crc_fail = (fill != 0);
+			if (m_open_drain) {
+				return 0xfe & in;
+			} else {
+				return 0xfe;
 			}
-		} return in;
+			// }}}
+		} else if (!m_data_started) { // Look for a start bit
+			// {{{
+			if (m_width >= 8) {
+				if (0 == in)
+					m_data_started = true;
+			} else if (m_width >= 4) {
+				if (0 == (in & 0x0f))
+					m_data_started = true;
+			} else if (0 == (in & 0x01))
+				m_data_started = true;
+			// }}}
+		} else if (m_data_posn < 512*8 + 8*16) { // Receive data
+			// {{{
+			unsigned	idx = m_data_posn >> 3;
+
+			// if (m_debug) printf("SDIOSIM: RCV %02x\n", in);
+			if (m_width >= 8) {
+				m_dbuf[idx] = in & 0x0ff;
+				m_data_posn += 8;
+			} else if (m_width >= 4) {
+				unsigned	tmp;
+
+				tmp = m_dbuf[idx];
+				if (0 == (m_data_posn & 4))
+					m_dbuf[idx] = (in << 4);
+				else
+					m_dbuf[idx] = (tmp & 0x0f0) | (in & 0x0f);
+				m_data_posn += 4;
+			} else {
+				unsigned	tmp;
+
+				in &= 1;
+				tmp = m_dbuf[idx];
+				if (0 == (m_data_posn & 7))
+					m_dbuf[idx] = (in << 7);
+				else
+					m_dbuf[idx] = tmp | (in << (7-(m_data_posn&7)));
+				m_data_posn += 1;
+			}
+
+			if (m_data_posn == 512*8 + (16 * m_width)) {
+				// {{{
+				bool		crc_fail = false;
+				unsigned	fill;
+
+				// Check CRCs
+				if (m_width >= 8) {
+					// {{{
+					for(unsigned w=0; w<8 && !crc_fail; w++) {
+						fill = 0;
+						for(unsigned k=0; k<m_data_posn; k+=8) {
+							unsigned b;
+							b = (m_dbuf[k>>3] >> w) & 1;
+							fill = blockcrc(fill, b);
+						} if (fill != 0)
+							crc_fail = true;
+					}
+					// }}}
+				} else if (m_width >= 4) {
+					// {{{
+					for(unsigned w=0; w<4 && !crc_fail; w++) {
+						fill = 0;
+						for(unsigned k=0; k<m_data_posn; k+=8) {
+							unsigned v = m_dbuf[k>>3];
+
+							v >>= w;
+							if (v & 0x010)
+								fill = blockcrc(fill,1);
+							else
+								fill = blockcrc(fill,0);
+							fill = blockcrc(fill,(v&1));
+						} if (fill != 0)
+							crc_fail = true;
+					}
+					// }}}
+				} else { // if (m_width == 1)
+					// {{{
+					fill = 0;
+					for(unsigned k=0; k<m_data_posn; k++) {
+						unsigned	b;
+
+						b = (m_dbuf[k>>3] >> (7-(k&7))) & 1;
+						fill = blockcrc(fill, b);
+					}
+					crc_fail = (fill != 0);
+					// }}}
+				}
+
+				if (!crc_fail) {
+					long	offset = m_sector * 512l;
+					if (0 != fseek(m_fp, offset, SEEK_SET)) {
+						perror("FSEEK O/S Err:");
+					}
+					if (m_debug)
+					printf( "SDIOSIM-P: Writing sector %04x @0x%08lx\n", m_sector, offset);
+					if (512 != fwrite(m_dbuf, sizeof(char), 512, m_fp)) {
+						perror("FWRITE O/S Err:");
+					}
+					m_sector++;
+
+					if (false && m_debug)
+					for(unsigned k=0; k<512u; k++) {
+						printf("%02x", m_dbuf[k] & 0x0ff);
+						if (15 == (k&15))
+							printf("\n");
+						else if (7 == (k&7))
+							printf("  ");
+						else
+							printf(" ");
+					}
+
+				} else {
+					printf("SDIOSIM-P: Bad-CRC\n");
+					m_R1 |= COM_CRC_ERROR;
+					if (m_debug) {
+					for(unsigned k=0; k<m_data_posn; k+=8) {
+						printf("%02x", m_dbuf[k/8] & 0x0ff);
+						if (0 == ((k+8) & 127)) {
+							printf("\n");
+						} else if (0 == ((k+8) & 63)) {
+							printf("  ");
+						} else printf(" ");
+					}}
+				}
+
+				if (m_multiblock) {
+					// printf( "SDIOSIM-P: Expecting next block (multi-block write)\n");
+					m_data_posn = 0;
+					m_data_started = false;
+					m_busy_cycles = 32 + (rand() & 1023);
+					m_data_started = false;
+				}
+
+				// }}}
+			}
+
+			return in;
+			// }}}
+		}
 	}
 
 	return 0x0ff;
@@ -950,10 +1117,18 @@ unsigned SDIOSIM::datp(unsigned in) {
 
 unsigned SDIOSIM::datn(unsigned in) {
 	// {{{
-	if (!m_ddr)
-		return in;
+	if (!m_ddr) {
+		if (m_busy_cycles > 0) {
+			if (m_open_drain) {
+				return 0xfe & in;
+			} else {
+				return 0xfe;
+			}
+		} else
+			return in;
+	}
 
-	if (m_drive) {
+	if (m_drive) { // Read operations
 		// {{{
 		unsigned	r = 0;
 
@@ -980,126 +1155,149 @@ unsigned SDIOSIM::datn(unsigned in) {
 			m_data_posn ++;
 		}
 
-		if (!m_ddr && m_data_posn >= 8*DBUFLN)
-			m_drive = false;
-
 		if (m_open_drain)
 			return r & in;
 		else
 			return r;
 		// }}}
-	} else if (!m_data_started) {
-		// {{{
-		if (m_width >= 8) {
-			if (0 == in)
-				m_data_started = true;
-		} else if (m_width >= 4) {
-			if (0 == (in & 0x0f))
-				m_data_started = true;
-		} else if (0 == (in & 0x01))
-			m_data_started = true;
-
-		return in;
-		// }}}
-	} else if (m_data_posn < 512*8 + 2*m_width*16) { // Receive a block of data
-		// {{{
-		unsigned	idx = m_data_posn >> 3;
-		if (m_width >= 8) {
-			m_dbuf[idx] = in & 0x0ff;
-			m_data_posn += 8;
-		} else if (m_width >= 4) {
-			unsigned	tmp;
-
-			tmp = m_dbuf[idx];
-			if (m_data_posn & 4)
-				m_dbuf[idx] = (in << 4);
-			else
-				m_dbuf[idx] = (tmp & 0x0f0) | (in & 0x0f);
-			m_data_posn += 4;
-		} else {
-			unsigned	tmp;
-
-			in &= 1;
-			tmp = m_dbuf[idx];
-			if (0 == (m_data_posn & 7))
-				m_dbuf[idx] = (in << 7);
-			else
-				m_dbuf[idx] = tmp | (in << (7-(m_data_posn&7)));
-			m_data_posn += 1;
-		}
-
-		if (m_data_posn == 512*8 + (32 * m_width)) { // Check CRC
+	} else { // Write operations
+		if (m_busy_cycles > 0) { // Busy bits
 			// {{{
-			bool		crc_fail = false;
-			unsigned	fill = 0;
+			// m_busy_cycles--; Count busy on positive edges only
 
-			// Check CRCs
+			if (m_open_drain) {
+				return 0xfe & in;
+			} else {
+				return 0xfe;
+			}
+			// }}}
+		} else if (!m_data_started) {
+			// {{{
 			if (m_width >= 8) {
-				for(unsigned w=0; w<8 && !crc_fail; w++) {
-					fill = 0;
-					for(unsigned k=0; k<m_data_posn; k+=16){
-						unsigned b;
-
-						b = (m_dbuf[k>>3] >> w) & 1;
-						fill = blockcrc(fill, b);
-					} if (fill != 0)
-						crc_fail = true;
-				}
-
-				for(unsigned w=0; w<8 && !crc_fail; w++) {
-					fill = 0;
-					for(unsigned k=0; k<m_data_posn; k+=16){
-						unsigned b;
-
-						b = (m_dbuf[1+(k>>3)] >> w) & 1;
-						fill = blockcrc(fill, b);
-					} if (fill != 0)
-						crc_fail = true;
-				}
+				if (0 == in)
+					m_data_started = true;
 			} else if (m_width >= 4) {
-				for(unsigned w=0; w<8 && !crc_fail; w++) {
+				if (0 == (in & 0x0f))
+					m_data_started = true;
+			} else if (0 == (in & 0x01))
+				m_data_started = true;
+
+			return in;
+			// }}}
+		} else if (m_data_posn < 512*8 + 2*m_width*16) { // Receive a block of data
+			// {{{
+			unsigned	idx = m_data_posn >> 3;
+			if (m_width >= 8) {
+				m_dbuf[idx] = in & 0x0ff;
+				m_data_posn += 8;
+			} else if (m_width >= 4) {
+				// {{{
+				unsigned	tmp;
+
+				tmp = m_dbuf[idx];
+				if (m_data_posn & 4)
+					m_dbuf[idx] = (in << 4);
+				else
+					m_dbuf[idx] = (tmp & 0x0f0) | (in & 0x0f);
+				m_data_posn += 4;
+				// }}}
+			} else {
+				// {{{
+				unsigned	tmp;
+
+				in &= 1;
+				tmp = m_dbuf[idx];
+				if (0 == (m_data_posn & 7))
+					m_dbuf[idx] = (in << 7);
+				else
+					m_dbuf[idx] = tmp | (in << (7-(m_data_posn&7)));
+				m_data_posn += 1;
+				// }}}
+			}
+
+			if (m_data_posn == 512*8 + (32 * m_width)) {
+				// {{{ // Check CRC
+				bool		crc_fail = false;
+				unsigned	fill = 0;
+
+				// Check CRCs
+				if (m_width >= 8) {
+					for(unsigned w=0; w<8 && !crc_fail; w++) {
+						fill = 0;
+						for(unsigned k=0; k<m_data_posn; k+=16){
+							unsigned b;
+
+							b = (m_dbuf[k>>3] >> w) & 1;
+							fill = blockcrc(fill, b);
+						} if (fill != 0)
+							crc_fail = true;
+					}
+
+					for(unsigned w=0; w<8 && !crc_fail; w++) {
+						fill = 0;
+						for(unsigned k=0; k<m_data_posn; k+=16){
+							unsigned b;
+
+							b = (m_dbuf[1+(k>>3)] >> w) & 1;
+							fill = blockcrc(fill, b);
+						} if (fill != 0)
+							crc_fail = true;
+					}
+				} else if (m_width >= 4) {
+					for(unsigned w=0; w<8 && !crc_fail; w++) {
+						fill = 0;
+						for(unsigned k=0; k<m_data_posn; k+=8) {
+							unsigned v = m_dbuf[k>>3] >> w;
+
+							fill = blockcrc(fill,(v&1));
+						} if (fill != 0)
+							crc_fail = true;
+					}
+				} else { // if (m_width == 1)
 					fill = 0;
-					for(unsigned k=0; k<m_data_posn; k+=8) {
-						unsigned v = m_dbuf[k>>3] >> w;
-
-						fill = blockcrc(fill,(v&1));
-					} if (fill != 0)
-						crc_fail = true;
-				}
-			} else { // if (m_width == 1)
-				fill = 0;
-				for(unsigned k=0; k<m_data_posn; k+=2) {
-					unsigned b;
-
-					b = (m_dbuf[k>>3] >> (7-(k&7))) & 1;
-					fill = blockcrc(fill, b);
-				}
-				crc_fail = (fill != 0);
-
-				if (!crc_fail) {
-					fill = 0;
-					for(unsigned k=1; k<m_data_posn; k+=2) {
+					for(unsigned k=0; k<m_data_posn; k+=2) {
 						unsigned b;
 
 						b = (m_dbuf[k>>3] >> (7-(k&7))) & 1;
 						fill = blockcrc(fill, b);
 					}
 					crc_fail = (fill != 0);
+
+					if (!crc_fail) {
+						fill = 0;
+						for(unsigned k=1; k<m_data_posn; k+=2) {
+							unsigned b;
+
+							b = (m_dbuf[k>>3] >> (7-(k&7))) & 1;
+							fill = blockcrc(fill, b);
+						}
+						crc_fail = (fill != 0);
+					}
 				}
-			}
 
-			if (!crc_fail) {
-				if (!HCS)
-					(void)fseek(m_fp, (long)m_sector, SEEK_SET);
-				else
+				if (!crc_fail) {
 					(void)fseek(m_fp, (long)(m_sector * 512l), SEEK_SET);
-				(void)fwrite(m_dbuf, sizeof(char), 512, m_fp);
-			}
-		}
-		// }}}
+					if (m_debug) printf("SDIOSIM-N: Writing sector %04x\n", m_sector);
+					(void)fwrite(m_dbuf, sizeof(char), 512, m_fp);
+					m_sector++;
 
-		return in;
-		// }}}
+				} else {
+					printf("SDIOSIM-N: Bad-CRC\n");
+					m_R1 |= COM_CRC_ERROR;
+				}
+
+				if (m_multiblock) {
+					// printf( "SDIOSIM-N: Expecting next block (multi-block write)\n");
+					m_data_posn = 0;
+					m_data_started = false;
+					m_busy_cycles = 32 + (rand() & 1023);
+					m_data_started = false;
+				}
+				// }}}
+			}
+			return in;
+			// }}}
+		}
 	} return in;
 }
 // }}}
@@ -1114,9 +1312,24 @@ void	SDIOSIM::apply(unsigned sdclk, unsigned ddr,
 
 	m_ddr = ddr;
 	if (cmd_en)  { m_cmd_started = 0; m_reply_started = false; };
-	if (data_en || !rx_en) {
-		m_data_started = 0;
+	if (!data_en && !rx_en) {
 		// if (m_drive) printf("M-DRIVE && !RX-EN!\n");
+		m_drive = m_drive && m_multiblock;
+		if (m_drive && m_data_started && m_data_posn > 0) {
+			__attribute__((unused)) size_t	sz;
+
+			if (m_debug)
+				printf("SDIOSIM: Multi-block read reload\n");
+			// Load the next sector
+			m_data_delay = rand() & 1023;
+			m_data_posn  = 0;
+
+			sz = fread(m_dbuf, sizeof(char), 512, m_fp);
+			m_sector++;
+			for(unsigned k=512; k<DBUFLN; k++)
+				m_dbuf[k] = 0x0ff;
+			appendcrc(512);
+		} m_data_started = 0;
 	}
 
 	// Tick the clock
@@ -1180,11 +1393,11 @@ void	SDIOSIM::apply(unsigned sdclk, unsigned ddr,
 
 	// Pack the return data strobe
 	// {{{
-	if (data_en || !rx_en) {
+	if (!data_en && !rx_en) {
 		rstb = 0;
-		m_data_started = 0;
-		m_drive = false;
-	} else if (!m_data_started) {
+		m_data_started = false;
+
+	} else if (!m_data_started && rx_en) {
 		/*
 		if (m_drive && m_data_delay <= 1)
 			printf("RSTB & RLSB = %x & %x = %x, MSK = %x\n",

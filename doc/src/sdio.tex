@@ -223,7 +223,7 @@ specific requirements:
 	\zhref{http://elm-chan.org/fsw/ff/}{FATFS}
 
 \item Both Verilator C++ and all Verilog device verification models are
-	provided
+	included
 
 \item While the IP is primarily built and tested for big-endian buses,
 	little endian support exists as a top level parameter.  This is useful
@@ -289,9 +289,8 @@ development.
 
 	A C++ verification model now exists for the SD card model.  This model
 	allows for modeling SD cards of arbitrary sizes, making it possible
-	to test file system handling.  However, this model doesn't (yet)
-	handle either multi-block transfers, nor is there an eMMC version of
-	this model.
+	to test file system handling.  There is no eMMC version of this model
+	yet.
 
 \item The included verification test suite doesn't (yet) support testing the
 	software driver.

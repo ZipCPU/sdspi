@@ -1,0 +1,87 @@
+[*]
+[*] GTKWave Analyzer v3.3.104 (w)1999-2020 BSI
+[*] Tue Aug 20 16:43:24 2024
+[*]
+[dumpfile] "(null)"
+[timestart] 0
+[size] 1574 990
+[pos] -1 -1
+*-5.795382 15 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] sdckgen.
+[sst_width] 270
+[signals_width] 158
+[sst_expanded] 1
+[sst_vpaned_height] 276
+@28
+sdckgen.i_clk
+sdckgen.i_reset
+@200
+-
+@28
+sdckgen.f_past_valid
+@29
+sdckgen.f_pending_half
+@28
+sdckgen.f_pending_reset
+@200
+-
+@28
+sdckgen.i_cfg_shutdown
+sdckgen.i_cfg_clk90
+@22
+sdckgen.i_cfg_ckspd[7:0]
+@200
+-
+@28
+sdckgen.o_ckstb
+sdckgen.o_hlfck
+@22
+sdckgen.o_ckwide[7:0]
+sdckgen.o_ckspd[7:0]
+@200
+-
+@28
+sdckgen.f_en
+sdckgen.clk90
+@22
+sdckgen.ckspd[7:0]
+sdckgen.counter[9:0]
+@200
+-
+@28
+sdckgen.nxt_clk
+@22
+sdckgen.new_ckspd[7:0]
+@200
+-
+@22
+sdckgen.nxt_counter[9:0]
+@28
+sdckgen.nxt_stb
+@22
+sdckgen.w_ckspd[7:0]
+@28
+sdckgen.w_clk90
+@800200
+-FCLK
+@28
+sdckgen.u_ckprop.i_clk
+sdckgen.u_ckprop.i_reset
+@200
+-
+@28
+sdckgen.u_ckprop.i_en
+sdckgen.u_ckprop.i_clk90
+@22
+sdckgen.u_ckprop.i_ckspd[7:0]
+@200
+-
+@28
+sdckgen.u_ckprop.i_ckstb
+sdckgen.u_ckprop.i_hlfck
+@22
+sdckgen.u_ckprop.i_ckwide[7:0]
+@1000200
+-FCLK
+[pattern_trace] 1
+[pattern_trace] 0

@@ -332,21 +332,32 @@ module	sdfrontend #(
 		end
 		*/
 
+		// busy_count: SD Clock cycles to wait before busy asserted
+		// {{{
 		initial	busy_count = 0;
 		always @(posedge i_clk)
 		if (i_reset || i_cmd_en || i_data_en)
-		begin
 			busy_count <= BUSY_CLOCKS;
-		end else if (sample_pck && busy_count > 0)
-		begin
+		else if (sample_pck && busy_count > 0)
 			busy_count <= busy_count-1;
-		end
+		// }}}
 
 		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
-		if (i_reset || i_cmd_en || i_data_en)
+		if (i_reset || i_data_en)
 		begin
+			// *MUST* clear busy on i_data_en, else we'd overwrite
+			// the busy bit anyway by transmitting
 			dat0_busy <= 1'b0;
+			wait_for_busy <= 1'b1;
+		end else if (dat0_busy && !i_dat[0] && !wait_for_busy)
+		begin
+			// If busy is already set, keep it set until D0 rises
+			dat0_busy <= 1'b1;
+			// wait_for_busy <= 1'b0;
+		end else if (i_cmd_en)
+		begin
+			dat0_busy <= 1'b0;	// Should already be zero
 			wait_for_busy <= 1'b1;
 		end else if (wait_for_busy)
 		begin
@@ -664,29 +675,40 @@ module	sdfrontend #(
 		initial	busy_count = (OPT_CRCTOKEN) ? 3'h0 : 3'h4;
 		always @(posedge i_clk)
 		if (i_reset || i_cmd_en || i_data_en)
-		begin
+			// Clock periods to wait until busy is active
 			busy_count <= BUSY_CLOCKS;
-		end else if (sample_pck != 0 && busy_count > 0)
-		begin
+		else if (sample_pck != 0 && busy_count > 0)
 			busy_count <= busy_count - 1;
-		end
+
+		initial	busy_delay = -1;
+		always @(posedge i_clk)
+		if (i_reset || i_data_en)
+			// System clock cycles to wait until busy can be read
+			busy_delay <= -1;
+		else if (busy_delay != 0)
+			busy_delay <= busy_delay - 1;
 
 		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
-		if (i_reset || i_cmd_en || i_data_en)
+		if (i_reset || i_data_en)
 		begin
 			dat0_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
-			busy_delay <= -1;
-		end else if (busy_delay != 0)
+		end else if (dat0_busy && !wait_for_busy &&
+			((sample_pck == 0)
+			|| (sample_pck & {w_dat[8],w_dat[0]})!=sample_pck))
 		begin
+			// Still busy ...
 			dat0_busy <= 1'b1;
+			wait_for_busy <= 1'b0;
+		end else if (i_cmd_en)
+		begin
+			dat0_busy <= 1'b0;	// Should already be zero
 			wait_for_busy <= 1'b1;
-			busy_delay <= busy_delay - 1;
 		end else if (wait_for_busy)
 		begin
 			dat0_busy <= 1'b1;
-			wait_for_busy <= (busy_count > 1);
+			wait_for_busy <= (busy_delay > 0) || (busy_count > 1);
 		end else if ((sample_pck != 0)
 				&& (sample_pck & {w_dat[8],w_dat[0]})!=2'b0)
 			dat0_busy <= 1'b0;
@@ -1006,29 +1028,43 @@ module	sdfrontend #(
 
 		// o_data_busy, dat0_busy, wait_for_busy, busy_delay
 		// {{{
+
+		// busy_count: SD clock cycles to wait before busy is asserted
+		// {{{
 		always @(posedge i_clk)
-		if (i_reset || i_cmd_en || i_data_en || i_rx_en)
-		begin
+		if (i_reset || i_cmd_en || i_data_en)
 			busy_count <= BUSY_CLOCKS;
-		end else if (busy_strb != 0 && busy_count > 0)
+		else if (busy_strb != 0 && busy_count > 0)
 			busy_count <= busy_count - 1;
+		// }}}
+
+		// busy_delay
+		// {{{
+		// System clock cycles to wait until busy can be read
+		always @(posedge i_clk)
+		if (i_reset || i_data_en)
+			busy_delay <= -1;
+		else if (busy_delay != 0)
+			busy_delay <= busy_delay - 1;
+		// }}}
 
 		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
-		if (i_reset || i_cmd_en || i_data_en || i_rx_en)
+		if (i_reset || i_data_en)
 		begin
 			dat0_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
-			busy_delay <= -1;
-		end else if (busy_delay != 0)
+		end else if (dat0_busy && !wait_for_busy && busy_pin)
 		begin
-			dat0_busy <= 1'b1;
+			// dat0_busy <= 1'b1;
+		end else if (i_cmd_en)
+		begin
+			dat0_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
-			busy_delay <= busy_delay - 1;
 		end else if (wait_for_busy)
 		begin
 			dat0_busy <= 1'b1;
-			wait_for_busy <= (busy_count > 1);
+			wait_for_busy <= (busy_delay > 0)||(busy_count > 1);
 		end else if (!busy_pin)
 			// Once busy is released, we don't become busy again
 			// until we reset

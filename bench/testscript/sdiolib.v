@@ -42,8 +42,13 @@ localparam	[ADDRESS_WIDTH-1:0]
 				ADDR_FIFOA  = SDIO_ADDR + 8,
 				ADDR_FIFOB  = SDIO_ADDR +12,
 				ADDR_SDPHY  = SDIO_ADDR +16,
+`ifdef	SDIO_AXI
+				ADDR_DMABUS = SDIO_ADDR +20,
+`else
 				ADDR_DMABUS = SDIO_ADDR +24,
+`endif
 				ADDR_DMALEN = SDIO_ADDR +28;
+
 localparam [31:0] ADDR_STREAM = { 1'b1, 31'h0 };
 
 localparam [31:0]	SDIO_RNONE    = 32'h000000,
@@ -124,20 +129,26 @@ task	sdio_wait_while_busy;
 	reg		prior_interrupt;
 begin
 $display("WAIT-WHILE-BUSY");
-	r_interrupted = 1'b0;
+	r_interrupted   = 1'b0;
+	prior_interrupt = 1'b0;
 	u_bfm.readio(ADDR_SDCARD, read_data);
 $display("FIRST-CHECK: %08x", read_data);
-	while(read_data & SDIO_BUSY)
+	if(read_data & SDIO_BUSY)
 	begin
 		do begin
-			prior_interrupt = r_interrupted;
+			prior_interrupt = prior_interrupt || r_interrupted;
 			u_bfm.readio(ADDR_SDCARD, read_data);
 			// $display("CHECK IF BUSY -- %08x", read_data);
 			// if (read_data & SDIO_BUSY) assert(!prior_interrupt);
-		end while(read_data & SDIO_BUSY);
+		end while(!prior_interrupt && (read_data & SDIO_BUSY));
+		if (read_data & SDIO_BUSY)
+		begin
+			$display("ERROR: INTERRUPTED, but still busy. CMD= %08x, PRIOR=%1d, INT=%1d", read_data, prior_interrupt, r_interrupted);
+			error_flag = 1'b1;
+		end
 		if (1'b1 !== r_interrupted)
 		begin
-			$display("ERR: NO INTERRUPT!");
+			$display("ERROR: NO INTERRUPT!");
 			assert(r_interrupted)
 				else begin
 					$display("ERROR: I");

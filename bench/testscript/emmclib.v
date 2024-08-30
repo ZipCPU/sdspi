@@ -48,17 +48,22 @@ localparam	[AW+$clog2(DW/8)-1:0]	ADDR_SDCARD = EMMC_ADDR +  0,
 `endif
 					ADDR_DMALEN = EMMC_ADDR + 28;
 
-localparam [31:0]	EMMC_RNONE = 32'h0000000,
-			EMMC_R1    = 32'h0000100,
-			EMMC_R2    = 32'h0000200,
-			EMMC_R1b   = 32'h0000300,
-			EMMC_WRITE = 32'h0000400,
-			EMMC_MEM   = 32'h0000800,
-			EMMC_FIFO  = 32'h0001000,
-			EMMC_DMA   = 32'h0002000,
-			EMMC_BUSY  = 32'h0104800,
-			EMMC_ERR   = 32'h0008000,
-			EMMC_ACK   = 32'h4000000;
+localparam [31:0]	ADDR_STREAM = { 1'b1, 31'h0 };
+
+localparam [31:0]	EMMC_RNONE   = 32'h0000000,
+			EMMC_R1      = 32'h0000100,
+			EMMC_R2      = 32'h0000200,
+			EMMC_R1b     = 32'h0000300,
+			EMMC_WRITE   = 32'h0000400,
+			EMMC_MEM     = 32'h0000800,
+			EMMC_FIFO    = 32'h0001000,
+			EMMC_DMA     = 32'h0002000,
+			EMMC_CMDBUSY = 32'h0004000,
+			EMMC_ERR     = 32'h0008000,
+			EMMC_CARDBUSY= 32'h0100000,
+			EMMC_BUSY    = (EMMC_CARDBUSY | EMMC_CMDBUSY
+							| EMMC_DMA | EMMC_MEM),
+			EMMC_ACK     = 32'h4000000;
 
 localparam [31:0]	EMMC_DS    = 32'h000100,
 			EMMC_DDR   = 32'h004200,
@@ -100,11 +105,16 @@ localparam [31:0]	SECTOR_16B  = 32'h0400_0000,
 
 localparam [31:0]	EMMC_CMD      = 32'h0000_0040,
 			EMMC_READREG  = EMMC_CMD | EMMC_R1 | EMMC_ERR,
+			EMMC_ALLCID = (EMMC_CMD | EMMC_R2 | EMMC_ERR)+2,
 			EMMC_WRITEBLK = (EMMC_CMD | EMMC_R1b | EMMC_ERR
 					| EMMC_ACK | EMMC_WRITE | EMMC_MEM)+24,
+			EMMC_WRITEDMA = (EMMC_CMD | EMMC_R1b | EMMC_ERR
+					| EMMC_DMA | EMMC_ACK | EMMC_WRITE
+					| EMMC_MEM)+25,
 			EMMC_READBLK = (EMMC_CMD | EMMC_R1 | EMMC_ERR
 						| EMMC_MEM)+17,
-			EMMC_ALLCID = (EMMC_CMD | EMMC_R2 | EMMC_ERR)+2;
+			EMMC_READDMA = (EMMC_CMD | EMMC_R1 | EMMC_ERR | EMMC_DMA
+						| EMMC_MEM)+18;
 
 reg	[7:0]	ext_csd	[0:511];
 
@@ -122,16 +132,30 @@ task	emmc_wait_while_busy;
 	reg		prior_interrupt;
 begin
 	r_interrupted = 1'b0;
+	prior_interrupt = 1'b0;
 	u_bfm.readio(ADDR_SDCARD, read_data);
-	while(read_data & EMMC_BUSY)
+	if(read_data & EMMC_BUSY)
 	begin
 		do begin
-			prior_interrupt = r_interrupted;
+			prior_interrupt = prior_interrupt || r_interrupted;
 			u_bfm.readio(ADDR_SDCARD, read_data);
 			// $display("CHECK IF BUSY -- %08x", read_data);
 			// if (read_data & EMMC_BUSY) assert(!prior_interrupt);
-		end while(read_data & EMMC_BUSY);
-		assert(r_interrupted);
+		end while(!prior_interrupt && (read_data & EMMC_BUSY));
+		if (read_data & EMMC_BUSY)
+		begin
+			$display("ERROR: INTERRUPTED, but still busy.  CMD= %08x, PRIOR=%1d, INT=%1d", read_data, prior_interrupt, r_interrupted);
+			error_flag = 1'b1;
+		end
+		if (1'b1 !== r_interrupted)
+		begin
+			$display("ERROR: NO INTERRUPT!");
+			assert(r_interrupted);
+				else begin
+					$display("ERROR: I");
+					error_flag = 1'b1;
+				end
+		end
 	end
 
 	r_interrupted = 1'b0;
@@ -402,6 +426,11 @@ begin
 	u_bfm.writeio(ADDR_SDDATA, sector);
 	for(ik=0; ik<512/4; ik=ik+1)
 		u_bfm.writeio(ADDR_FIFOA, $random);
+
+	// Make sure we're not still busy before issuing the command
+	emmc_wait_while_busy;
+
+	// Issue the write command itself
 	u_bfm.write_f(ADDR_SDCARD, EMMC_WRITEBLK);
 
 	emmc_wait_while_busy;
@@ -413,6 +442,75 @@ begin
 	// do begin
 	//	emmc_send_status(rca, status_reg);
 	// end while(status_reg);
+end endtask
+// }}}
+
+task	emmc_write_dma(input [31:0] nblocks, input[31:0] sector,	// CMD25
+				input[31:0] wbaddr);
+	// {{{
+	reg	[31:0]	ctrl_reg, phy_reg, dummy_data;
+	integer		ik;
+begin
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	if (phy_reg[27:24] != 4'h9)
+	begin
+		phy_reg[27:24] = 4'h9;
+		u_bfm.writeio(ADDR_SDPHY, phy_reg);
+	end
+
+$display("Pre-Writing data to memory");
+	for(ik=0; ik<(nblocks<<9); ik=ik+4)
+	begin
+		dummy_data = $random;
+		u_bfm.writeio(wbaddr + ik, dummy_data);
+	end
+
+	u_bfm.writeio(ADDR_SDDATA, sector);
+	u_bfm.writeio(ADDR_DMABUS, wbaddr);
+	u_bfm.writeio(ADDR_DMALEN, nblocks);
+$display("Commanding DMA transaction");
+	u_bfm.write_f(ADDR_SDCARD, EMMC_WRITEDMA);
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+	assert(32'h0 !== (EMMC_DMA & ctrl_reg));
+
+$display("Waiting for completion");
+	emmc_wait_while_busy;
+
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: H, Write DMA error"); error_flag = 1'b1; end
+end endtask
+// }}}
+
+task	emmc_write_stream(input [31:0] nblocks, input[31:0] sector);
+	// {{{
+	reg	[31:0]	ctrl_reg, phy_reg, dummy_data;
+	integer		ik;
+begin
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	if (phy_reg[27:24] != 4'h9)
+	begin
+		phy_reg[27:24] = 4'h9;
+		u_bfm.writeio(ADDR_SDPHY, phy_reg);
+	end
+
+	u_bfm.writeio(SCK_ADDR+4, 32'h01);
+	u_bfm.writeio(SCK_ADDR, { 1'b1, 1'b0, nblocks[20:0], 9'h0 });
+
+	u_bfm.writeio(ADDR_SDDATA, sector);
+	u_bfm.writeio(ADDR_DMABUS, ADDR_STREAM);
+	u_bfm.writeio(ADDR_DMALEN, nblocks);
+$display("Commanding DMA stream transaction");
+	u_bfm.write_f(ADDR_SDCARD, EMMC_WRITEDMA);
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+	assert(32'h0 !== (EMMC_DMA & ctrl_reg));
+
+$display("Waiting for completion");
+	emmc_wait_while_busy;
+
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: H, Write DMA error"); error_flag = 1'b1; end
 end endtask
 // }}}
 
@@ -636,5 +734,75 @@ begin
 
 	for(ik=0; ik<512/4; ik=ik+1)
 		u_bfm.readio(ADDR_FIFOA, ignore);
+end endtask
+// }}}
+
+task	emmc_read_dma(input [31:0] nblocks, input[31:0] sector,
+				input[31:0] wbaddr);
+	// {{{
+	reg	[31:0]	ctrl_reg, phy_reg;
+	integer		ik;
+begin
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	if (phy_reg[27:24] != 4'h9)
+	begin
+		phy_reg[27:24] = 4'h9;
+		u_bfm.writeio(ADDR_SDPHY, phy_reg);
+	end
+
+	u_bfm.writeio(ADDR_SDDATA, sector);
+	u_bfm.writeio(ADDR_DMABUS, wbaddr);
+	u_bfm.writeio(ADDR_DMALEN, nblocks);
+	u_bfm.write_f(ADDR_SDCARD, EMMC_READDMA);
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+	assert(32'h0 !== (EMMC_DMA & ctrl_reg));
+
+	emmc_wait_while_busy;
+
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+
+	if (1'b0 !== ctrl_reg[15])
+	begin
+		$display("CMD FAILED CODE (%d) at %t", ctrl_reg[17:16], $time);
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: J, Read DMA ERR"); error_flag = 1'b1; end
+end endtask
+// }}}
+
+task	emmc_read_stream(input [31:0] nblocks, input[31:0] sector);
+	// {{{
+	reg	[31:0]	ctrl_reg, phy_reg;
+	integer		ik;
+begin
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	if (phy_reg[27:24] != 4'h9)
+	begin
+		phy_reg[27:24] = 4'h9;
+		u_bfm.writeio(ADDR_SDPHY, phy_reg);
+	end
+
+	u_bfm.writeio(SCK_ADDR+4, 32'h01);
+	u_bfm.writeio(SCK_ADDR, { 1'b0, 1'b0, nblocks[20:0], 9'h0 });
+
+	u_bfm.writeio(ADDR_SDDATA, sector);
+	u_bfm.writeio(ADDR_DMABUS, ADDR_STREAM);
+	u_bfm.writeio(ADDR_DMALEN, nblocks);
+	u_bfm.write_f(ADDR_SDCARD, EMMC_READDMA);
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+	assert(32'h0 !== (EMMC_DMA & ctrl_reg));
+
+	emmc_wait_while_busy;
+
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+
+	if (1'b0 !== ctrl_reg[15])
+	begin
+		$display("CMD FAILED CODE (%d) at %t", ctrl_reg[17:16], $time);
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
+		else begin $display("ERROR: J, Read DMA ERR"); error_flag = 1'b1; end
 end endtask
 // }}}

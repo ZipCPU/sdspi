@@ -1493,7 +1493,7 @@ $display("TX-DATA set to %08x", mem_buf[0]);
 		busy_wait <= 6;
 	end
 
-	assign	sd_dat[0] = (busy_indication && !read_en && !reply_valid) ? 1'b0 : 1'bz;
+	assign	sd_dat[0] = (busy_indication && !read_en) ? 1'b0 : 1'bz;
 
 	// assign	sd_ds = #DS_DELAY (ds_enabled
 	assign	#DS_DELAY sd_ds = (ds_enabled

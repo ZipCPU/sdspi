@@ -100,7 +100,7 @@ module	sdaxil #(
 		// clock cycles before timing out while waiting for busy.
 		// Perhaps that's too long, but it's just a backup timeout.
 		// If the device actually indicates a busy (like it's supposed
-		// to), then we'll be busy until the device releases.
+		// to), then we'll only be busy until the device releases.
 		parameter	LGCARDBUSY = 12,
 		parameter [0:0]	OPT_LOWPOWER = 1'b0
 		// }}}
@@ -308,7 +308,7 @@ module	sdaxil #(
 	reg	[MW/8-1:0]	mem_wr_strb_a, mem_wr_strb_b;
 	reg	[MW-1:0]	mem_wr_data_a, mem_wr_data_b;
 
-	reg			r_mem_busy;
+	reg			r_mem_busy, card_was_busy;
 	wire			w_card_busy;
 
 	// DMA signals
@@ -408,7 +408,8 @@ module	sdaxil #(
 	// {{{
 	initial	o_soft_reset = 1'b1;
 	always @(posedge i_clk)
-	if (i_reset || !card_present || (OPT_HWRESET && !o_hwreset_n))
+	if (i_reset || (OPT_CARD_DETECT && (!card_present || card_removed))
+			|| (OPT_HWRESET && !o_hwreset_n))
 	begin
 		o_soft_reset <= 1'b1;
 	end else if (bus_write && bus_wraddr == ADDR_CMD)
@@ -719,7 +720,7 @@ module	sdaxil #(
 		always @(posedge i_clk)
 		if (i_reset || o_soft_reset)
 			r_card_busy <= 1'b0;
-		else if (o_tx_en)
+		else if (o_tx_en || (r_card_busy && i_card_busy))
 			r_card_busy <= 1'b1;
 		else if (new_cmd_request)
 			r_card_busy <= (bus_wdata[9:8] == R1B_REPLY);
@@ -738,13 +739,17 @@ module	sdaxil #(
 			r_busy_counter <= -1;
 
 			if (r_ckspeed < 4)
-				r_busy_counter <= 16;
+				// Max clock rate is 25/3 => 12.5MHz, or 8 cycls
+				r_busy_counter <= 16;	// 2 clock periods
 			else if (r_ckspeed < 8)
-				r_busy_counter <= 72;
+				// Max clock rate is 25/5 => 5MHz or 20cycles
+				r_busy_counter <= 72;	// 3.5 clock periods
 			else if (r_ckspeed < 16)
-				r_busy_counter <= 192;
+				// Max clock rate is 25/13 => 52 cycles
+				r_busy_counter <= 192;	// 3.6 clock periods
 			else if (r_ckspeed < 32)
-				r_busy_counter <= 3*128;
+				// Max clock rate is 25/29 => 116 cycles
+				r_busy_counter <= 3*128;	// 3.3 clks
 		end else if (r_busy_counter != 0)
 			r_busy_counter <= r_busy_counter - 1;
 
@@ -783,6 +788,13 @@ module	sdaxil #(
 		// Verilator coverage_on
 		// }}}
 	end endgenerate
+
+	initial	card_was_busy = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset || o_soft_reset)
+		card_was_busy <= 1'b0;
+	else
+		card_was_busy <= w_card_busy;
 	// }}}
 
 	// o_tx_en, r_tx_request, r_tx_sent
@@ -1527,7 +1539,7 @@ module	sdaxil #(
 
 	initial	o_int = 0;
 	always @(posedge i_clk)
-	if (i_reset || o_soft_reset)
+	if (i_reset)
 		o_int <= 1'b0;
 	else begin
 		o_int <= 1'b0;
@@ -1546,17 +1558,35 @@ module	sdaxil #(
 		2'b01: if (o_rx_en && i_rx_done) o_int <= 1'b1;
 		default: begin end
 		endcase
+
 		//
 		// D) Any command error generates an interrupt
 		if (i_cmd_done && i_cmd_err) o_int <= 1'b1;
-		//
-		// HOWEVER: We suppress all interrupts if dma_busy, responding
-		// only to a DMA interrupt.
-		if (dma_busy)
-			o_int <= 1'b0;
-		if (dma_int) // Save that ...
-			// DMA interrupts only happen when !dma_busy
+
+		// The DMA will set the interrupt as well.
+		if (dma_int)
 			o_int <= 1'b1;
+
+		// As will any time the card ceases to be busy
+		if (card_was_busy && !w_card_busy)
+			o_int <= 1'b1;
+
+		// Now we need to suppress interrupts if operations remain
+		//  ongoing
+		if (cmd_busy && !i_cmd_done)
+			o_int <= 1'b0;
+		if (r_mem_busy && ((o_tx_en && !i_tx_done) || (o_rx_en && !i_rx_done)))
+			o_int <= 1'b0;
+		if (dma_busy && !dma_int)
+			o_int <= 1'b0;
+		if (w_card_busy)
+			o_int <= 1'b0;
+		if ((r_rx_request || r_tx_request)&&(!i_cmd_done || !i_cmd_err))
+			o_int <= 1'b0;
+
+		if (o_soft_reset)
+			o_int <= 1'b0;
+
 		//
 		// E) A card has been removed or inserted, and yet not
 		// akcnowledged.
@@ -1569,6 +1599,27 @@ module	sdaxil #(
 		// if (HWRESETN && !last_hwreset_n && o_hwreset_n)
 		//	o_int <= 1'b1;
 	end
+`ifdef	FORMAL
+	wire	f_busy;
+
+	assign	f_busy = w_cmd_word[20] || w_cmd_word[14]
+				|| (dma_int||w_cmd_word[13]) || w_cmd_word[11];
+
+	always @(posedge i_clk)
+	if (!i_reset && !$past(i_reset)
+		&& !$past(o_soft_reset) && !$past(o_soft_reset,2)
+		&& $past(!OPT_CARD_DETECT || card_present != card_removed)
+		&& (!OPT_CARD_DETECT || card_present != card_removed)
+		&& !$past(bus_write) && !$past(bus_write,2))
+	begin
+		if ($past(w_card_busy) == $past(w_card_busy,2)
+			&& w_card_busy == $past(w_card_busy))
+		begin
+			assert(o_int == $fell(f_busy));
+		end else if (!f_busy && !$past(f_busy))
+			assert(o_int == ($past(!w_card_busy) && $past(w_card_busy,2)));
+	end
+`endif
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -1971,8 +2022,12 @@ module	sdaxil #(
 		begin // User command to activate the DMA
 			// {{{
 			r_dma_int <= 1'b0;
-			if (!r_dma_zero_len && !r_mem_busy && !o_tx_en)
+			if (r_dma_zero_len)
 				r_dma_int <= 1'b1;
+			// This one will generate an interrupt on its own,
+			//   so no interrupt is necessary ... here.
+			if (r_mem_busy || o_tx_en) // Also, clear potential Zero
+				r_dma_int <= 1'b0; // length interrupts here
 			if (!card_present)
 				r_dma_int <= 1'b1;
 			if (dma_error && !clear_err)
@@ -3500,6 +3555,26 @@ module	sdaxil #(
 
 	// PHY register
 	// {{{
+	reg	f_phy_write, f_phy_read;
+
+	initial	f_phy_write = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset || o_soft_reset || !o_hwreset_n)
+		f_phy_write <= 1'b0;
+	else if (axil_write_ready && bus_wraddr == ADDR_PHY)
+		f_phy_write <= 1'b1;
+	else
+		f_phy_write <= 1'b0;
+
+	initial	f_phy_read = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset || o_soft_reset || !o_hwreset_n)
+		f_phy_read <= 1'b0;
+	else if (bus_read && bus_rdaddr == ADDR_PHY)
+		f_phy_read <= 1'b1;
+	else
+		f_phy_read <= 1'b0;
+
 	faxil_register #(
 		// {{{
 		.AW(5), .ADDR({ ADDR_PHY, 2'b00 }),
@@ -3520,10 +3595,10 @@ module	sdaxil #(
 		.S_AXIL_AWADDR({ bus_wraddr, 2'b00 }),
 		.S_AXIL_WDATA(bus_wdata),
 		.S_AXIL_WSTRB(bus_wstrb),
-		.S_AXIL_BVALID(S_AXIL_BVALID),
+		.S_AXIL_BVALID(S_AXIL_BVALID && f_phy_write),
 		.S_AXIL_AR(bus_read),
 		.S_AXIL_ARADDR(bus_rdaddr),
-		.S_AXIL_RVALID(pre_valid),
+		.S_AXIL_RVALID(pre_valid && f_phy_read),
 		.S_AXIL_RDATA(pre_data),
 		.i_register(w_phy_ctrl)
 		// }}}
@@ -3599,13 +3674,18 @@ module	sdaxil #(
 
 	always @(*)
 	if (past_reset)
-		assume(!S_AXIL_AWVALID && !S_AXIL_ARVALID);
+	begin
+		assume(!S_AXIL_AWVALID || S_AXIL_AWADDR == { ADDR_CMD, 2'b00 });
+		assume(!S_AXIL_ARVALID || S_AXIL_ARADDR == { ADDR_CMD, 2'b00 });
+	end
 
 	always @(*)
 	if (o_soft_reset)
 	begin
-		assume(!S_AXIL_AWVALID && !S_AXIL_WVALID && !S_AXIL_BVALID);
-		assume(!S_AXIL_ARVALID && !pre_valid && !S_AXIL_RVALID);
+		assume((!S_AXIL_AWVALID && !S_AXIL_WVALID && !S_AXIL_BVALID)
+			|| S_AXIL_AWADDR == { ADDR_CMD, 2'b00 });
+		assume((!S_AXIL_ARVALID && !pre_valid && !S_AXIL_RVALID)
+			|| S_AXIL_ARADDR == { ADDR_CMD, 2'b00 });
 	end
 
 	// }}}

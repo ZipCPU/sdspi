@@ -100,7 +100,7 @@ module	sdwb #(
 		// clock cycles before timing out while waiting for busy.
 		// Perhaps that's too long, but it's just a backup timeout.
 		// If the device actually indicates a busy (like it's supposed
-		// to), then we'll be busy until the device releases.
+		// to), then we'll only be busy until the device releases.
 		parameter	LGCARDBUSY = 12,
 		parameter [0:0]	OPT_LOWPOWER = 1'b0
 		// }}}
@@ -281,7 +281,7 @@ module	sdwb #(
 	reg	[MW/8-1:0]	mem_wr_strb_a, mem_wr_strb_b;
 	reg	[MW-1:0]	mem_wr_data_a, mem_wr_data_b;
 
-	reg			r_mem_busy;
+	reg			r_mem_busy, card_was_busy;
 	wire			w_card_busy;
 
 	// DMA signals
@@ -318,7 +318,8 @@ module	sdwb #(
 	// {{{
 	initial	o_soft_reset = 1'b1;
 	always @(posedge i_clk)
-	if (i_reset || !card_present || (OPT_HWRESET && !o_hwreset_n))
+	if (i_reset || (OPT_CARD_DETECT && (!card_present || card_removed))
+			|| (OPT_HWRESET && !o_hwreset_n))
 	begin
 		o_soft_reset <= 1'b1;
 	end else if (bus_write && bus_wraddr == ADDR_CMD)
@@ -629,7 +630,7 @@ module	sdwb #(
 		always @(posedge i_clk)
 		if (i_reset || o_soft_reset)
 			r_card_busy <= 1'b0;
-		else if (o_tx_en)
+		else if (o_tx_en || (r_card_busy && i_card_busy))
 			r_card_busy <= 1'b1;
 		else if (new_cmd_request)
 			r_card_busy <= (bus_wdata[9:8] == R1B_REPLY);
@@ -648,13 +649,17 @@ module	sdwb #(
 			r_busy_counter <= -1;
 
 			if (r_ckspeed < 4)
-				r_busy_counter <= 16;
+				// Max clock rate is 25/3 => 12.5MHz, or 8 cycls
+				r_busy_counter <= 16;	// 2 clock periods
 			else if (r_ckspeed < 8)
-				r_busy_counter <= 72;
+				// Max clock rate is 25/5 => 5MHz or 20cycles
+				r_busy_counter <= 72;	// 3.5 clock periods
 			else if (r_ckspeed < 16)
-				r_busy_counter <= 192;
+				// Max clock rate is 25/13 => 52 cycles
+				r_busy_counter <= 192;	// 3.6 clock periods
 			else if (r_ckspeed < 32)
-				r_busy_counter <= 3*128;
+				// Max clock rate is 25/29 => 116 cycles
+				r_busy_counter <= 3*128;	// 3.3 clks
 		end else if (r_busy_counter != 0)
 			r_busy_counter <= r_busy_counter - 1;
 
@@ -693,6 +698,13 @@ module	sdwb #(
 		// Verilator coverage_on
 		// }}}
 	end endgenerate
+
+	initial	card_was_busy = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset || o_soft_reset)
+		card_was_busy <= 1'b0;
+	else
+		card_was_busy <= w_card_busy;
 	// }}}
 
 	// o_tx_en, r_tx_request, r_tx_sent
@@ -1437,7 +1449,7 @@ module	sdwb #(
 
 	initial	o_int = 0;
 	always @(posedge i_clk)
-	if (i_reset || o_soft_reset)
+	if (i_reset)
 		o_int <= 1'b0;
 	else begin
 		o_int <= 1'b0;
@@ -1456,17 +1468,35 @@ module	sdwb #(
 		2'b01: if (o_rx_en && i_rx_done) o_int <= 1'b1;
 		default: begin end
 		endcase
+
 		//
 		// D) Any command error generates an interrupt
 		if (i_cmd_done && i_cmd_err) o_int <= 1'b1;
-		//
-		// HOWEVER: We suppress all interrupts if dma_busy, responding
-		// only to a DMA interrupt.
-		if (dma_busy)
-			o_int <= 1'b0;
-		if (dma_int) // Save that ...
-			// DMA interrupts only happen when !dma_busy
+
+		// The DMA will set the interrupt as well.
+		if (dma_int)
 			o_int <= 1'b1;
+
+		// As will any time the card ceases to be busy
+		if (card_was_busy && !w_card_busy)
+			o_int <= 1'b1;
+
+		// Now we need to suppress interrupts if operations remain
+		//  ongoing
+		if (cmd_busy && !i_cmd_done)
+			o_int <= 1'b0;
+		if (r_mem_busy && ((o_tx_en && !i_tx_done) || (o_rx_en && !i_rx_done)))
+			o_int <= 1'b0;
+		if (dma_busy && !dma_int)
+			o_int <= 1'b0;
+		if (w_card_busy)
+			o_int <= 1'b0;
+		if ((r_rx_request || r_tx_request)&&(!i_cmd_done || !i_cmd_err))
+			o_int <= 1'b0;
+
+		if (o_soft_reset)
+			o_int <= 1'b0;
+
 		//
 		// E) A card has been removed or inserted, and yet not
 		// akcnowledged.
@@ -1479,6 +1509,27 @@ module	sdwb #(
 		// if (HWRESETN && !last_hwreset_n && o_hwreset_n)
 		//	o_int <= 1'b1;
 	end
+`ifdef	FORMAL
+	wire	f_busy;
+
+	assign	f_busy = w_cmd_word[20] || w_cmd_word[14]
+				|| (dma_int||w_cmd_word[13]) || w_cmd_word[11];
+
+	always @(posedge i_clk)
+	if (!i_reset && !$past(i_reset)
+		&& !$past(o_soft_reset) && !$past(o_soft_reset,2)
+		&& $past(!OPT_CARD_DETECT || card_present != card_removed)
+		&& (!OPT_CARD_DETECT || card_present != card_removed)
+		&& !$past(bus_write) && !$past(bus_write,2))
+	begin
+		if ($past(w_card_busy) == $past(w_card_busy,2)
+			&& w_card_busy == $past(w_card_busy))
+		begin
+			assert(o_int == $fell(f_busy));
+		end else if (!f_busy && !$past(f_busy))
+			assert(o_int == ($past(!w_card_busy) && $past(w_card_busy,2)));
+	end
+`endif
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -1881,8 +1932,12 @@ module	sdwb #(
 		begin // User command to activate the DMA
 			// {{{
 			r_dma_int <= 1'b0;
-			if (!r_dma_zero_len && !r_mem_busy && !o_tx_en)
+			if (r_dma_zero_len)
 				r_dma_int <= 1'b1;
+			// This one will generate an interrupt on its own,
+			//   so no interrupt is necessary ... here.
+			if (r_mem_busy || o_tx_en) // Also, clear potential Zero
+				r_dma_int <= 1'b0; // length interrupts here
 			if (!card_present)
 				r_dma_int <= 1'b1;
 			if (dma_error && !clear_err)

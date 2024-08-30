@@ -125,7 +125,7 @@ module	sdcmd #(
 	reg		last_tristate, cmd_tristate;
 
 	reg		waiting_on_response, cfg_ds, cfg_dbl, r_frame_err,
-			response_active, cfg_pp;
+			response_active;
 	wire		self_request;
 	wire		lcl_accept;
 	reg	[1:0]	cmd_type;
@@ -268,13 +268,13 @@ module	sdcmd #(
 		waiting_on_response <= 1'b0;
 	// }}}
 
-	// cfg_ds, cfg_dbl, cmd_type, cfg_pp
+	// cfg_ds, cfg_dbl, cmd_type
 	// {{{
 	always @(posedge i_clk)
 	if (i_reset)
-		{ cfg_pp, cfg_ds, cfg_dbl, cmd_type } <= 5'b0;
+		{ cfg_ds, cfg_dbl, cmd_type } <= 4'b0;
 	else if (lcl_accept)
-		{ cfg_pp, cfg_ds, cfg_dbl, cmd_type } <= { i_cfg_pp, (i_cfg_ds && OPT_DS), i_cfg_dbl, i_cmd_type };
+		{ cfg_ds, cfg_dbl, cmd_type } <= { (i_cfg_ds && OPT_DS), i_cfg_dbl, i_cmd_type };
 	// }}}
 
 	// new_data
@@ -785,7 +785,7 @@ module	sdcmd #(
 ////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
 	(* anyconst *) reg f_nvr_request, f_nvr_collision;
-	reg	f_past_valid, f_busy;
+	reg		f_past_valid, f_busy, f_cfg_pp;
 	reg	[7:0]	f_last_resp_count;
 	reg	[47:0]	f_tx_reg, f_tx_now;
 	wire	[5:0]	f_txshift;
@@ -887,6 +887,13 @@ module	sdcmd #(
 	always @(posedge i_clk)
 	if (!i_reset && $past(o_cmd_response))
 		assert(!o_cmd_response);
+
+	always @(posedge i_clk)
+	if (i_reset)
+		f_cfg_pp <= 5'b0;
+	else if (lcl_accept)
+		f_cfg_pp <= i_cfg_pp;
+	// }}}
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -1054,7 +1061,7 @@ module	sdcmd #(
 		assert(tx_tristate == (tx_tristate & tx_sreg));
 		assert(f_tristate == 0);
 		assert(f_tristate_msk == 48'h0);
-		if (cfg_pp || cfg_dbl)
+		if (f_cfg_pp || cfg_dbl)
 		begin
 			assert(f_tristate_active == 0);
 		end else begin
@@ -1069,7 +1076,7 @@ module	sdcmd #(
 	always @(*)
 	if (!i_reset && o_cmd_en)
 	begin
-		if (cfg_pp || cfg_dbl)
+		if (f_cfg_pp || cfg_dbl)
 		begin
 			assert(!o_cmd_tristate);
 		end else if (o_cmd_data != 2'b11)
@@ -1081,7 +1088,7 @@ module	sdcmd #(
 
 	always @(posedge i_clk)
 	if (!i_reset && OPT_SERDES && $past(!i_reset && o_cmd_en
-					&& (o_cmd_data != 2'b11 || cfg_pp)))
+					&& (o_cmd_data != 2'b11 || f_cfg_pp)))
 		assert(!o_cmd_tristate);
 	// }}}
 

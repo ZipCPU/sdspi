@@ -737,7 +737,6 @@ module	sdtxframe #(
 `endif
 
 	initial {r_tristate, ck_tristate } = 2'h3;
-
 	always @(posedge i_clk)
 	if (i_reset) // pstate == P_IDLE)
 	begin
@@ -818,9 +817,11 @@ module	sdtxframe #(
 	// 2 such clocks, together with the number of clocks required for an
 	// ACK/NACK sequence (5).  Here, we round that number up to 15 for good
 	// measure.
-	initial	r_timeout = 4'd15;
+	initial	r_timeout = (OPT_CRCTOKEN) ? 4'd15 : 4'h0;
 	always @(posedge i_clk)
-	if (i_reset || (i_en && S_VALID) || tx_valid || !i_en)
+	if (!OPT_CRCTOKEN)
+		r_timeout <= 0;
+	else if (i_reset || (i_en && S_VALID) || tx_valid || !i_en)
 	begin
 		r_timeout <= 15;
 	end else if (i_ckstb && (r_timeout != 0))
@@ -833,7 +834,8 @@ module	sdtxframe #(
 	always @(posedge i_clk)
 	if (i_reset || (i_en && S_VALID) || tx_valid || !i_en)
 		r_done <= 1'b0;
-	else if (!r_done && i_ckstb && (r_timeout <= 1))
+	else if (!r_done && i_ckstb && (!OPT_CRCTOKEN || r_timeout <= 1))
+		// Once set, r_done will stay set until i_en drops
 		r_done <= 1'b1;
 
 	assign	o_done = r_done;

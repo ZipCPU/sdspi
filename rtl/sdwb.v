@@ -1827,7 +1827,7 @@ module	sdwb #(
 		localparam	DMA_ADDR_LO = (OPT_LITTLE_ENDIAN) ? 3'h5 : 3'h6,
 				DMA_ADDR_HI = (OPT_LITTLE_ENDIAN) ? 3'h6 : 3'h5,
 				DMA_ADDR_LN = 3'h7;
-		localparam [31:0]	DMA_STOP_TRANSMISSION = 32'h814c,
+		localparam [31:0]	DMA_STOP_TRANSMISSION = 32'h834c,
 					DMA_NULL_READ = 32'h8800,
 					DMA_NULL_WRITE= 32'h8c00;
 
@@ -2957,6 +2957,26 @@ module	sdwb #(
 
 	assign	o_wb_data = bus_rddata;
 	// }}}
+
+	/*
+	assign	o_debug = { w_cmd_word[15], w_card_busy,		// 1b
+		// Command:
+		o_cmd_request, cmd_busy || (i_cmd_busy && o_cmd_request),
+					i_cmd_done,			// 7b
+			i_cmd_err, i_cmd_ercode, i_cmd_response,
+		// DMA:
+		i_dma_busy, i_dma_err, o_dma_abort,			// 3b
+		o_dma_sd2s, o_sd2s_valid, i_sd2s_ready, o_sd2s_last,	// 4b
+		o_dma_s2sd, i_s2sd_valid, o_s2sd_ready,			// 3b
+		// TX:
+		o_tx_mem_valid, i_tx_mem_ready, o_tx_mem_last,		// 7b
+				o_tx_en, r_tx_request, i_tx_done, i_tx_err,
+		// RX:
+		i_rx_mem_valid, i_rx_done, i_rx_err,			// 6b
+			o_rx_en ? i_rx_ercode : i_tx_ercode,
+			r_rx_request, o_rx_en
+	};
+	*/
 
 	// Keep Verilator happy
 	// {{{

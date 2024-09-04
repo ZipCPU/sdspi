@@ -53,6 +53,7 @@
 @INT.SDCARD.PIC= syspic
 @CARD_DETECT=1'b1
 @OPT_SERDES=1'b0
+@OPT_DMA=1'b1
 @OPT_DDR=1'b1
 @TOP.PORTLIST=
 		// @$(NAME)
@@ -124,11 +125,22 @@
 	//
 
 	sdio_top #(
-		.NUMIO(@$(NUMIO)),
+		// {{{
+		.LGFIFO(10), .NUMIO(@$(NUMIO)),
+		.MW(@$(SLAVE.BUS.WIDTH)),
+		.ADDRESS_WIDTH(@$(MASTER.BUS.AWID)+$clog2(@$(MASTER.BUS.WIDTH)/8)),
+		.DMA_DW(@$(MASTER.BUS.WIDTH)),
 		.OPT_SERDES(@$(OPT_SERDES)),
+		.OPT_EMMC(@$(OPT_EMMC)),
+		.OPT_DMA(@$(OPT_DMA)),
 		.OPT_DDR(@$(OPT_DDR)),
+		.OPT_HWRESET(@$(OPT_HWRESET)),
 		.OPT_CARD_DETECT(@$(CARD_DETECT)),
-		.MW(@$(SLAVE.BUS.WIDTH))
+		.OPT_CRCTOKEN(@$(CRCTOKEN)),
+		.LGTIMEOUT(26),
+		.OPT_ISTREAM(1'b0),
+		.OPT_OSTREAM(1'b0)
+		// }}}
 	) u_@$(PREFIX)(
 		// {{{
 		.i_clk(@$(SLAVE.BUS.CLOCK.WIRE)),
@@ -198,7 +210,7 @@
 // These will be defined in sdiodrv.h for the SDIO controller
 struct @$(DEVID)_S;
 // }}}
-@BDEF.IONAME=_sdcard
+@BDEF.IONAME=_@$(PREFIX)
 @BDEF.IOTYPE=struct @$(DEVID)_S
 @BDEF.OSDEF=_BOARD_HAS_@$(DEVID)
 @BDEF.OSVAL=static volatile @$(BDEF.IOTYPE) *const @$(BDEF.IONAME) = ((@$(BDEF.IOTYPE) *)@$[0x%08x](REGBASE));
@@ -207,4 +219,8 @@ struct @$(DEVID)_S;
 // #include "sdiosim.h"
 @RTL.MAKE.GROUP= SDIO
 @RTL.MAKE.SUBD=sdspi
-@RTL.MAKE.FILES= sdio_top.v sdio.v sdfrontend.v sdckgen.v sdwb.v sdtxframe.v sdrxframe.v
+@RTL.MAKE.FILES= sdio_top.v sdio.v sdfrontend.v sdckgen.v sdwb.v sdtxframe.v sdrxframe.v sdcmd.v sddma.v sddma_mm2s.v sddma_rxgears.v sdfifo.v sddma_txgears.v sddma_s2mm.v xsdddr.v xsdserdes8x.v
+@XDC.SERDES=
+set_max_delay -datapath_only -from [get_cells -hier -filter {NAME=~ thedesign/u_@$(PREFIX)/u_sdcmd/cmd_tristate*}] -to [get_cells -hier -filter {NAME=~ u_@$(PREFIX)_frontend/GEN_WIDE_IO.cmd_serdes/u_oserdes*}] 4.0
+set_max_delay -datapath_only -from [get_cells -hier -filter {NAME=~ thedesign/u_@$(PREFIX)/u_txframe/r_tristate*}] -to [get_cells -hier -filter {NAME=~ u_@$(PREFIX)_frontend/GEN_WIDE_IO.GEN_WIDE_DATIO*.io_serdes/u_oserdes*}] 4.0
+

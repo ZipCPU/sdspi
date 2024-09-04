@@ -139,7 +139,7 @@ module sdio_top #(
 		parameter [0:0]	OPT_DS=OPT_SERDES && OPT_EMMC,
 		// }}}
 		parameter [0:0]	OPT_CARD_DETECT=!OPT_EMMC,
-		parameter [0:0]	OPT_CRCTOKEN=OPT_EMMC,
+		parameter [0:0]	OPT_CRCTOKEN=1'b1,
 		// OPT_HWRESET
 		// {{{
 		// eMMC cards can have hardware resets.  SD Cards do not.  Set

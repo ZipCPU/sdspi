@@ -960,7 +960,7 @@ module	sdfrontend #(
 			// Verilator coverage_off
 			// Verilator lint_off UNUSED
 			wire	unused_outputs;
-			assign	unused_outputs = &{ 1'b0 }; // , out_pin };
+			assign	unused_outputs = &{ 1'b0 }; // , out_pin
 			// Verilator lint_on  UNUSED
 			// Verilator coverage_on
 			// }}}

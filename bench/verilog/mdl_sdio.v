@@ -149,6 +149,7 @@ module	mdl_sdio #(
 	//
 	// Read from the card, send to the user (read operation)
 	// {{{
+	reg	r_crcack, r_crcnak;
 
 	mdl_sdtx
 	tb_sdtx (
@@ -160,7 +161,7 @@ module	mdl_sdio #(
 		.i_en(write_en), .i_width(cfg_width), .i_ddr(cfg_ddr),
 			.i_ppull(1'b0),
 		//
-		.i_crcack(1'b0), .i_crcnak(1'b0),
+		.i_crcack(r_crcack), .i_crcnak(r_crcnak),
 		//
 		.i_valid(tx_valid), .o_ready(tx_ready),
 			.i_data(tx_data), .i_last(tx_last)
@@ -561,6 +562,13 @@ module	mdl_sdio #(
 		end
 	end
 
+	initial	{ r_crcack, r_crcnak } = 2'b0;
+	always @(posedge sd_clk)
+	begin
+		r_crcack <= read_en && rx_good;
+		r_crcnak <= read_en && rx_err;
+	end
+
 	always @(posedge sd_clk)
 	if (read_en && rx_valid)
 	begin
@@ -649,5 +657,27 @@ module	mdl_sdio #(
 	// assign	sd_ds = #DS_DELAY (ds_enabled
 	//			&& (tx_ds || (enhanced_ds_enabled && cmd_ds));
 
-	assign	sd_dat[0] = (card_busy && card_selected && !pending_write) ? 1'b0 : 1'bz;
+	// assign	sd_dat[0] = (card_busy && card_selected && !pending_write) ? 1'b0 : 1'bz;
+	reg		busy_indication;
+	reg	[2:0]	busy_wait;
+
+	initial	busy_indication = 0;
+	initial	busy_wait = 0;
+	always @(negedge sd_clk)
+	if (!internal_card_busy || write_en || pending_write)
+	begin
+		busy_indication <= 1'b0;
+		busy_wait <= 0;
+	end else if (busy_wait > 0)
+	begin
+		busy_wait <= busy_wait - 1;
+		busy_indication <= (busy_wait <= 1);
+	end else if (!busy_indication)
+	begin
+		// busy_indication <= 1'b0;
+		busy_wait <= 6;
+	end
+
+	assign	sd_dat[0] = (busy_indication && !read_en) ? 1'b0 : 1'bz;
+
 endmodule

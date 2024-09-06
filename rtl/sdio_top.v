@@ -139,7 +139,21 @@ module sdio_top #(
 		parameter [0:0]	OPT_DS=OPT_SERDES && OPT_EMMC,
 		// }}}
 		parameter [0:0]	OPT_CARD_DETECT=!OPT_EMMC,
+		// OPT_CRCTOKEN : Look for a CRC token following every blk write
+		// {{{
+		// CRC tokens are returned by both eMMC and SD card devices
+		// following block writes from the host to the card.  The token
+		// tells the host whether or not the block was written validly
+		// or not.
+		//
+		// At one time, I thought this these tokens were optional, then
+		// that they were only on eMMC devices.  The parameter was built
+		// so I could first have that optional support, then so that
+		// support could be optionally configured in.  Now I understand
+		// both eMMC and SD card devices use these toksn.  Therefore,
+		// this parameter should be set and left.
 		parameter [0:0]	OPT_CRCTOKEN=1'b1,
+		// }}}
 		// OPT_HWRESET
 		// {{{
 		// eMMC cards can have hardware resets.  SD Cards do not.  Set
@@ -525,7 +539,7 @@ module sdio_top #(
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR), .NUMIO(NUMIO),
 		.OPT_DS(OPT_DS), .OPT_COLLISION(OPT_COLLISION),
 		.OPT_CRCTOKEN(OPT_CRCTOKEN), .HWBIAS(HWDELAY),
-		.BUSY_CLOCKS(OPT_EMMC ? 16 : 4)
+		.BUSY_CLOCKS(OPT_CRCTOKEN ? 16 : 4)
 		// }}}
 	) u_sdfrontend (
 		// {{{

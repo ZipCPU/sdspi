@@ -55,7 +55,7 @@ module	sdfrontend #(
 		parameter [0:0]	OPT_DDR = 1'b0,
 		parameter [0:0]	OPT_DS = OPT_SERDES,
 		parameter [0:0]	OPT_COLLISION = 1'b0,
-		parameter [0:0]	OPT_CRCTOKEN = 1'b0,
+		parameter [0:0]	OPT_CRCTOKEN = 1'b1,
 		parameter 	BUSY_CLOCKS = 4,
 		parameter	HWBIAS = 0,
 		parameter	NUMIO = 8

@@ -197,7 +197,7 @@ static	const	uint32_t
 		SDIO_RXECODE  = 0x00800000,	// RX Error code
 		SDIO_DMAERR   = 0x01000000,
 		SDIO_HWRESET  = 0x02000000,
-		// SDIO_ACK   = 0x04000000,	// Expect a CRC ACK token
+		SDIO_ACK      = 0x04000000,	// Expect a CRC ACK token
 		SDIO_RESET    = 0x52000000,
 		// PHY enumerations
 		SDPHY_DDR     = 0x00004100,	// Requires CK90
@@ -208,7 +208,7 @@ static	const	uint32_t
 		SDPHY_WBEST   = 0x00000c00,
 		SDPHY_PPDAT   = 0x00001000,	// Push pull drive for data
 		SDPHY_PPCMD   = 0x00002000,	// Push pull drive for cmd wire
-		SDIO_PUSHPULL = SDPHY_PPDAT | SDPHY_PPCMD,
+		SDPHY_PUSHPULL = SDPHY_PPDAT | SDPHY_PPCMD,
 		SDIOCK_CK90   = 0x00004000,
 		SDIOCK_SHUTDN = 0x00008000,
 		SDPHY_PHASEMSK= 0x001f0000,
@@ -224,15 +224,15 @@ static	const	uint32_t
 		SDIOCK_100MHZ = 0x00000001,
 		SDIOCK_200MHZ = 0x00000000,
 		SDIOCK_MASK   = 0x000000ff,
-		SDIOCK_1P2V   = 0x00400000,
-		SDIOCK_DS     = SDIOCK_25MHZ | SDPHY_W4 | SDIO_PUSHPULL,
-		SDIOCK_HS     = SDIOCK_50MHZ | SDPHY_W4 | SDIO_PUSHPULL,
+		SDPHY_1P2V    = 0x00400000,
+		SDIOCK_DS     = SDIOCK_25MHZ | SDPHY_W4 | SDPHY_PUSHPULL,
+		SDIOCK_HS     = SDIOCK_50MHZ | SDPHY_W4 | SDPHY_PUSHPULL,
 		// Speed abbreviations
-		SDIOCK_SDR50  = SDIOCK_50MHZ  | SDPHY_W4 | SDIO_PUSHPULL | SDIOCK_1P2V,
-		SDIOCK_DDR50  = SDIOCK_50MHZ  | SDPHY_W4 | SDIO_PUSHPULL | SDPHY_DDR | SDIOCK_1P2V,
-		SDIOCK_SDR104 = SDIOCK_100MHZ | SDPHY_W4 | SDIO_PUSHPULL | SDIOCK_1P2V,
-		SDIOCK_SDR200 = SDIOCK_200MHZ | SDPHY_W4 | SDIO_PUSHPULL | SDIOCK_1P2V,
-		// SDIOCK_HS400= SDIOCK_200MHZ | SDPHY_W4 | SDIO_PUSHPULL | SDPHY_DS,
+		SDIOCK_SDR50  = SDIOCK_50MHZ  | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_1P2V,
+		SDIOCK_DDR50  = SDIOCK_50MHZ  | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_DDR | SDPHY_1P2V,
+		SDIOCK_SDR104 = SDIOCK_100MHZ | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_1P2V,
+		SDIOCK_SDR200 = SDIOCK_200MHZ | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_1P2V,
+		// SDIOCK_HS400= SDIOCK_200MHZ | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_DS,
 		//
 		SPEED_SLOW   = SDIOCK_400KHZ,
 		SPEED_DEFAULT= SDIOCK_DS,
@@ -243,20 +243,20 @@ static	const	uint32_t
 		SECTOR_MASK  = 0x0f000000,
 		//
 		SDIO_CMD     = 0x00000040,
-		SDIO_R1ERR   = 0xff800000,
 		SDIO_READREG  = SDIO_CMD | SDIO_R1,
 		SDIO_READREGb = SDIO_CMD | SDIO_R1b,
 		SDIO_READR2  = (SDIO_CMD | SDIO_R2),
-		SDIO_WRITEBLK = (SDIO_CMD | SDIO_R1 | SDIO_ERR
-				| SDIO_WRITE | SDIO_MEM) + 24,
-		SDIO_WRMULTI = (SDIO_CMD | SDIO_R1
-				| SDIO_WRITE | SDIO_MEM) + 25,
+		SDIO_WRITEBLK = (SDIO_CMD | SDIO_R1b | SDIO_ERR
+				| SDIO_ACK | SDIO_WRITE | SDIO_MEM) + 24,
+		SDIO_WRMULTI = (SDIO_CMD | SDIO_R1b
+				| SDIO_ACK | SDIO_WRITE | SDIO_MEM) + 25,
 		SDIO_WRDMA = SDIO_WRMULTI | SDIO_DMA,
 		SDIO_READBLK  = (SDIO_CMD | SDIO_R1
 					| SDIO_MEM) + 17,
 		SDIO_RDMULTI  = (SDIO_CMD | SDIO_R1
 					| SDIO_MEM) + 18,
-		SDIO_READDMA  = SDIO_RDMULTI | SDIO_DMA;
+		SDIO_READDMA  = SDIO_RDMULTI | SDIO_DMA,
+		SDIO_R1ERR   = 0xff800000;
 
 static	void	sdio_wait_while_busy(SDIODRV *dev);
 static	void	sdio_go_idle(SDIODRV *dev);
@@ -1019,6 +1019,7 @@ unsigned sdio_switch(SDIODRV *dev, unsigned swcmd, unsigned *ubuf) {  // CMD 6
 }
 // }}}
 
+// Dump R1
 void sdio_dump_r1(const unsigned rv) {
 	// {{{
 	if (SDINFO) {
@@ -1101,7 +1102,7 @@ unsigned sdio_get_r1(SDIODRV *dev) {	// CMD13=send_status
 		txstr("  Data:    "); txhex(vd); txstr("\n");
 		txstr("  PHY:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
 
-		if (SDINFO)
+		if (SDINFO && (0 == (vc & 0x8000)))
 			sdio_dump_r1(vd);
 	}
 	return	vd;
@@ -1315,7 +1316,7 @@ SDIODRV *sdio_init(SDIO *dev) {
 	unsigned	ifcond, op_cond, hcs;
 	SDIODRV	*dv = (SDIODRV *)malloc(sizeof(SDIODRV));
 	unsigned op_cond_query;
-	const	unsigned	CKPHASE = 16 << 16;
+	unsigned	clk_phase = 16 << 16;
 
 	dv->d_dev = dev;
 	dv->d_RCA = 0;
@@ -1332,9 +1333,25 @@ SDIODRV *sdio_init(SDIO *dev) {
 	dv->d_dev->sd_cmd = SDIO_REMOVED;
 	dv->d_dev->sd_cmd = SDIO_RESET;
 
-	dv->d_dev->sd_phy = SPEED_SLOW | SECTOR_512B | CKPHASE;
+	dv->d_dev->sd_phy = SPEED_SLOW | SECTOR_512B | SDPHY_PHASEMSK;
 	while(SPEED_SLOW != (dv->d_dev->sd_phy & SDIOCK_MASK))
 		;
+
+	{
+		unsigned	phy;
+		phy = dv->d_dev->sd_phy;
+		// SDPHY_PHASEMSK= 0x001f0000,
+		if (0x010000 & phy) {
+			// OPT_SERDES
+			clk_phase = 16 << 16;	// 0x18_0000
+		} else if (0x040000 & phy) {
+			// OPT_DDR
+			clk_phase = 16 << 16;
+		} else {
+			// Raw front end I/O
+			clk_phase = 16 << 16;
+		}
+	}
 
 	sdio_go_idle(dv);
 
@@ -1429,8 +1446,8 @@ SDIODRV *sdio_init(SDIO *dev) {
 
 	sdio_select_card(dv);
 
-	dv->d_dev->sd_phy = SECTOR_512B | SDIOCK_25MHZ | SDIO_PUSHPULL
-			| CKPHASE;
+	dv->d_dev->sd_phy = SECTOR_512B | SDIOCK_25MHZ | SDPHY_PUSHPULL
+			| clk_phase;
 	while(SDIOCK_25MHZ != (dv->d_dev->sd_phy & 0x0ff))
 		; // Wait for the clock to change
 
@@ -1461,7 +1478,7 @@ SDIODRV *sdio_init(SDIO *dev) {
 		// couldn't set the clock, and so we should abandon our attempt.
 		dv->d_dev->sd_phy = SDIOCK_SHUTDN
 					| (phy & ~(SDPHY_PHASEMSK|SDIOCK_MASK))
-					| CKPHASE | SDIOCK_50MHZ;
+					| clk_phase | SDIOCK_50MHZ;
 
 		for(int k=0; k<50; k++)
 			if (SDIOCK_50MHZ == (dv->d_dev->sd_phy & SDIOCK_MASK))
@@ -1508,7 +1525,7 @@ SDIODRV *sdio_init(SDIO *dev) {
 							| SDIOCK_50MHZ;
 				dv->d_dev->sd_phy = phy;
 				phy = dv->d_dev->sd_phy;
-				phy = (phy & ~SDPHY_PHASEMSK) | CKPHASE;
+				phy = (phy & ~SDPHY_PHASEMSK) | clk_phase;
 				if (SDDEBUG) {
 					txstr("Adjusting PHY to: ");
 					txhex(phy);
@@ -1717,8 +1734,8 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 
 	sdio_wait_while_busy(dev);
 
+	dev_stat  = dev->d_dev->sd_cmd;
 	card_stat = dev->d_dev->sd_data;
-	dev_stat  = dev->d_dev->sd_data;
 
 	RELEASE_MUTEX;
 
@@ -1762,7 +1779,7 @@ int	sdio_write(SDIODRV *dev, const unsigned sector,
 	if (err) {
 		if (SDDEBUG)
 			txstr("SDIO-WRITE -> ERR\n");
-		return RES_ERROR;
+		return	RES_ERROR;
 	} return RES_OK;
 }
 // }}}
@@ -1863,7 +1880,7 @@ int	sdio_read(SDIODRV *dev, const unsigned sector,
 			} if (s + 1 < count && !err) {
 				// Immediately start the next read request
 				dev->d_dev->sd_cmd  = SDIO_MEM
-					+ ((s&1) ? 0 : SDIO_FIFO);
+					| ((s&1) ? 0 : SDIO_FIFO);
 			} else {
 				// Send a STOP_TRANSMISSION request
 				dev->d_dev->sd_data = 0;
@@ -1940,6 +1957,7 @@ int	sdio_read(SDIODRV *dev, const unsigned sector,
 			txstr("\n");
 			if (SDINFO)
 				sdio_dump_err(dev_stat);
+			sdio_get_r1(dev);
 		}
 		// If the stop transmission command didn't receive
 		// a proper response, return an error status

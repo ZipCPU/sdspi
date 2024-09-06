@@ -42,11 +42,14 @@
 #include <assert.h>
 #include "sdiosim.h"
 
-constexpr	unsigned	COM_CRC_ERROR	= 0x00800000;
+constexpr unsigned	COM_CRC_ERROR	= 0x00800000,
+			CRCACK = 1, CRCNAK = 2,
+			SECTORSZ = 512;
 
 SDIOSIM::SDIOSIM(const char *fname) : m_debug(false) {
 	// {{{
 	HCS = true;
+	m_crctoken = 0;
 
 	if (0 == access(fname, R_OK|W_OK)) {
 		m_fp = fopen(fname, "r+");
@@ -89,6 +92,7 @@ void	SDIOSIM::init(void) {
 	m_reply_started = false;
 	m_multiblock = false;
 	m_busy_cycles = 0;
+	m_crctoken = 0;
 
 	CID();
 	CSD();
@@ -246,7 +250,7 @@ void	SDIOSIM::appendcrc(unsigned len_bytes) {
 		printf("SDIOSIM: Preparing block to receive:\n");
 		for(unsigned k=0; k<len_bytes; k++) {
 			printf("%02x", m_dbuf[k] & 0x0ff);
-			if (15 == (k&15))
+			if ((k == (len_bytes-1)) || (15 == (k&15)))
 				printf("\n");
 			else if (7 == (k & 7))
 				printf("  ");
@@ -733,13 +737,13 @@ void	SDIOSIM::accept_command(void) {
 				m_sector >>= 9;
 			m_data_delay = rand() & 1023;
 			m_data_posn  = 0;
-			m_multiblock = true;
+			m_multiblock = false;
 
-			(void)fseek(m_fp, (long)(m_sector * 512l), SEEK_SET);
-			sz = fread(m_dbuf, sizeof(char), 512, m_fp);
-			for(unsigned k=512; k<DBUFLN; k++)
+			(void)fseek(m_fp, (long)(m_sector * SECTORSZ), SEEK_SET);
+			sz = fread(m_dbuf, sizeof(char), SECTORSZ, m_fp);
+			for(unsigned k=SECTORSZ; k<DBUFLN; k++)
 				m_dbuf[k] = 0x0ff;
-			appendcrc(512);
+			appendcrc(SECTORSZ);
 			assert(m_busy_cycles == 0);
 		} break;
 		// }}}
@@ -759,12 +763,12 @@ void	SDIOSIM::accept_command(void) {
 			m_data_posn  = 0;
 			m_multiblock = true;
 
-			(void)fseek(m_fp, (long)(m_sector * 512l), SEEK_SET);
-			sz = fread(m_dbuf, sizeof(char), 512, m_fp);
+			(void)fseek(m_fp, (long)(m_sector * SECTORSZ), SEEK_SET);
+			sz = fread(m_dbuf, sizeof(char), SECTORSZ, m_fp);
 			m_sector++;
-			for(unsigned k=512; k<DBUFLN; k++)
+			for(unsigned k=SECTORSZ; k<DBUFLN; k++)
 				m_dbuf[k] = 0x0ff;
-			appendcrc(512);
+			appendcrc(SECTORSZ);
 			assert(m_busy_cycles == 0);
 		} break;
 		// }}}
@@ -790,7 +794,7 @@ void	SDIOSIM::accept_command(void) {
 			m_multiblock = false;
 
 			assert(m_busy_cycles == 0);
-			// m_data_count = 512;
+			// m_data_count = SECTORSZ;
 		} break;
 		// }}}
 	case 25: // WRITE_MULTIPLE_BLOCK
@@ -981,7 +985,7 @@ unsigned SDIOSIM::datp(unsigned in) {
 			} else if (0 == (in & 0x01))
 				m_data_started = true;
 			// }}}
-		} else if (m_data_posn < 512*8 + 8*16) { // Receive data
+		} else if (m_data_posn < SECTORSZ*8 + 8*16) { // Receive data
 			// {{{
 			unsigned	idx = m_data_posn >> 3;
 
@@ -1010,7 +1014,7 @@ unsigned SDIOSIM::datp(unsigned in) {
 				m_data_posn += 1;
 			}
 
-			if (m_data_posn == 512*8 + (16 * m_width)) {
+			if (m_data_posn == SECTORSZ*8 + (16 * m_width)) {
 				// {{{
 				bool		crc_fail = false;
 				unsigned	fill;
@@ -1059,19 +1063,21 @@ unsigned SDIOSIM::datp(unsigned in) {
 				}
 
 				if (!crc_fail) {
-					long	offset = m_sector * 512l;
+					long	offset = m_sector * SECTORSZ;
+
+					m_crctoken |= CRCACK << 16;
 					if (0 != fseek(m_fp, offset, SEEK_SET)) {
 						perror("FSEEK O/S Err:");
 					}
 					if (m_debug)
 					printf( "SDIOSIM-P: Writing sector %04x @0x%08lx\n", m_sector, offset);
-					if (512 != fwrite(m_dbuf, sizeof(char), 512, m_fp)) {
+					if (SECTORSZ != fwrite(m_dbuf, sizeof(char), SECTORSZ, m_fp)) {
 						perror("FWRITE O/S Err:");
 					}
 					m_sector++;
 
 					if (false && m_debug)
-					for(unsigned k=0; k<512u; k++) {
+					for(unsigned k=0; k<SECTORSZ; k++) {
 						printf("%02x", m_dbuf[k] & 0x0ff);
 						if (15 == (k&15))
 							printf("\n");
@@ -1082,6 +1088,7 @@ unsigned SDIOSIM::datp(unsigned in) {
 					}
 
 				} else {
+					m_crctoken |= CRCNAK << 16;
 					printf("SDIOSIM-P: Bad-CRC\n");
 					m_R1 |= COM_CRC_ERROR;
 					if (m_debug) {
@@ -1184,7 +1191,7 @@ unsigned SDIOSIM::datn(unsigned in) {
 
 			return in;
 			// }}}
-		} else if (m_data_posn < 512*8 + 2*m_width*16) { // Receive a block of data
+		} else if (m_data_posn < SECTORSZ*8 + 2*m_width*16) { // Receive a block of data
 			// {{{
 			unsigned	idx = m_data_posn >> 3;
 			if (m_width >= 8) {
@@ -1215,7 +1222,7 @@ unsigned SDIOSIM::datn(unsigned in) {
 				// }}}
 			}
 
-			if (m_data_posn == 512*8 + (32 * m_width)) {
+			if (m_data_posn == SECTORSZ*8 + (32 * m_width)) {
 				// {{{ // Check CRC
 				bool		crc_fail = false;
 				unsigned	fill = 0;
@@ -1276,12 +1283,14 @@ unsigned SDIOSIM::datn(unsigned in) {
 				}
 
 				if (!crc_fail) {
-					(void)fseek(m_fp, (long)(m_sector * 512l), SEEK_SET);
+					m_crctoken |= CRCACK << 16;
+					(void)fseek(m_fp, (long)(m_sector * SECTORSZ), SEEK_SET);
 					if (m_debug) printf("SDIOSIM-N: Writing sector %04x\n", m_sector);
-					(void)fwrite(m_dbuf, sizeof(char), 512, m_fp);
+					(void)fwrite(m_dbuf, sizeof(char), SECTORSZ, m_fp);
 					m_sector++;
 
 				} else {
+					m_crctoken |= CRCNAK << 16;
 					printf("SDIOSIM-N: Bad-CRC\n");
 					m_R1 |= COM_CRC_ERROR;
 				}
@@ -1324,11 +1333,11 @@ void	SDIOSIM::apply(unsigned sdclk, unsigned ddr,
 			m_data_delay = rand() & 1023;
 			m_data_posn  = 0;
 
-			sz = fread(m_dbuf, sizeof(char), 512, m_fp);
+			sz = fread(m_dbuf, sizeof(char), SECTORSZ, m_fp);
 			m_sector++;
-			for(unsigned k=512; k<DBUFLN; k++)
+			for(unsigned k=SECTORSZ; k<DBUFLN; k++)
 				m_dbuf[k] = 0x0ff;
-			appendcrc(512);
+			appendcrc(SECTORSZ);
 		} m_data_started = 0;
 	}
 
@@ -1358,6 +1367,10 @@ void	SDIOSIM::apply(unsigned sdclk, unsigned ddr,
 			rstb = (rstb << 1) | 1;
 			rdat = (rdat << 8) | (datp(idat) & 0x0ff);
 			rlsb = (rlsb << 1) | (rdat&1);
+			if (data_en)
+				m_crctoken &= ~0x0ff;
+			else
+				m_crctoken >>= 2;
 		} else if (ddr && edge == 2) {
 			rstb = (rstb << 1) | 1;
 			rdat = (rdat << 8) | (datn(idat) & 0x0ff);

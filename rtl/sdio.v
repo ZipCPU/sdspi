@@ -75,7 +75,7 @@ module	sdio #(
 		parameter [0:0]	OPT_HWRESET = OPT_EMMC,
 		parameter [0:0]	OPT_1P8V= 1'b0,
 		parameter [0:0]	OPT_CARD_DETECT = !OPT_EMMC,
-		parameter [0:0]	OPT_CRCTOKEN = OPT_EMMC,
+		parameter [0:0]	OPT_CRCTOKEN = 1'b1,
 		parameter	LGTIMEOUT = 23,
 		parameter [0:0]	OPT_ISTREAM = 0, OPT_OSTREAM = 0,
 		parameter	SW = 32
@@ -605,7 +605,8 @@ module	sdio #(
 		//
 		.tx_valid(o_data_en), .tx_data(o_tx_data),
 			.tx_tristate(o_data_tristate),
-		.i_crcack(i_crcack), .i_crcnak(i_crcnak),
+		.i_crcack(i_crcack && OPT_CRCTOKEN),
+			.i_crcnak(i_crcnak && OPT_CRCTOKEN),
 		.o_done(tx_done), .o_err(tx_err), .o_ercode(tx_ercode)
 		// }}}
 	);

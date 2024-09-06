@@ -65,7 +65,7 @@
 %
 % Revision level.  If you change this, be sure to change the revision history
 % to match it
-\revision{Rev.~1.93}
+\revision{Rev.~1.94}
 \begin{document}
 \pagestyle{gqtekspecplain}
 \titlepage
@@ -93,6 +93,7 @@ with this program.  If not, see \texttt{http://www.gnu.org/licenses/} for a copy
 1.91 & 4/25/2024 & Gisselquist & New hardware reset feature added\\\hline
 1.92 & 7/22/2024 & Gisselquist & New CRC token handling feature added\\\hline
 1.93 & 8/27/2024 & Gisselquist & Updated token handling and DMA stream discussions\\\hline
+1.94 & 9/05/2024 & Gisselquist & Note that ACKs should always be expected on block writes.\\\hline
 \end{revisionhistory}
 % Revision History
 % Table of Contents, named Contents
@@ -1080,8 +1081,9 @@ this is a write and not a read.
 
 \begin{zCpp}
 	const	SDIO_WRITE    = 0x00000400,
+		SDIO_ACK      = 0x04000000,
 		SDIO_WRITEBLK = (SDIO_CMD | SDIO_R1 | SDIO_ERR
-				| SDIO_WRITE | SDIO_MEM) + 24;
+				| SDIO_ACK | SDIO_WRITE | SDIO_MEM) + 24;
 
 	_sdio->sd_data = sector;	// Assumes a high density card
 	_sdio->sd_cmd  = SDIO_WRITEBLK;
@@ -1122,7 +1124,7 @@ We then issue a command 25 to write multiple blocks to the device.
 
 	_sdio->sd_data = sector;
 	_sdio->sd_cmd  = (SDIO_CMD | SDIO_R1 | SDIO_ERR
-				| SDIO_WRITE | SDIO_MEM) + 25;
+				| SDIO_ACK | SDIO_WRITE | SDIO_MEM) + 25;
 \end{zCpp}
 
 Then we come to our first change: we don't wait yet for the first block
@@ -1513,11 +1515,12 @@ The various fields of this register are explained in Tbls.~\ref{tbl:CMD1}
 %% {{{
 \begin{tabular}{|p{1.2in}|p{0.5in}|p{4.0in}|}\hline
 	\rowcolor[gray]{0.85} Name & Width & Description\\\hline\hline
-K &1& Expect CRC token.  The eMMC protocol uses CRC
-	acknowledgments and negative acknowledgments following the transmission
-	of data sectors.  If set, the controller will look for and expects
-	such tokens following any transfer.  If not present, an error will be
-	declared.  \\
+K &1& Expect CRC token.  Both eMMC and SDIO protocols return CRC acknowledgments
+	(or negative acknowledgments) following the transmission of data
+	sectors.  If set, the controller will look for and expects
+	such tokens following any transfer.  If the token is not present within
+	a minimal timeout period, an error will be declared.  If not set, no
+	such token timeout errors will be generated.  \\
 H &1& Hardware reset.  Set to one to assert (lower) the {\tt o\_hwreset\_n}
 	wire.  Internal logic will insist on a minimum 1$\mu s$
 	(i.e. 100 clock) reset duration.  This feature is only enabled if

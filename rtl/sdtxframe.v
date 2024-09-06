@@ -821,7 +821,7 @@ module	sdtxframe #(
 	always @(posedge i_clk)
 	if (!OPT_CRCTOKEN)
 		r_timeout <= 0;
-	else if (i_reset || (i_en && S_VALID) || tx_valid || !i_en)
+	else if (i_reset || S_VALID || tx_valid || !i_en)
 	begin
 		r_timeout <= 15;
 	end else if (i_ckstb && (r_timeout != 0))
@@ -832,9 +832,10 @@ module	sdtxframe #(
 	// {{{
 	initial	r_done = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || (i_en && S_VALID) || tx_valid || !i_en)
+	if (i_reset || S_VALID || tx_valid || !i_en)
 		r_done <= 1'b0;
-	else if (!r_done && i_ckstb && (!OPT_CRCTOKEN || r_timeout <= 1))
+	else if (!r_done && ((i_ckstb && (!OPT_CRCTOKEN || r_timeout <= 1))
+			|| i_crcack || i_crcnak))
 		// Once set, r_done will stay set until i_en drops
 		r_done <= 1'b1;
 
@@ -873,7 +874,7 @@ module	sdtxframe #(
 
 		// Verilator lint_off UNUSED
 		wire	unused_token;
-		assign	unused_token = &{ 1'b0, i_crcack, i_crcnak, i_cfg_expect_ack };
+		assign	unused_token = &{ 1'b0, i_cfg_expect_ack };
 		// Verilator lint_on  UNUSED
 	end endgenerate
 	// }}}

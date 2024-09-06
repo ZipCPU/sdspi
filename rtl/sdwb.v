@@ -10,26 +10,27 @@
 //
 //
 //	Basic command types:
-//		0x0040	Broadcast command, no response expected
-//		0x0140	Standard command, R1 expected response
-//		0x0240	Command expecting an R2 return
-//		0x0940	Read request, read data to follow
-//		0x0d40	Write request, data to follow
-//		0x0800	Continues a data read into a second sector
-//		0x0c00	Continues a data write into a second sector
-//		0x0168	(CMD40) GO_IRQ_STATE eMMC command (open drain response)
+//		0x00000040	Broadcast command, no response expected
+//		0x00000140	Standard command, R1 expected response
+//		0x00000240	Command expecting an R2 return
+//		0x00000940	Read request, read data to follow
+//		0x04000d40	Write request, data to follow
+//		0x00000800	Continues a data read into a second sector
+//		0x00000c00	Continues a data write into a second sector
+//		0x00000168	(CMD40) GO_IRQ_STATE eMMC command
+//					(open drain response)
 //	   How to break an interrupt?
-//		0x0028 (Also requires open-drain mode)
-//		0x0040	(GO_IDLE, expects no response)
+//		0x00000028 (Also requires open-drain mode)
+//		0x00000040	(GO_IDLE, expects no response)
 //	   How to reset an error without doing anything?
-//		0x8080
+//		0x00008080
 //	   How to reset the FIFO pointer without doing anything?
-//		0x0080
+//		0x00000080
 //	   How to keep the command controller from timing out while
 //			waiting for an interrupt?  Send a GO_IRQ_STATE command
 //			The command processor will need to know how to handle
 //			this internally.
-//		0x0168
+//		0x00000168
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
@@ -287,7 +288,7 @@ module	sdwb #(
 	// DMA signals
 	wire		dma_busy, dma_fifo, dma_write, dma_read_fifo,
 			dma_error, dma_last, dma_zero_len, dma_int, dma_stopped,
-			dma_read_active;
+			dma_read_active, dma_tx;
 	wire	[31:0]	dma_command;
 	wire	[31:0]		dma_len_return;
 	reg	[63:0]		dma_addr_return;
@@ -707,7 +708,7 @@ module	sdwb #(
 		card_was_busy <= w_card_busy;
 	// }}}
 
-	// o_tx_en, r_tx_request, r_tx_sent
+	// o_tx_en, r_tx_request, r_tx_sent, o_cfg_expect_ack
 	// {{{
 	always @(*)
 	begin
@@ -724,16 +725,36 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset || !OPT_CRCTOKEN)
 		o_cfg_expect_ack <= 1'b0;
-	else if (new_tx_request && !dma_write && bus_wstrb[EXPECT_ACK_BIT/8])
-		o_cfg_expect_ack <= bus_wdata[EXPECT_ACK_BIT];
+	else if (r_rx_request || o_rx_en || (dma_busy && !dma_tx))
+	begin
+		o_cfg_expect_ack <= 1'b0;
+	end else if (dma_busy || r_mem_busy || o_tx_en
+				|| !bus_write || bus_wraddr != ADDR_CMD)
+	begin
+	end else // if (&bus_wstrb[EXPECT_ACK_BIT/8-1:0])
+	begin
+		if (bus_wstrb[EXPECT_ACK_BIT/8])
+			o_cfg_expect_ack <= bus_wdata[EXPECT_ACK_BIT];
+		if (bus_wstrb[FIFO_WRITE_BIT/8] && !bus_wdata[FIFO_WRITE_BIT])
+			o_cfg_expect_ack <= 1'b0;
+		if ((bus_wstrb[USE_FIFO_BIT] && !bus_wdata[USE_FIFO_BIT])
+				&&(!OPT_DMA || !bus_wdata[USE_DMA_BIT]))
+			o_cfg_expect_ack <= 1'b0;
+	end
 `ifdef	FORMAL
 	always @(posedge i_clk)
 	if (i_reset || !OPT_CRCTOKEN)
 	begin
 	end else if ($past(i_reset || o_soft_reset))
+	begin
 		assert(!o_cfg_expect_ack);
-	else if (!$rose(r_tx_request))
+	end else if (!dma_busy && (o_rx_en || r_rx_request))
+	begin
+		assert(!o_cfg_expect_ack);
+	end else if (o_tx_en || (dma_busy && $past(dma_busy)) || $past(r_tx_request))
+	begin
 		assert($stable(o_cfg_expect_ack));
+	end
 `endif
 
 	initial	r_tx_request = 1'b0;
@@ -1952,6 +1973,7 @@ module	sdwb #(
 		assign	o_dma_sd2s = dma_sd2s;
 		assign	dma_busy = r_dma;
 		assign	dma_int  = r_dma_int;
+		assign	dma_tx   = r_tx;
 `ifdef	FORMAL
 		// {{{
 		always @(*)

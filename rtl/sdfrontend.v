@@ -821,11 +821,12 @@ module	sdfrontend #(
 		reg	[24:0]	pck_sreg;
 		reg	[7:0]	cmd_sample_ck;
 		wire		busy_pin;
-		reg	[1:0]	busy_delay;
+		reg	[1:0]	busy_delay, itok;
 		wire	[HWBIAS+31:0]	wide_pedge, wide_dedge, wide_cmdedge;
 		// Verilator lint_off UNUSED
 		wire	[7:0]	my_cmd_data;
 		// Verilator lint_on  UNUSED
+		reg		r_cmd_tristate, r_data_tristate;
 		// }}}
 
 		// Clock
@@ -897,6 +898,9 @@ module	sdfrontend #(
 			// Verilator lint_on  WIDTH
 		// }}}
 
+		always @(posedge i_clk)
+			r_data_tristate <= i_data_tristate;
+
 		for(gk=0; gk<NUMIO; gk=gk+1)
 		begin : GEN_WIDE_DATIO
 			// {{{
@@ -914,7 +918,7 @@ module	sdfrontend #(
 			) io_serdes(
 				.i_clk(i_clk),
 				.i_hsclk(i_hsclk),
-				.i_en(!i_data_tristate),
+				.i_en(!r_data_tristate),
 				.i_data(out_pin),
 				.io_tristate(io_dat_tristate[gk]),
 				.o_pin(o_dat[gk]),
@@ -933,6 +937,9 @@ module	sdfrontend #(
 						&&(0 == (sample_pck[7:4]&in_pin[7:4]));
 					start_io[0] = (|sample_pck[3:0])
 						&&(0 == (sample_pck[3:0]&in_pin[3:0]));
+
+					itok[1] = |(sample_pck[7:4] & in_pin[7:4]);
+					itok[0] = |(sample_pck[3:0] & in_pin[3:0]);
 				end
 
 				assign	busy_pin = !in_pin[0];
@@ -1010,7 +1017,7 @@ module	sdfrontend #(
 		if (i_reset || i_cfg_ds)
 			r_rx_data <= 16'h0;
 		else begin
-			if (io_started[1])
+			if (io_started[1] && |sample_ck[7:4])
 				r_rx_data[15:8] <= w_rx_data[15:8];
 			else
 				r_rx_data[15:8] <= w_rx_data[ 7:0];
@@ -1075,18 +1082,23 @@ module	sdfrontend #(
 
 		// CRC TOKEN detection
 		// {{{
+		localparam	[4:0]	ACK_TOKEN = 5'b00101,
+					NAK_TOKEN = 5'b01011;
+
 		always @(posedge i_clk)
-		if(i_reset || i_data_en || i_cfg_ds || !OPT_CRCTOKEN)
+		if(i_reset || i_rx_en || i_cfg_ds || !OPT_CRCTOKEN)
+			acknak_sreg <= 0;
+		else if (i_data_en)
 			acknak_sreg <= -1;
 		else if (acknak_sreg[4])
 		begin
 			if ((|sample_pck[7:4] && |sample_pck[3:0])
 							&& acknak_sreg[3])
-				acknak_sreg <= { acknak_sreg[2:0], w_rx_data[8], w_rx_data[0] };
+				acknak_sreg <= { acknak_sreg[2:0], itok[1], itok[0] };
 			else if (|sample_pck[7:4])
-				acknak_sreg <= { acknak_sreg[3:0], w_rx_data[8] };
+				acknak_sreg <= { acknak_sreg[3:0], itok[1] };
 			else if (|sample_pck[3:0])
-				acknak_sreg <= { acknak_sreg[3:0], w_rx_data[0] };
+				acknak_sreg <= { acknak_sreg[3:0], itok[0] };
 		end
 
 		initial	{ sync_ack, sync_nak } = 2'b00;
@@ -1106,18 +1118,20 @@ module	sdfrontend #(
 		// CMD
 		// {{{
 		always @(posedge i_clk)
+			r_cmd_tristate <= i_cmd_tristate;
+		always @(posedge i_clk)
 			r_last_cmd_enabled <= i_cmd_en;
 
 		assign	wide_cmdedge = { pck_sreg[HWBIAS+23:0], next_pedge };
 
 		always @(posedge i_clk)
-		if (i_reset || i_cfg_dscmd || i_cmd_en)
+		if (i_reset || i_cfg_dscmd || i_cmd_en || !r_cmd_tristate)
 			pck_sreg <= 0;
 		else
 			pck_sreg <= wide_cmdedge[HWBIAS+23:0];
 
 		always @(posedge i_clk)
-		if (i_reset || i_cfg_dscmd || i_cmd_en || r_last_cmd_enabled)
+		if (i_reset || i_cfg_dscmd || i_cmd_en || r_last_cmd_enabled || !r_cmd_tristate)
 			cmd_sample_ck <= 0;
 		else
 			// Verilator lint_off WIDTH
@@ -1129,7 +1143,7 @@ module	sdfrontend #(
 		) cmd_serdes(
 			.i_clk(i_clk),
 			.i_hsclk(i_hsclk),
-			.i_en(!i_cmd_tristate && !o_cmd_collision),
+			.i_en(!r_cmd_tristate && !o_cmd_collision),
 			.i_data({ {(4){i_cmd_data[1]}}, {(4){i_cmd_data[0]}} }),
 			.io_tristate(io_cmd_tristate),
 			.o_pin(o_cmd),
@@ -1166,7 +1180,7 @@ module	sdfrontend #(
 		// resp_started
 		// {{{
 		always @(posedge i_clk)
-		if (i_reset || i_cmd_en || i_cfg_dscmd)
+		if (i_reset || i_cmd_en || i_cfg_dscmd || !r_cmd_tristate)
 			resp_started <= 1'b0;
 		else if (((|cmd_sample_ck[7:4])&&((cmd_sample_ck[7:4] & wide_cmd_data[7:4])==0))
 			||((|cmd_sample_ck[3:0])&&((cmd_sample_ck[3:0] & wide_cmd_data[3:0])==0)))
@@ -1176,7 +1190,7 @@ module	sdfrontend #(
 		// o_cmd_strb
 		// {{{
 		always @(posedge i_clk)
-		if (i_reset || i_cmd_en || i_cfg_dscmd)
+		if (i_reset || i_cmd_en || i_cfg_dscmd || !r_cmd_tristate)
 			r_cmd_strb <= 2'b00;
 		else if (resp_started)
 		begin
@@ -1219,7 +1233,46 @@ module	sdfrontend #(
 		// }}}
 
 		// }}}
-		assign	o_debug = 32'h0;
+
+		reg	[31:0]	r_debug;
+		reg	[11:0]	r_dbg_timeout;
+
+		always @(posedge i_clk)
+		if (i_reset)
+			r_dbg_timeout <= 0;
+		else if (i_cmd_en != r_debug[27])
+			r_dbg_timeout <= 120;
+		else if ({ i_rx_en, i_data_en } != r_debug[15:14])
+			r_dbg_timeout <= -1;	// 512B * (8b/4IO) * (2clk/IO)
+		else if (r_dbg_timeout > 0)
+			r_dbg_timeout <= r_dbg_timeout - 1;
+
+		always @(posedge i_clk)
+		begin
+			r_debug <= 32'h0;
+
+			r_debug[27:25] <= { i_cmd_en, i_cmd_tristate,
+						i_cmd_data[0] };
+			r_debug[24:20] <= { i_data_tristate, i_tx_data[3:0] };
+
+			r_debug[19:16] <= { o_cmd_strb, o_cmd_data };
+			r_debug[15:14] <= { i_rx_en, i_data_en };
+			r_debug[13:12] <= { sync_ack, sync_nak };
+			r_debug[11:10] <= itok;
+			r_debug[ 9: 8] <= o_rx_strb;
+			r_debug[ 7: 0] <= { o_rx_data[11:8], o_rx_data[3:0] };
+
+			if (r_dbg_timeout == 0)
+			begin
+				r_debug[9:8] <= 2'b00;
+				r_debug[19:16] <= 4'hf;
+				r_debug[7:0] <= 8'hff;
+
+				r_debug[4:0] <= acknak_sreg;
+			end
+		end
+
+		assign	o_debug = r_debug;
 
 		// Keep Verilator happy
 		// {{{

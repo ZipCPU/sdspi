@@ -737,7 +737,7 @@ module	sdwb #(
 			o_cfg_expect_ack <= bus_wdata[EXPECT_ACK_BIT];
 		if (bus_wstrb[FIFO_WRITE_BIT/8] && !bus_wdata[FIFO_WRITE_BIT])
 			o_cfg_expect_ack <= 1'b0;
-		if ((bus_wstrb[USE_FIFO_BIT] && !bus_wdata[USE_FIFO_BIT])
+		if ((bus_wstrb[USE_FIFO_BIT/8] && !bus_wdata[USE_FIFO_BIT])
 				&&(!OPT_DMA || !bus_wdata[USE_DMA_BIT]))
 			o_cfg_expect_ack <= 1'b0;
 	end
@@ -2991,7 +2991,7 @@ module	sdwb #(
 		o_dma_sd2s, o_sd2s_valid, i_sd2s_ready, o_sd2s_last,	// 4b
 		o_dma_s2sd, i_s2sd_valid, o_s2sd_ready,			// 3b
 		// TX:
-		o_tx_mem_valid, i_tx_mem_ready, o_tx_mem_last,		// 7b
+		o_tx_mem_valid, o_tx_mem_valid && i_tx_mem_ready, o_tx_mem_last,		// 7b
 				o_tx_en, r_tx_request, i_tx_done, i_tx_err,
 		// RX:
 		i_rx_mem_valid, i_rx_done, i_rx_err,			// 6b

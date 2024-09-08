@@ -77,11 +77,14 @@ $display("Done waiting on initial clock change");
 
 	max_spd = read_data[7:0];
 	if (3'h0 == read_data[18:16])
+		// OPT_"RAW" (Neither SERDES nor DDR)
 		sample_shift = { 11'h0, 5'h08, 16'h0 };
 	else if (2'b00 == read_data[17:16])
+		// OPT_DDR
 		sample_shift = { 11'h0, 5'h0c, 16'h0 };
 	else
-		sample_shift = { 11'h0, 5'h08, 16'h0 };
+		// OPT_SERDES
+		sample_shift = { 11'h0, 5'h09, 16'h0 };
 	// }}}
 
 	// Now set up for the capabilities we will be using

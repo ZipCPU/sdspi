@@ -20,11 +20,12 @@ read -formal fwb_slave.v
 read -formal fwb_register.v
 --pycode-begin--
 cmd = "hierarchy -top sdwb"
-cmd += " -chparam OPT_SERDES %d" % (1 if "opt_serdes" in tags else 0)
-cmd += " -chparam OPT_DDR    %d" % (1 if "opt_ddr"  in tags else 0)
-cmd += " -chparam OPT_DMA    %d" % (1 if "opt_dma"  in tags else 0)
-cmd += " -chparam OPT_EMMC   %d" % (1 if "opt_emmc" in tags else 0)
-cmd += " -chparam NUMIO      %d" % (8 if "opt_emmc" in tags else 4)
+cmd += " -chparam OPT_SERDES   %d" % (1 if "opt_serdes" in tags else 0)
+cmd += " -chparam OPT_DDR      %d" % (1 if "opt_ddr"  in tags else 0)
+cmd += " -chparam OPT_DMA      %d" % (1 if "opt_dma"  in tags else 0)
+cmd += " -chparam OPT_EMMC     %d" % (1 if "opt_emmc" in tags else 0)
+cmd += " -chparam OPT_CRCTOKEN 1"
+cmd += " -chparam NUMIO        %d" % (8 if "opt_emmc" in tags else 4)
 output(cmd)
 --pycode-end--
 proc -norom

@@ -61,6 +61,11 @@ module	mdl_sdio #(
 	// I have no idea what sort of read time is appropriate.  Therefore,
 	// the following is nothing more than a guess.
 	localparam realtime	READ_TIME = 400.0;
+	// REPLY_DELAY is the time from recognizing a command until a reply
+	// is requested.  This time should come from the SDIO spec, but my
+	// copy is the simplified spec that doesn't contain this value.  Too
+	// short, and the SERDES tristate can't clear fast enough.
+	localparam realtime	REPLY_DELAY = 7.0;
 
 	reg		cfg_ddr;
 	reg	[1:0]	cfg_width;
@@ -309,7 +314,7 @@ module	mdl_sdio #(
 			begin
 				cfg_width[0] <= (cmd_arg[1:0] == 2'b10);
 
-				reply_valid <= #7 1'b1;
+				reply_valid <= #REPLY_DELAY 1'b1;
 				reply <= 6'd6;
 				reply_data <= { {(120-32){1'b0}}, R1};
 			end end
@@ -318,7 +323,7 @@ module	mdl_sdio #(
 			// {{{
 			// assert(cmd8_sent);
 			host_supports_hcs <= cmd_arg[30] && host_supports_hcs;
-			reply_valid <= #7 1'b1;
+			reply_valid <= #REPLY_DELAY 1'b1;
 			reply <= 6'b111111;
 			r_1p8v_request <= (OPT_DUAL_VOLTAGE && cmd_arg[24] && !power_up_busy);
 			reply_data <= { {(120-32){1'b0}}, ocr[31],
@@ -364,7 +369,7 @@ module	mdl_sdio #(
 			// {{{
 			if (card_selected && !power_up_busy)
 			begin
-				reply_valid <= #7 1'b1;
+				reply_valid <= #REPLY_DELAY 1'b1;
 				reply_type <= 1'b1;
 				reply <= 6'd63;
 				reply_data <= CID;
@@ -379,7 +384,7 @@ module	mdl_sdio #(
 				while(RCA == 16'h0)
 					RCA = $random;
 
-				reply_valid <= #7 1'b1;
+				reply_valid <= #REPLY_DELAY 1'b1;
 				reply <= 6'd3;
 				reply_data <= { {(120-32){1'b0}}, RCA, 16'h0 };
 				drive_cmd <= 1'b1;
@@ -391,14 +396,14 @@ module	mdl_sdio #(
 		{ 1'b?, 6'd7 }: begin // CMD7: SELECT_DESELECT_CARD
 			// {{{
 			card_selected <= (cmd_arg[31:16] == RCA);
-			reply_valid <= #7 (cmd_arg[31:16] == RCA);
+			reply_valid <= #REPLY_DELAY (cmd_arg[31:16] == RCA);
 			reply <= 6'd7;
 			reply_data <= { {(120-32){1'b0}}, R1};
 			end
 			// }}}
 		{ 1'b?, 6'd8 }: begin // CMD8: SEND_IF_COND
 			// {{{
-			reply_valid <= #7 1'b1;
+			reply_valid <= #REPLY_DELAY 1'b1;
 			reply <= 6'd8;
 			// assert(cmd_arg[31:12]==20'h0);
 			// assert(cmd_arg[11:8]==4'h1);
@@ -418,7 +423,7 @@ module	mdl_sdio #(
 			// {{{
 			if (cmd_arg[31:16] == RCA)
 			begin
-				reply_valid <= #7 1'b1;
+				reply_valid <= #REPLY_DELAY 1'b1;
 				reply_type <= 1'b1;
 				reply <= 6'd10;
 				reply_data <= CID;
@@ -429,7 +434,7 @@ module	mdl_sdio #(
 			// {{{
 			if (r_1p8v_request && OPT_DUAL_VOLTAGE && !r_1p8v && !power_up_busy)
 			begin
-				reply_valid <= #7 1'b1;
+				reply_valid <= #REPLY_DELAY 1'b1;
 				reply <= 6'd11;
 				reply_data <= { {(120-32){1'b0}}, 32'h0 };
 				cmd_alt <= 1'b1;
@@ -439,7 +444,7 @@ module	mdl_sdio #(
 			// {{{
 			if (card_selected)
 			begin
-				reply_valid <= #7 1'b1;
+				reply_valid <= #REPLY_DELAY 1'b1;
 				reply <= 6'd12;
 				reply_data <= { {(120-32){1'b0}}, R1 };
 				stop_transmission <= 1'b1;
@@ -456,7 +461,7 @@ module	mdl_sdio #(
 				pending_write <= #READ_TIME 1'b1;
 				multi_block <= 1'b0;
 				// write_en <= 1'b1;
-				reply_valid <= #7 1'b1;
+				reply_valid <= #REPLY_DELAY 1'b1;
 				reply <= 6'd17;
 				reply_data <= { {(120-32){1'b0}}, R1};
 
@@ -475,7 +480,7 @@ module	mdl_sdio #(
 				pending_write <= #READ_TIME 1'b1;
 				multi_block <= 1'b1;
 				// write_en <= 1'b1;
-				reply_valid <= #7 1'b1;
+				reply_valid <= #REPLY_DELAY 1'b1;
 				reply <= 6'd18;
 				reply_data <= { {(120-32){1'b0}}, R1};
 
@@ -491,7 +496,7 @@ module	mdl_sdio #(
 			// {{{
 			if (card_selected)
 			begin
-				reply_valid <= #7 1'b1;
+				reply_valid <= #REPLY_DELAY 1'b1;
 				reply <= 6'd24;
 				reply_data <= { {(120-32){1'b0}}, R1};
 
@@ -509,7 +514,7 @@ module	mdl_sdio #(
 			// {{{
 			if (card_selected)
 			begin
-				reply_valid <= #7 1'b1;
+				reply_valid <= #REPLY_DELAY 1'b1;
 				reply <= 6'd25;
 				reply_data <= { {(120-32){1'b0}}, R1};
 
@@ -525,7 +530,7 @@ module	mdl_sdio #(
 			// }}}
 		{ 1'b?, 6'd55 }: begin // CMD55: APP_CMD, ACMD to follow
 			// {{{
-			reply_valid <= #7 card_selected;
+			reply_valid <= #REPLY_DELAY card_selected;
 			reply <= 6'd55;
 			reply_data <= { {(120-32){1'b0}}, 32'h0120 };
 			cmd_alt <= 1'b1;

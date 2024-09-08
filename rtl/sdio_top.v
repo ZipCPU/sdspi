@@ -543,7 +543,7 @@ module sdio_top #(
 		// }}}
 	) u_sdfrontend (
 		// {{{
-		.i_clk(i_clk), .i_hsclk(i_hsclk), .i_reset(i_reset),
+		.i_clk(i_clk),.i_hsclk(i_hsclk && OPT_SERDES),.i_reset(i_reset),
 		.i_cfg_ddr(cfg_ddr), .i_cfg_ds(cfg_ds), .i_cfg_dscmd(cfg_dscmd),
 		.i_sample_shift(cfg_sample_shift),
 		// Tx path

@@ -113,9 +113,9 @@ unsigned	SDSPISIM::OCR(void) {
 	unsigned	ocr = 0x00ff80;
 
 	if (CCS)
-		ocr |= 0x400000;
+		ocr |= 0x40000000;
 	if (m_powerup_busy)
-		ocr |= 0x800000;
+		ocr |= 0x80000000;
 
 	return ocr;
 }
@@ -541,6 +541,7 @@ int	SDSPISIM::operator()(const int csn, const int sck, const int mosi) {
 					// m_rspbuf[3] = 0x80;
 					// m_rspbuf[4] = 0; // No low-voltage supt
 					m_rspdly = 4;
+
 					if (m_reset_state == SDSPI_RESET_COMPLETE)
 						m_reset_state = SDSPI_IN_OPERATION;
 					}

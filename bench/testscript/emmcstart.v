@@ -85,7 +85,7 @@ begin
 		sample_shift = { 11'h0, 5'h0c, 16'h0 };
 	end else begin
 		// SERDES
-		sample_shift = { 11'h0, 5'h08, 16'h0 };
+		sample_shift = { 11'h0, 5'h09, 16'h0 };
 	end
 	// }}}
 

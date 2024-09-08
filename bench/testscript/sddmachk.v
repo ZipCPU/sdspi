@@ -79,11 +79,14 @@ begin
 	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_25MHZ | SDPHY_W1 | { 11'h0, 5'h1f, 16'h0 });
 	u_bfm.readio(ADDR_SDPHY, read_data);
 	if (read_data[18:16] == 3'h0)
+		// RAW
 		sample_shift = { 11'h0, 5'h8, 16'h0 };
 	else if (read_data[17:16] == 2'h0)
+		// DDR
 		sample_shift = { 11'h0, 5'hc, 16'h0 };
 	else
-		sample_shift = { 11'h0, 5'ha, 16'h0 };
+		// Serdes
+		sample_shift = { 11'h0, 5'h9, 16'h0 };
 	u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_25MHZ | SDPHY_W1 | sample_shift);
 	do begin
 		u_bfm.readio(ADDR_SDPHY, read_data);

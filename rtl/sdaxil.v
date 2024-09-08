@@ -827,7 +827,7 @@ module	sdaxil #(
 			o_cfg_expect_ack <= bus_wdata[EXPECT_ACK_BIT];
 		if (bus_wstrb[FIFO_WRITE_BIT/8] && !bus_wdata[FIFO_WRITE_BIT])
 			o_cfg_expect_ack <= 1'b0;
-		if ((bus_wstrb[USE_FIFO_BIT] && !bus_wdata[USE_FIFO_BIT])
+		if ((bus_wstrb[USE_FIFO_BIT/8] && !bus_wdata[USE_FIFO_BIT])
 				&&(!OPT_DMA || !bus_wdata[USE_DMA_BIT]))
 			o_cfg_expect_ack <= 1'b0;
 	end

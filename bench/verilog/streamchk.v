@@ -16,10 +16,6 @@
 //	as a SOURCE, the outgoing data will be drawn from the SEED and LAST
 //	will be set at the end of the transaction.
 //
-//	Ideally, the SEED will (eventually) be used to generate a pseudorandom
-//	sequence.  At present, the SEED is only used to set a counter that
-//	then increments on every read or write.
-//
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
 //
@@ -372,17 +368,15 @@ module	streamchk #(
 	assign	M_DATA  = (r_dir == D_SOURCE) ? r_data : {(SW){1'b0}};
 	assign	M_LAST  = (r_dir == D_SOURCE) && (r_len <= 1);
 
-	// localparam	[PLEN-1:0] POLYFILL = 
+	localparam	[SW-1:0] POLY = { {(SW-24){1'b0}}, 24'h4c0001 };
 	function automatic [SW-1:0]	STEP(input [SW-1:0] sreg);
 		// {{{
 	begin
-		sreg = sreg + 1;
-		/*
-		if (sreg[PLN-1])
-			sreg = sreg << 1) ^ POLY;
+		// sreg = sreg + 1;
+		if (sreg[22])
+			sreg = (sreg << 1) ^ POLY;
 		else
 			sreg = (sreg << 1);
-		*/
 		STEP = sreg;
 	end endfunction
 	// }}}

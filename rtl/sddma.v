@@ -111,7 +111,7 @@ module	sddma #(
 		// DMA interface
 		// {{{
 `ifdef	SDIO_AXI
-		// DMA AXI-Lite interface
+		// DMA AXI master interface
 		// {{{
 		output	wire			M_AXI_AWVALID,
 		input	wire			M_AXI_AWREADY,
@@ -189,6 +189,7 @@ module	sddma #(
 	reg	s2sd_busy, sd2s_busy;
 
 `ifndef	SDIO_AXI
+	// Pre-WB arbiter bus inputs
 	wire			rd_cyc, rd_stb, rd_we;
 	wire			wr_cyc, wr_stb, wr_we;
 	wire	[AW-1:0]	rd_addr, wr_addr;
@@ -197,8 +198,8 @@ module	sddma #(
 	wire			rd_stall, rd_ack, wr_stall, wr_ack;
 `endif
 
-	wire	mm2s_busy, mm2s_err;
-	wire	s2mm_busy, s2mm_err, s2mm_ready;
+	wire			mm2s_busy, mm2s_err;
+	wire			s2mm_busy, s2mm_err, s2mm_ready;
 
 	wire			mm2s_valid, mm2s_ready, mm2s_last;
 	wire	[DW-1:0]	mm2s_data;
@@ -223,10 +224,15 @@ module	sddma #(
 
 	wire			m_active;
 	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// MM2S -- Read from memory to generate an initial data stream
+	// {{{
 
 	// sddma_mm2s: Read memory into the RX stream
 `ifdef	SDIO_AXI
 	// {{{
+`ifdef	SDIO_AXI_TMP
 	// The AXI-based DMA hasn't (yet) been built
 	assign	mm2s_busy  = 1'b0;
 	assign	mm2s_err   = 1'b0;
@@ -234,7 +240,75 @@ module	sddma #(
 	assign	mm2s_data  = 0;
 	assign	mm2s_bytes = 0;
 	assign	mm2s_last  = 1'b0;
+
+	// Only the MM2S portion of the DMA will ever read
+	// {{{
+	assign	M_AXI_ARVALID = 1'b0;
+	assign	M_AXI_ARID    = AXI_READ_ID;
+	assign	M_AXI_ARADDR  = 0;
+	assign	M_AXI_ARLEN   = 8'h0;
+	assign	M_AXI_ARSIZE  = 3'h0;
+	assign	M_AXI_ARBURST = 2'h0;
+	assign	M_AXI_ARLOCK  = 1'b0;
+	assign	M_AXI_ARCACHE = 4'h0;
+	assign	M_AXI_ARPROT  = 3'h0;
+	assign	M_AXI_ARQOS   = 4'h0;
+		//
+	assign	M_AXI_RREADY  = 1'b1;
 	// }}}
+	// }}}
+`else	// SDIO_AXI_TMP
+	sdax_mm2s #(
+		// {{{
+		.ADDRESS_WIDTH(ADDRESS_WIDTH),
+		.BUS_WIDTH(DW),
+		.AXI_IW(AXI_IW), .AXI_ID(AXI_READ_ID),
+		.LGLENGTH(LGFIFO),
+		// .OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN),
+		.OPT_LOWPOWER(OPT_LOWPOWER)
+		// }}}
+	) u_s2sd_dma (
+		// {{{
+		.i_clk(i_clk), .i_reset(i_reset),
+		.i_soft_reset(i_soft_reset),
+		.i_request(i_dma_s2sd && (!OPT_ISTREAM || !i_dma_addr[ADDR_MSB])),
+		.o_busy(mm2s_busy), .o_err(mm2s_err),
+		.i_inc(1'b1), .i_size(SZ_BUS), .i_transferlen(i_dma_len),
+		.i_addr(i_dma_addr[ADDRESS_WIDTH-1:0]),
+		//
+		// AXI Master interface
+		// {{{
+		.M_AXI_ARVALID(M_AXI_ARVALID),
+		.M_AXI_ARREADY(M_AXI_ARREADY),
+		.M_AXI_ARID(M_AXI_ARID),
+		.M_AXI_ARADDR(M_AXI_ARADDR),
+		.M_AXI_ARLEN(M_AXI_ARLEN),
+		.M_AXI_ARSIZE(M_AXI_ARSIZE),
+		.M_AXI_ARBURST(M_AXI_ARBURST),
+		.M_AXI_ARLOCK(M_AXI_ARLOCK),
+		.M_AXI_ARCACHE(M_AXI_ARCACHE),
+		.M_AXI_ARPROT(M_AXI_ARPROT),
+		.M_AXI_ARQOS(M_AXI_ARQOS),
+		//
+		.M_AXI_RVALID(M_AXI_RVALID),
+		.M_AXI_RREADY(M_AXI_RREADY),
+		.M_AXI_RID(M_AXI_RID),
+		.M_AXI_RDATA(M_AXI_RDATA),
+		.M_AXI_RLAST(M_AXI_RLAST),
+		.M_AXI_RRESP(M_AXI_RRESP),
+		// }}}
+		// AXI Stream master (Memory to SD Card) interface
+		// {{{
+		.M_VALID(mm2s_valid),
+		.M_READY(mm2s_ready),
+		.M_DATA(mm2s_data),
+		.M_BYTES(mm2s_bytes),
+		.M_LAST(mm2s_last)
+		// }}}
+		// }}}
+	);
+
+`endif	// SDIO_AXI_TMP
 `else	// SDIO_AXI
 	sddma_mm2s #(
 		// {{{
@@ -246,7 +320,7 @@ module	sddma #(
 		// }}}
 	) u_s2sd_dma (
 		// {{{
-		.i_clk(i_clk), .i_reset(i_reset),
+		.i_clk(i_clk), .i_reset(i_reset || i_soft_reset),
 		.i_request(i_dma_s2sd && (!OPT_ISTREAM || !i_dma_addr[ADDR_MSB])),
 		.o_busy(mm2s_busy), .o_err(mm2s_err),
 		.i_inc(1'b1), .i_size(SZ_BUS), .i_transferlen(i_dma_len),
@@ -265,6 +339,16 @@ module	sddma #(
 		// }}}
 	);
 `endif
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Incoming data arbitration
+	// {{{
+
+	// Data arrives from one of 3 sources:
+	//	The MM2S memory DMA
+	//	The external AXI Stream
+	//	An internal AXI stream from the external SD card/eMMC chip
 
 	// s_last, s_count, s_active
 	// {{{
@@ -298,10 +382,14 @@ module	sddma #(
 			r_last   <= (i_dma_len <= SW/8);
 			s_count  <= (i_dma_len >> $clog2(SW/8))-1;
 `ifdef	SDIO_AXI
+`ifdef	SDIO_AXI_TMP
 			r_active <= 1'b1;
-`else
+`else	// SDIO_AXI_TMP
 			r_active <= i_dma_addr[ADDR_MSB];
-`endif
+`endif	// SDIO_AXI_TMP
+`else	// SDIO_AXI
+			r_active <= i_dma_addr[ADDR_MSB];
+`endif	// SDIO_AXI
 		end
 
 		assign	s_ready = s_active && (rxgears_ready
@@ -326,6 +414,7 @@ module	sddma #(
 			wide_rx_bytes = 4;
 			wide_rx_last  = i_sd2s_last;
 `ifdef	SDIO_AXI
+`ifdef	SDIO_AXI_TMP
 		end else begin
 			// We only skip what follows here because we don't
 			// have any built-in AXI MM2S ... yet
@@ -335,7 +424,7 @@ module	sddma #(
 			wide_rx_bytes = SW/8;
 			// Verilator lint_on  WIDTH
 			wide_rx_last  = s_last;
-`else
+`else	// SDIO_AXI_TMP
 		end else if (!mm2s_busy && OPT_ISTREAM)
 		begin
 			wide_rx_valid = s_valid && s_active;
@@ -347,7 +436,20 @@ module	sddma #(
 			wide_rx_valid = mm2s_valid;
 			wide_rx_bytes = mm2s_bytes;
 			wide_rx_last  = mm2s_last;
-`endif
+`endif	// SDIO_AXI_TMP
+`else	// SDIO_AXI
+		end else if (!mm2s_busy && OPT_ISTREAM)
+		begin
+			wide_rx_valid = s_valid && s_active;
+			// Verilator lint_off WIDTH
+			wide_rx_bytes = SW/8;
+			// Verilator lint_on  WIDTH
+			wide_rx_last  = s_last;
+		end else begin
+			wide_rx_valid = mm2s_valid;
+			wide_rx_bytes = mm2s_bytes;
+			wide_rx_last  = mm2s_last;
+`endif	// SDIO_AXI
 		end
 
 		wide_rx_data = 0;
@@ -375,7 +477,12 @@ module	sddma #(
 	end
 	// }}}
 
-	// Pack to the width of the bus
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// RX Gears -- Pack the data stream to the width of the bus
+	// {{{
+
 	sddma_rxgears #(	// Adjust from bus width (or less) to full busw
 		.BUS_WIDTH(RXWIDTH),
 		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN)
@@ -397,32 +504,63 @@ module	sddma #(
 
 	assign	o_sd2s_ready = rxgears_ready;	// && sd2s_busy
 	assign	mm2s_ready   = rxgears_ready;	// && s2sd_busy && mm2s_busy
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// The FIFO
+	// {{{
 
-	sdfifo #(
-		// {{{
-		.LGFLEN(LGFIFO-$clog2(DW/8)),
-		.BW(2+$clog2(DW/8)+DW),
-		.OPT_ASYNC_READ(1'b0),
-		.OPT_WRITE_ON_FULL(1'b0),
-		.OPT_READ_ON_EMPTY(1'b0)
-		// }}}
-	) u_sfifo (
-		// {{{
-		.i_clk(i_clk), .i_reset(i_reset),
-		//
-		.i_wr(wide_valid),
-		.i_data({ wide_last, wide_bytes, wide_data }),
-		.o_full(fifo_full),
-		.o_fill(ign_fifo_fill),
-		//
-		.i_rd(fifo_ready),
-		.o_data({ fifo_last, fifo_bytes, fifo_data }),
-		.o_empty(fifo_empty)
-		// }}}
-	);
+`ifdef	SDIO_AXI
+	// Set USE_FIFO to zero once the AXI DMA has been integrated
+	// for better resource usage.
+	localparam	USE_FIFO = 1'b0;
+`else
+	localparam	USE_FIFO = 1'b1;
+`endif
 
-	assign	fifo_valid = !fifo_empty;
-	assign	wide_ready = !fifo_full;
+	generate if (USE_FIFO)
+	begin : GEN_FIFO
+
+		sdfifo #(
+			// {{{
+			.LGFLEN(LGFIFO-$clog2(DW/8)),
+			.BW(2+$clog2(DW/8)+DW),
+			.OPT_ASYNC_READ(1'b0),
+			.OPT_WRITE_ON_FULL(1'b0),
+			.OPT_READ_ON_EMPTY(1'b0)
+			// }}}
+		) u_sfifo (
+			// {{{
+			.i_clk(i_clk), .i_reset(i_reset),
+			//
+			.i_wr(wide_valid),
+			.i_data({ wide_last, wide_bytes, wide_data }),
+			.o_full(fifo_full),
+			.o_fill(ign_fifo_fill),
+			//
+			.i_rd(fifo_ready),
+			.o_data({ fifo_last, fifo_bytes, fifo_data }),
+			.o_empty(fifo_empty)
+			// }}}
+		);
+
+		assign	fifo_valid = !fifo_empty;
+		assign	wide_ready = !fifo_full;
+
+	end else begin : NO_FIFO
+
+		assign	fifo_empty = !wide_valid;
+		assign	{ fifo_last, fifo_bytes, fifo_data }
+				= { wide_last, wide_bytes, wide_data };
+		assign	wide_ready = fifo_ready;
+		assign	ign_fifo_fill = 0;
+		assign	fifo_full = 0;
+	end endgenerate
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// TX Gears -- adjusting word packing, to either 32b, SW, or DW bits
+	// {{{
 
 	sddma_txgears #(
 		// {{{
@@ -445,10 +583,88 @@ module	sddma #(
 		// }}}
 	);
 
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// S2MM -- Write to memory
+	// {{{
+
 `ifdef	SDIO_AXI
+`ifdef	SDIO_AXI_TMP
 	assign	s2mm_busy = 1'b0;
 	assign	s2mm_err  = 1'b0;
 	assign	s2mm_ready= 1'b1;
+
+	// Only the S2MM portion of the DMA will ever write to the bus
+	// {{{
+	assign	M_AXI_AWVALID = 1'b0;
+	assign	M_AXI_AWID    = AXI_WRITE_ID;
+	assign	M_AXI_AWADDR  = 0;
+	assign	M_AXI_AWLEN   = 8'h0;
+	assign	M_AXI_AWSIZE  = 3'h0;
+	assign	M_AXI_AWBURST = 2'b0;
+	assign	M_AXI_AWLOCK  = 1'b0;
+	assign	M_AXI_AWCACHE = 4'h0;
+	assign	M_AXI_AWPROT  = 3'h0;
+	assign	M_AXI_AWQOS   = 4'h0;
+		//
+	assign	M_AXI_WVALID = 1'b0;
+	assign	M_AXI_WDATA  = 0;
+	assign	M_AXI_WSTRB  = 0;
+	assign	M_AXI_WLAST  = 1'b0;
+		//
+	assign	M_AXI_BREADY = 1'b1;
+	// }}}
+
+`else
+	sdax_s2mm #(
+		// {{{
+		.ADDRESS_WIDTH(ADDRESS_WIDTH),
+		.BUS_WIDTH(DW),
+		.OPT_LITTLE_ENDIAN(1'b1),
+		.LGPIPE(512 / BUS_WIDTH)
+		// }}}
+	) u_s2mm (
+		// {{{
+		.i_clk
+		.i_reset(i_reset),
+		.i_soft_reset(i_soft_reset || i_dma_abort),
+		//
+		.i_request(i_dma_sd2s && (!OPT_OSTREAM || !i_dma_addr[ADDR_MSB])),
+		.o_busy(s2mm_busy), .o_err(s2mm_err),
+		.i_inc(1'b1), .i_size(SZ_BUS),
+		.i_addr(i_dma_addr[ADDRESS_WIDTH-1:0]),
+		//
+		.S_VALID(tx_valid && !m_active && (i_dma_sd2s || sd2s_busy)),
+		.S_READY(s2mm_ready),
+		.S_DATA(tx_data), .S_BYTES(tx_bytes), .S_LAST(tx_last),
+		//
+		.M_AWVALID(M_AXI_AWVALID,
+		.M_AWREADY(M_AXI_AWREADY,
+		.M_AWID(M_AXI_AWID,
+		.M_AWADDR(M_AXI_AWADDR,
+		.M_AWLEN(M_AXI_AWLEN,
+		.M_AWSIZE(M_AXI_AWSIZE,
+		.M_AWBURST(M_AXI_AWBURST,
+		.M_AWLOCK(M_AXI_AWLOCK,
+		.M_AWCACHE(M_AXI_AWCACHE,
+		.M_AWPROT(M_AXI_AWPROT,
+		.M_AWQOS(M_AXI_AWQOS,
+		//
+		.M_WVALID(M_AXI_WVALID,
+		.M_WREADY(M_AXI_WREADY,
+		.M_WDATA(M_AXI_WDATA,
+		.M_WSTRB(M_AXI_WSTRB,
+		.M_WLAST(M_AXI_WLAST,
+		//
+		.M_BVALID(M_AXI_BVALID,
+		.M_BREADY(M_AXI_BREADY,
+		.M_BID(M_AXI_BID,
+		.M_BRESP(M_AXI_BRESP)
+		// }}}
+	);
+`endif // SDIO_AXI_TMP
+
 `else	// SDIO_AXI
 	sddma_s2mm #(
 		// {{{
@@ -478,9 +694,13 @@ module	sddma #(
 		// }}}
 	);
 `endif
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Outgoing stream generation
+	// {{{
 
 	// m_* stream signals
-	// {{{
 	generate if (OPT_OSTREAM)
 	begin : GEN_OSTREAM
 		reg	r_active;
@@ -491,8 +711,12 @@ module	sddma #(
 		else if (i_dma_abort || i_soft_reset)
 			r_active <= 1'b0;
 `ifdef	SDIO_AXI
+`ifdef	SDIO_AXI_TMP
 		else if (i_dma_sd2s)	// *ALWAYS* use OSTREAM until AXI DMA
-`else
+`else	// SDIO_AXI_TMP
+		else if (i_dma_sd2s && i_dma_addr[ADDR_MSB])
+`endif	// SDIO_AXI_TMP
+`else	// SDIO_AXI
 		else if (i_dma_sd2s && i_dma_addr[ADDR_MSB])
 `endif
 			r_active <= 1'b1;
@@ -522,61 +746,17 @@ module	sddma #(
 		// Verilator lint_off UNUSED
 		// }}}
 	end endgenerate
-	// }}}
 
-	// s2sd_* signaling
-	// {{{
-	assign	o_s2sd_valid = s2sd_busy && tx_valid;
-	assign	o_s2sd_data  = (OPT_LITTLE_ENDIAN) ? tx_data[31:0]
-				: tx_data[DW-1:DW-32];
 	// }}}
-
-	// Arbiter
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Wishbone Arbiter
 	// {{{
 `ifdef	SDIO_AXI
 	// {{{
-	// Tie off the unused AXI signals
-	//	These will get used once we support an actual AXI DMA.
-	//	Once the actual AXI DMA is integrated, no arbiter should
-	//	be necessary, since each of the two components is one-way
-	//	either read or write.
-
-	// Only the S2MM portion of the DMA will ever write
-	// {{{
-	assign	M_AXI_AWVALID = 1'b0;
-	assign	M_AXI_AWID    = AXI_WRITE_ID;
-	assign	M_AXI_AWADDR  = 0;
-	assign	M_AXI_AWLEN   = 8'h0;
-	assign	M_AXI_AWSIZE  = 3'h0;
-	assign	M_AXI_AWBURST = 2'b0;
-	assign	M_AXI_AWLOCK  = 1'b0;
-	assign	M_AXI_AWCACHE = 4'h0;
-	assign	M_AXI_AWPROT  = 3'h0;
-	assign	M_AXI_AWQOS   = 4'h0;
-		//
-	assign	M_AXI_WVALID = 1'b0;
-	assign	M_AXI_WDATA  = 0;
-	assign	M_AXI_WSTRB  = 0;
-	assign	M_AXI_WLAST  = 1'b0;
-		//
-	assign	M_AXI_BREADY = 1'b1;
-	// }}}
-
-	// Only the MM2S portion of the DMA will ever read
-	// {{{
-	assign	M_AXI_ARVALID = 1'b0;
-	assign	M_AXI_ARID    = AXI_READ_ID;
-	assign	M_AXI_ARADDR  = 0;
-	assign	M_AXI_ARLEN   = 8'h0;
-	assign	M_AXI_ARSIZE  = 3'h0;
-	assign	M_AXI_ARBURST = 2'h0;
-	assign	M_AXI_ARLOCK  = 1'b0;
-	assign	M_AXI_ARCACHE = 4'h0;
-	assign	M_AXI_ARPROT  = 3'h0;
-	assign	M_AXI_ARQOS   = 4'h0;
-		//
-	assign	M_AXI_RREADY  = 1'b1;
-	// }}}
+	// No arbiter is necessary when using AXI, since each of the two
+	// AXI components is one way only, either read or write, so there's
+	// no conflict.
 	// }}}
 `else
 	assign	o_dma_cyc  = rd_cyc || wr_cyc;
@@ -591,8 +771,13 @@ module	sddma #(
 `endif
 	// }}}
 
-	// s2sd_busy
+	// s2sd_* signaling
 	// {{{
+	assign	o_s2sd_valid = s2sd_busy && tx_valid;
+	assign	o_s2sd_data  = (OPT_LITTLE_ENDIAN) ? tx_data[31:0]
+				: tx_data[DW-1:DW-32];
+
+	// s2sd_busy
 	always @(posedge i_clk)
 	if (i_reset || s2mm_err)
 		s2sd_busy <= 1'b0;
@@ -626,11 +811,13 @@ module	sddma #(
 				OPT_LOWPOWER,
 				mm2s_valid, mm2s_ready, mm2s_data, mm2s_bytes,
 				mm2s_last,
+`ifdef	SDIO_AXI_TMP
 				M_AXI_AWREADY, M_AXI_WREADY,
 				M_AXI_BVALID, M_AXI_BID, M_AXI_BRESP,
 				M_AXI_ARREADY,
 				M_AXI_RVALID, M_AXI_RID, M_AXI_RDATA,
 				M_AXI_RRESP, M_AXI_RLAST,
+`endif
 				s2mm_busy,
 			tx_bytes, i_dma_len, i_dma_abort, i_dma_addr
 `else

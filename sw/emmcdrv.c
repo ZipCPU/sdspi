@@ -1582,7 +1582,10 @@ EMMCDRV *emmc_init(EMMC *dev) {
 
 	// Start by resetting the interface--in case we're being called
 	// to restart from an uncertain state.
-	dv->d_dev->sd_cmd = SDIO_RESET;
+	dv->d_dev->sd_cmd = SDIO_HWRESET;
+	dv->d_dev->sd_cmd = 0;
+	while(dv->d_dev->sd_cmd & SDIO_HWRESET)
+		;
 
 	dv->d_dev->sd_phy = SDIOCK_400KHZ | SECTOR_512B;
 	while(SDIOCK_400KHZ != (dv->d_dev->sd_phy & SDIOCK_MASK))

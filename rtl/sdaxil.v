@@ -1134,7 +1134,33 @@ module	sdaxil #(
 		if (i_reset || !card_present)
 			r_1p8v <= 1'b0;
 		else if (bus_phy_stb && bus_wstrb[2])
-			r_1p8v <= r_1p8v || bus_wdata[22];
+		begin
+			r_1p8v <= bus_wdata[22];
+
+			// If 1.8v has already been set, then only allow it to
+			// be unset during a hardware reset.  That reset must
+			// be either active already, or commanded as of this
+			// bus request.
+			if (r_1p8v)
+			begin
+				if (!OPT_HWRESET)
+					// If HWRESET isn't supported, then we
+					// can't drop r_1p8v once it is set.
+					r_1p8v <= 1'b1;
+				if ( bus_wstrb[3] && !bus_wdata[25])
+					// If HWRESET is supported, and the user
+					// is requesting the reset be *off*,
+					// then we don't permit r_1p8v to drop.
+					r_1p8v <= 1'b1;
+				if (!bus_wstrb[3] && o_hwreset_n)
+					// If HWRESET is supported, and the
+					// user's request doesn't touch the
+					// reset line but reset is not active,
+					// then don't allow the 1.8v setting to
+					// be released.
+					r_1p8v <= 1'b1;
+			end
+		end
 
 		assign	o_1p8v = r_1p8v;
 

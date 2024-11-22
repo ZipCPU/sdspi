@@ -2882,6 +2882,7 @@ module	sdwb #(
 		assign	dma_int       = 1'b0;
 		assign	dma_stopped   = 1'b1;
 		assign	dma_read_active = 1'b0;
+		assign	dma_tx   = 1'b0;
 		//
 		// Common control signals
 		assign	o_dma_addr   = 0;

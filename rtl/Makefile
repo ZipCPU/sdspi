@@ -49,6 +49,8 @@ SDDMA_FILES := sddma_mm2s.v sddma_rxgears.v sddma_txgears.v sddma_s2mm.v sddma.v
 SDIO_FILES := sdio.v sdwb.v sdckgen.v sdcmd.v sdrxframe.v sdtxframe.v $(SDDMA_FILES)
 all: rtl export $(VOBJ)/Vsdspi__ALL.so usage
 
+.DELETE_ON_ERROR:
+
 .PHONY: rtl
 ## {{{
 rtl: $(VOBJ)/Vsdspi.h $(VOBJ)/Vsdio.h $(VOBJ)/Vsdaxil.h

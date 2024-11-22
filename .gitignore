@@ -22,3 +22,4 @@ svn-commit*
 tags
 cpudefs.h
 /*.pdf
+/refs/

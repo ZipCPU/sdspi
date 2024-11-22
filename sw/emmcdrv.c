@@ -279,6 +279,28 @@ void	emmc_wait_while_busy(EMMCDRV *dev) {
 }
 // }}}
 
+void	emmc_dump_err(unsigned c) {
+	// {{{
+	// if (c & SDIO_REMOVED)
+		// SD cards can't be removed ...
+	if (c & SDIO_DMAERR)
+		txstr("    DMA Bus Error\n");
+	if (c & SDIO_CMDERR) {
+		if (SDIO_CMDTMOUT == (c & SDIO_CMDECODE))
+			txstr("    CMD-Timeout\n");
+		else if (SDIO_CMDCRCER == (c & SDIO_CMDECODE))
+			txstr("    CMD-CRC Error\n");
+		else if (SDIO_CMDFRMER == (c & SDIO_CMDECODE))
+			txstr("    CMD-Frame Error (Bad stop bit)\n");
+	} else if (c & SDIO_RXERR) {
+		if (c & SDIO_RXECODE)
+			txstr("    Rx CRC Error\n");
+		else
+			txstr("    Data Watchdog timeout\n");
+	}
+}
+// }}}
+
 void	emmc_go_idle(EMMCDRV *dev) {			// CMD0
 	// {{{
 	dev->d_dev->sd_phy = SECTOR_512B | SDIOCK_400KHZ;
@@ -301,6 +323,7 @@ void	emmc_go_idle(EMMCDRV *dev) {			// CMD0
 void	emmc_all_send_cid(EMMCDRV *dev) {		// CMD2
 	// {{{
 	if (EMMCDEBUG)	txstr("READ-CID\n");
+	unsigned	c;
 
 	dev->d_dev->sd_data = 0;
 	dev->d_dev->sd_cmd = (SDIO_ERR|SDIO_READR2)+2;
@@ -315,7 +338,7 @@ void	emmc_all_send_cid(EMMCDRV *dev) {		// CMD2
 
 	if (EMMCDEBUG && (c & SDIO_ERR)) {
 		TRIGGER_SCOPE;
-		txstr("  SD-ERR: "); txhex(c); txstr("\n");
+		txstr("  IO-ERR: "); txhex(c); txstr("\n");
 	}
 
 	if (EMMCINFO) {
@@ -429,13 +452,13 @@ void	emmc_select_card(EMMCDRV *dev) {			// CMD7
 	c = dev->d_dev->sd_cmd;
 	r = dev->d_dev->sd_data;
 
-	if (EMMCDEBUG && ((c & SDIO_ERR) || SDINFO)) {
+	if (EMMCDEBUG && ((c & SDIO_ERR) || EMMCINFO)) {
 		if (c & SDIO_ERR)
 			TRIGGER_SCOPE;
 		txstr("CMD7:    SELECT_CARD ("); txhex(dev->d_RCA);txstr(")\n");
 		if (c & SDIO_ERR) {
-			txstr("  SD-ERR: "); txhex(c); txstr("\n");
-			sdio_dump_err(c);
+			txstr("  IO-ERR: "); txhex(c); txstr("\n");
+			emmc_dump_err(c);
 		}
 		txstr("  Cmd:     "); txhex(c); txstr("\n");
 		txstr("  Data:    "); txhex(r); txstr("\n");
@@ -583,7 +606,7 @@ void emmc_read_csd(EMMCDRV *dev) {	  // CMD 9
 		txstr("  Data:    "); txhex(r); txstr("\n");
 		if (c & SDIO_ERR) {
 			TRIGGER_SCOPE;
-			txstr("  SD-ERR: "); txhex(c); txstr("\n");
+			txstr("  IO-ERR: "); txhex(c); txstr("\n");
 			emmc_dump_err(c);
 		}
 	}
@@ -772,7 +795,7 @@ static	void	emmc_decode_cmd(unsigned cmd) {
 			}
 		} if (cmd & SDIO_RXERR) {
 			txstr("   RX Err:  ");
-			if (cmd & SDIO_RXCRCERR) {
+			if (cmd & SDIO_RXECODE) {
 				txstr(" CRC Err\n");
 			} else
 				txstr(" Watchdog Err\n");
@@ -1102,8 +1125,8 @@ int	emmc_write_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 24
 		if (EMMCDEBUG) {
 			txstr("SDIO-WRITE -> ERR: \n");
 			txhex(dev_stat); txstr("\n");
-			if (SDINFO)
-				sdio_dump_err(dev_stat);
+			if (EMMCINFO)
+				emmc_dump_err(dev_stat);
 		}
 	} else if (card_stat & SDIO_R1ERR) {
 		// Immediately trigger the scope (if not already triggered)
@@ -1203,7 +1226,7 @@ int	emmc_read_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 17
 			txhex(card_stat);
 			txstr("\n");
 			if (EMMCINFO)
-				sdio_dump_err(dev_stat);
+				emmc_dump_err(dev_stat);
 		}
 	} else if (card_stat & SDIO_R1ERR) {
 		// Immediately trigger the scope (if not already triggered)
@@ -1559,7 +1582,10 @@ EMMCDRV *emmc_init(EMMC *dev) {
 
 	// Start by resetting the interface--in case we're being called
 	// to restart from an uncertain state.
-	dv->d_dev->sd_cmd = SDIO_RESET;
+	dv->d_dev->sd_cmd = SDIO_HWRESET;
+	dv->d_dev->sd_cmd = 0;
+	while(dv->d_dev->sd_cmd & SDIO_HWRESET)
+		;
 
 	dv->d_dev->sd_phy = SDIOCK_400KHZ | SECTOR_512B;
 	while(SDIOCK_400KHZ != (dv->d_dev->sd_phy & SDIOCK_MASK))
@@ -1648,8 +1674,8 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 		txhex(sector);
 		txstr(", ");
 		txhex(count);
-		txstr(", ");
-		txhex(buf);
+		txstr(", @0x");
+		txhex((unsigned)((unsigned long)buf & 0xfffffffful));
 		txstr("-- [DEV ");
 		txhex(dev->d_dev->sd_cmd);
 		txstr("]\n");
@@ -1808,7 +1834,7 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 			txhex(card_stat);
 			txstr("\n");
 			if (EMMCINFO)
-				sdio_dump_err(dev_stat);
+				emmc_dump_err(dev_stat);
 		}
 	} else if (card_stat & SDIO_R1ERR) {
 		// Immediately trigger the scope (if not already triggered)
@@ -1862,8 +1888,8 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 		txhex(sector);
 		txstr(", ");
 		txhex(count);
-		txstr(", ");
-		txhex(buf);
+		txstr(", @0x");
+		txhex((unsigned)((unsigned long)buf & 0xfffffffful));
 		txstr("-- [DEV ");
 		txhex(dev->d_dev->sd_cmd);
 		txstr("]\n");
@@ -1923,7 +1949,7 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 
 			// Send the next (or last) command
 			// {{{
-			if (0 != (err_stat = dev->d_dev->sd_cmd & SDIO_ERR)) {
+			if (0 != (dev_stat = dev->d_dev->sd_cmd & SDIO_ERR)) {
 				err = 1;
 			} if (s + 1 < count && !err) {
 				// Immediately start the next read request
@@ -1987,10 +2013,10 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 		TRIGGER_SCOPE;
 		if (EMMCDEBUG) {
 			txstr("\tSD-MidREAD -> ERR: ");
-			txhex(err_stat);
+			txhex(dev_stat);
 			txstr("\n");
-			if (SDINFO)
-				sdio_dump_err(err_stat);
+			if (EMMCINFO)
+				emmc_dump_err(dev_stat);
 		}
 	} else if (dev_stat & SDIO_ERR) {
 		// Immediately trigger the scope (if not already triggered)
@@ -2005,7 +2031,7 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 			txstr("\n");
 			if (EMMCINFO)
 				emmc_dump_err(dev_stat);
-			sdio_get_r1(dev);
+			emmc_get_r1(dev);
 		}
 		// If the stop transmission command didn't receive
 		// a proper response, return an error status

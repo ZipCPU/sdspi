@@ -188,22 +188,13 @@ this controller will be a completed product:
   components, the IP may sufficiently provide for the needs of most AXI
   environments.
 
-- **eMMC CRC Tokens**: CRC token's are 5b response values, indicating whether
-  or not a page has transferred successfully.  They are only used by eMMC
-  devices.  The [frontend](rtl/sdfrontend.v) can now recognize those CRC tokens
-  returned by eMMC devices following block write transfers.  Failure to receive
-  a CRC token when one is expected will (now) generate an error condition.
+- **CRC Tokens**: CRC token's are 5b response values, indicating whether
+  or not a page has transferred successfully.
+  The [frontend](rtl/sdfrontend.v) can successfully recognize those CRC tokens
+  following block write transfers.
 
-  No support yet exists for generating CRC tokens to be sent to an eMMC device.
-  This final missing support may only be necessary for boot mode--or perhaps
-  not at all.
-
-  Note: My biggest problem with the "CRC Token's" is that the eMMC standard I
-  have isn't clear regarding when they are used and when they are not.  Nor is
-  it necessarily clear regarding what will or should happen following a NAK
-  (negative acknowledgment) token.  For example, will the device automatically
-  set up to repeat the last sector?  I can't (yet) tell.  This confusion,
-  perhaps on my part alone, has hindered the development of this support.
+  Failure to receive a CRC token when one is expected will (now) generate an
+  error condition, as will receiving a negative CRC acknowledgment.
 
 - **eMMC Boot mode**: No plan exists to support eMMC boot mode (at present).
   This decision will likely be revisited in the future.

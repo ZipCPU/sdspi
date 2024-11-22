@@ -57,7 +57,7 @@ $(VOBJ)/Vsdspi.h: sdspi.v llsdspi.v
 $(VOBJ)/Vsdio.h: sdio.v sdwb.v sdcmd.v sdckgen.v sdrxframe.v sdtxframe.v
 	$(VERILATOR) $(VFLAGS) sdio.v
 $(VOBJ)/Vsdaxil.h: sdio.v sdaxil.v sdskid.v sdcmd.v sdckgen.v sdrxframe.v sdtxframe.v
-	$(VERILATOR) -DSDIO_AXI $(VFLAGS) sdio.v
+	$(VERILATOR) -DSDIO_AXI --prefix Vsdaxi $(VFLAGS) sdio.v
 ## }}}
 
 $(VOBJ)/Vsdspi__ALL.so: $(VOBJ)/Vsdspi.h

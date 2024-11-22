@@ -4,7 +4,7 @@
 ## {{{
 my $sdspi  = "";
 my $sdio_nodma  = " -chparam OPT_DMA 1\'b0";
-my $sdio_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_ISTREAM 1\'b0 -chparam OPT_OSTREAM 1\'b0 -chparam DMA_DW 64";
+my $sdio_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_ISTREAM 1\'b1 -chparam OPT_OSTREAM 1\'b1 -chparam DMA_DW 64";
 ## }}}
 
 ## Files
@@ -15,7 +15,9 @@ my @files = (
 		"sdcmd.v", "sdrxframe.v", "sdtxframe.v",
 	"sdspi.v", "spicmd.v", "spirxdata.v", "spitxdata.v",
 		"llsdspi.v",
-	"sddma.v", "sdfifo.v", "sddma_mm2s.v", "sddma_s2mm.v",
+	"sddma.v", "sdfifo.v",
+		"sddma_mm2s.v", "sddma_s2mm.v",
+		"sdax_mm2s.v",  "sdax_s2mm.v",
 		"sddma_rxgears.v", "sddma_txgears.v",
 	"sdfrontend.v", "xsdserdes8x.v" );
 ## }}}
@@ -75,23 +77,28 @@ sub	topusage() {
 	## {{{
 	my $result = "";
 
-	$result = sprintf("SDIO(AXIL):%5d %5d %7d\n",
+	$result = sprintf("SDIO(AXIL):  %5d %5d %7d\n",
 			## Synth, top, bus, config, postsynth
 		calcusage($ice40synth, "sdio", "axil", $sdio_nodma,""),
 		calcusage($xilinxsynth,"sdio", "axil", $sdio_nodma,""),
 		calcusage($asicsynth,  "sdio", "axil", $sdio_nodma,$asicpost));
 
-	$result = $result . sprintf("SDIO(WB):  %5d %5d %7d\n",
+	$result = $result . sprintf("SDIO(WB):    %5d %5d %7d\n",
 		calcusage($ice40synth, "sdio", "wb", $sdio_nodma,""),
 		calcusage($xilinxsynth,"sdio", "wb", $sdio_nodma,""),
 		calcusage($asicsynth,  "sdio", "wb", $sdio_nodma,$asicpost));
 
-	$result = $result . sprintf("SDIO w/DMA:%5d %5d %7d\n",
+	$result = $result . sprintf("SDIO w/DMA:  %5d %5d %7d\n",
 		calcusage($ice40synth, "sdio", "wb", $sdio_dma,""),
 		calcusage($xilinxsynth,"sdio", "wb", $sdio_dma,""),
 		calcusage($asicsynth,  "sdio", "wb", $sdio_dma,$asicpost));
 
-	$result = $result . sprintf("SDSPI:     %5d %5d %7d\n",
+	$result = $result . sprintf("SDAXI w/DMA: %5d %5d %7d\n",
+		calcusage($ice40synth, "sdio", "axil", $sdio_dma,""),
+		calcusage($xilinxsynth,"sdio", "axil", $sdio_dma,""),
+		calcusage($asicsynth,  "sdio", "axil", $sdio_dma,$asicpost));
+
+	$result = $result . sprintf("SDSPI:       %5d %5d %7d\n",
 		calcusage($ice40synth, "sdspi", "wb", "",""),
 		calcusage($xilinxsynth,"sdspi", "wb", "",""),
 		calcusage($asicsynth,  "sdspi", "wb", "",$asicpost));

@@ -41,6 +41,8 @@ wb2axip/wbxbar.v
 ../../rtl/sddma_rxgears.v
 ../../rtl/sddma_s2mm.v
 ../../rtl/sddma_txgears.v
+../../rtl/sdax_mm2s.v
+../../rtl/sdax_s2mm.v
 ../../rtl/sdfifo.v
 ../../rtl/sddma.v
 ../../rtl/sdtxframe.v

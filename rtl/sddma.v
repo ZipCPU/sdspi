@@ -231,39 +231,12 @@ module	sddma #(
 
 	// sddma_mm2s: Read memory into the RX stream
 `ifdef	SDIO_AXI
-	// {{{
-`ifdef	SDIO_AXI_TMP
-	// The AXI-based DMA hasn't (yet) been built
-	assign	mm2s_busy  = 1'b0;
-	assign	mm2s_err   = 1'b0;
-	assign	mm2s_valid = 1'b0;
-	assign	mm2s_data  = 0;
-	assign	mm2s_bytes = 0;
-	assign	mm2s_last  = 1'b0;
-
-	// Only the MM2S portion of the DMA will ever read
-	// {{{
-	assign	M_AXI_ARVALID = 1'b0;
-	assign	M_AXI_ARID    = AXI_READ_ID;
-	assign	M_AXI_ARADDR  = 0;
-	assign	M_AXI_ARLEN   = 8'h0;
-	assign	M_AXI_ARSIZE  = 3'h0;
-	assign	M_AXI_ARBURST = 2'h0;
-	assign	M_AXI_ARLOCK  = 1'b0;
-	assign	M_AXI_ARCACHE = 4'h0;
-	assign	M_AXI_ARPROT  = 3'h0;
-	assign	M_AXI_ARQOS   = 4'h0;
-		//
-	assign	M_AXI_RREADY  = 1'b1;
-	// }}}
-	// }}}
-`else	// SDIO_AXI_TMP
 	sdax_mm2s #(
 		// {{{
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.BUS_WIDTH(DW),
 		.AXI_IW(AXI_IW), .AXI_ID(AXI_READ_ID),
-		.LGLENGTH(LGFIFO),
+		.LGLENGTH(LGFIFO+1),
 		// .OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN),
 		.OPT_LOWPOWER(OPT_LOWPOWER)
 		// }}}
@@ -299,16 +272,15 @@ module	sddma #(
 		// }}}
 		// AXI Stream master (Memory to SD Card) interface
 		// {{{
-		.M_VALID(mm2s_valid),
-		.M_READY(mm2s_ready),
-		.M_DATA(mm2s_data),
-		.M_BYTES(mm2s_bytes),
-		.M_LAST(mm2s_last)
+		.M_AXIS_VALID(mm2s_valid),
+		.M_AXIS_READY(mm2s_ready),
+		.M_AXIS_DATA(mm2s_data),
+		.M_AXIS_BYTES(mm2s_bytes),
+		.M_AXIS_LAST(mm2s_last)
 		// }}}
 		// }}}
 	);
 
-`endif	// SDIO_AXI_TMP
 `else	// SDIO_AXI
 	sddma_mm2s #(
 		// {{{
@@ -381,15 +353,7 @@ module	sddma #(
 		begin
 			r_last   <= (i_dma_len <= SW/8);
 			s_count  <= (i_dma_len >> $clog2(SW/8))-1;
-`ifdef	SDIO_AXI
-`ifdef	SDIO_AXI_TMP
-			r_active <= 1'b1;
-`else	// SDIO_AXI_TMP
 			r_active <= i_dma_addr[ADDR_MSB];
-`endif	// SDIO_AXI_TMP
-`else	// SDIO_AXI
-			r_active <= i_dma_addr[ADDR_MSB];
-`endif	// SDIO_AXI
 		end
 
 		assign	s_ready = s_active && (rxgears_ready
@@ -413,18 +377,6 @@ module	sddma #(
 			wide_rx_valid = i_sd2s_valid;
 			wide_rx_bytes = 4;
 			wide_rx_last  = i_sd2s_last;
-`ifdef	SDIO_AXI
-`ifdef	SDIO_AXI_TMP
-		end else begin
-			// We only skip what follows here because we don't
-			// have any built-in AXI MM2S ... yet
-			//
-			wide_rx_valid = s_valid && s_active;
-			// Verilator lint_off WIDTH
-			wide_rx_bytes = SW/8;
-			// Verilator lint_on  WIDTH
-			wide_rx_last  = s_last;
-`else	// SDIO_AXI_TMP
 		end else if (!mm2s_busy && OPT_ISTREAM)
 		begin
 			wide_rx_valid = s_valid && s_active;
@@ -436,20 +388,6 @@ module	sddma #(
 			wide_rx_valid = mm2s_valid;
 			wide_rx_bytes = mm2s_bytes;
 			wide_rx_last  = mm2s_last;
-`endif	// SDIO_AXI_TMP
-`else	// SDIO_AXI
-		end else if (!mm2s_busy && OPT_ISTREAM)
-		begin
-			wide_rx_valid = s_valid && s_active;
-			// Verilator lint_off WIDTH
-			wide_rx_bytes = SW/8;
-			// Verilator lint_on  WIDTH
-			wide_rx_last  = s_last;
-		end else begin
-			wide_rx_valid = mm2s_valid;
-			wide_rx_bytes = mm2s_bytes;
-			wide_rx_last  = mm2s_last;
-`endif	// SDIO_AXI
 		end
 
 		wide_rx_data = 0;
@@ -457,15 +395,10 @@ module	sddma #(
 		begin
 			if (sd2s_busy)
 				wide_rx_data[31: 0]  = i_sd2s_data;
-`ifdef	SDIO_AXI	// AXI is always, only, ever, OPT_LITTLE_ENDIAN=1
-			else
-				wide_rx_data[SW-1:0] = s_data;
-`else
 			else if (!mm2s_busy && OPT_ISTREAM)
 				wide_rx_data[SW-1:0] = s_data;
 			else
 				wide_rx_data[DW-1:0] = mm2s_data;
-`endif
 		end else begin
 			if (sd2s_busy)
 				wide_rx_data[RXWIDTH-1:RXWIDTH-32]= i_sd2s_data;
@@ -548,7 +481,7 @@ module	sddma #(
 		assign	wide_ready = !fifo_full;
 
 	end else begin : NO_FIFO
-
+		assign	fifo_valid = wide_valid;
 		assign	fifo_empty = !wide_valid;
 		assign	{ fifo_last, fifo_bytes, fifo_data }
 				= { wide_last, wide_bytes, wide_data };
@@ -590,44 +523,18 @@ module	sddma #(
 	// {{{
 
 `ifdef	SDIO_AXI
-`ifdef	SDIO_AXI_TMP
-	assign	s2mm_busy = 1'b0;
-	assign	s2mm_err  = 1'b0;
-	assign	s2mm_ready= 1'b1;
-
-	// Only the S2MM portion of the DMA will ever write to the bus
-	// {{{
-	assign	M_AXI_AWVALID = 1'b0;
-	assign	M_AXI_AWID    = AXI_WRITE_ID;
-	assign	M_AXI_AWADDR  = 0;
-	assign	M_AXI_AWLEN   = 8'h0;
-	assign	M_AXI_AWSIZE  = 3'h0;
-	assign	M_AXI_AWBURST = 2'b0;
-	assign	M_AXI_AWLOCK  = 1'b0;
-	assign	M_AXI_AWCACHE = 4'h0;
-	assign	M_AXI_AWPROT  = 3'h0;
-	assign	M_AXI_AWQOS   = 4'h0;
-		//
-	assign	M_AXI_WVALID = 1'b0;
-	assign	M_AXI_WDATA  = 0;
-	assign	M_AXI_WSTRB  = 0;
-	assign	M_AXI_WLAST  = 1'b0;
-		//
-	assign	M_AXI_BREADY = 1'b1;
-	// }}}
-
-`else
 	sdax_s2mm #(
 		// {{{
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.BUS_WIDTH(DW),
-		.OPT_LITTLE_ENDIAN(1'b1),
-		.LGPIPE(512 / BUS_WIDTH)
+		.IW(AXI_IW),
+		.OPT_LOWPOWER(OPT_LOWPOWER)
+		// .OPT_LITTLE_ENDIAN(1'b1),	AXI is always little endian
+		// .LGPIPE(512 / BUS_WIDTH)
 		// }}}
 	) u_s2mm (
 		// {{{
-		.i_clk
-		.i_reset(i_reset),
+		.i_clk(i_clk), .i_reset(i_reset),
 		.i_soft_reset(i_soft_reset || i_dma_abort),
 		//
 		.i_request(i_dma_sd2s && (!OPT_OSTREAM || !i_dma_addr[ADDR_MSB])),
@@ -639,31 +546,30 @@ module	sddma #(
 		.S_READY(s2mm_ready),
 		.S_DATA(tx_data), .S_BYTES(tx_bytes), .S_LAST(tx_last),
 		//
-		.M_AWVALID(M_AXI_AWVALID,
-		.M_AWREADY(M_AXI_AWREADY,
-		.M_AWID(M_AXI_AWID,
-		.M_AWADDR(M_AXI_AWADDR,
-		.M_AWLEN(M_AXI_AWLEN,
-		.M_AWSIZE(M_AXI_AWSIZE,
-		.M_AWBURST(M_AXI_AWBURST,
-		.M_AWLOCK(M_AXI_AWLOCK,
-		.M_AWCACHE(M_AXI_AWCACHE,
-		.M_AWPROT(M_AXI_AWPROT,
-		.M_AWQOS(M_AXI_AWQOS,
+		.M_AWVALID(M_AXI_AWVALID),
+		.M_AWREADY(M_AXI_AWREADY),
+		.M_AWID(M_AXI_AWID),
+		.M_AWADDR(M_AXI_AWADDR),
+		.M_AWLEN(M_AXI_AWLEN),
+		.M_AWSIZE(M_AXI_AWSIZE),
+		.M_AWBURST(M_AXI_AWBURST),
+		.M_AWLOCK(M_AXI_AWLOCK),
+		.M_AWCACHE(M_AXI_AWCACHE),
+		.M_AWPROT(M_AXI_AWPROT),
+		.M_AWQOS(M_AXI_AWQOS),
 		//
-		.M_WVALID(M_AXI_WVALID,
-		.M_WREADY(M_AXI_WREADY,
-		.M_WDATA(M_AXI_WDATA,
-		.M_WSTRB(M_AXI_WSTRB,
-		.M_WLAST(M_AXI_WLAST,
+		.M_WVALID(M_AXI_WVALID),
+		.M_WREADY(M_AXI_WREADY),
+		.M_WDATA(M_AXI_WDATA),
+		.M_WSTRB(M_AXI_WSTRB),
+		.M_WLAST(M_AXI_WLAST),
 		//
-		.M_BVALID(M_AXI_BVALID,
-		.M_BREADY(M_AXI_BREADY,
-		.M_BID(M_AXI_BID,
+		.M_BVALID(M_AXI_BVALID),
+		.M_BREADY(M_AXI_BREADY),
+		.M_BID(M_AXI_BID),
 		.M_BRESP(M_AXI_BRESP)
 		// }}}
 	);
-`endif // SDIO_AXI_TMP
 
 `else	// SDIO_AXI
 	sddma_s2mm #(
@@ -710,15 +616,7 @@ module	sddma #(
 			r_active <= 1'b0;
 		else if (i_dma_abort || i_soft_reset)
 			r_active <= 1'b0;
-`ifdef	SDIO_AXI
-`ifdef	SDIO_AXI_TMP
-		else if (i_dma_sd2s)	// *ALWAYS* use OSTREAM until AXI DMA
-`else	// SDIO_AXI_TMP
 		else if (i_dma_sd2s && i_dma_addr[ADDR_MSB])
-`endif	// SDIO_AXI_TMP
-`else	// SDIO_AXI
-		else if (i_dma_sd2s && i_dma_addr[ADDR_MSB])
-`endif
 			r_active <= 1'b1;
 		else if (m_valid && m_ready && m_last)
 			r_active <= 1'b0;
@@ -808,16 +706,6 @@ module	sddma #(
 	wire	unused;
 	assign	unused = &{ 1'b0, ign_fifo_fill, fifo_last,
 `ifdef	SDIO_AXI
-				OPT_LOWPOWER,
-				mm2s_valid, mm2s_ready, mm2s_data, mm2s_bytes,
-				mm2s_last,
-`ifdef	SDIO_AXI_TMP
-				M_AXI_AWREADY, M_AXI_WREADY,
-				M_AXI_BVALID, M_AXI_BID, M_AXI_BRESP,
-				M_AXI_ARREADY,
-				M_AXI_RVALID, M_AXI_RID, M_AXI_RDATA,
-				M_AXI_RRESP, M_AXI_RLAST,
-`endif
 				s2mm_busy,
 			tx_bytes, i_dma_len, i_dma_abort, i_dma_addr
 `else

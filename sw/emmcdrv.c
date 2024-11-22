@@ -1908,7 +1908,8 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 		unsigned	phy;
 
 		phy = dev->d_dev->sd_phy;
-		if (SECTOR_512B != (phy & (SECTOR_MASK | SDIOCK_SHUTDN))) {
+		if ((SECTOR_512B|SDIOCK_SHUTDN)
+				!= (phy & (SECTOR_MASK | SDIOCK_SHUTDN))) {
 			// Read multiple *requires* the clock be shut down
 			// between pages, to make sure the device doesn't try
 			// to produce data before we are ready for it.

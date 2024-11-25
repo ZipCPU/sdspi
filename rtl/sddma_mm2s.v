@@ -130,7 +130,7 @@ module	sddma_mm2s #(
 	reg			r_inc;
 	reg	[1:0]		r_size;
 	reg	[LGLENGTH:0]	r_transferlen;
-	reg	[WBLSB-1:0]	r_addr;
+	reg	[ADDRESS_WIDTH-1:0]	r_addr;
 	// }}}
 
 	assign	o_rd_we = 1'b0;
@@ -144,7 +144,7 @@ module	sddma_mm2s #(
 		r_inc  <= i_inc;
 		r_size <= i_size;
 		r_transferlen <= i_transferlen;
-		r_addr <= i_addr[WBLSB-1:0];
+		r_addr <= i_addr;
 	end
 	// }}}
 
@@ -425,8 +425,8 @@ module	sddma_mm2s #(
 		end else begin
 			// {{{
 			case(i_size)
-			SZ_BYTE: ibase_sel= {1'h1, {(DW/8-1){1'b0}} } << i_addr[WBLSB-1:0];
-			SZ_16B: ibase_sel = {2'h3, {(DW/8-2){1'b0}} } << {i_addr[WBLSB-1:1], 1'b0 };
+			SZ_BYTE: ibase_sel= {1'h1, {(DW/8-1){1'b0}} } >> i_addr[WBLSB-1:0];
+			SZ_16B: ibase_sel = {2'h3, {(DW/8-2){1'b0}} } >> {i_addr[WBLSB-1:1], 1'b0 };
 			default: ibase_sel = {(DW/8){1'b1}};
 			endcase
 			// }}}
@@ -634,9 +634,9 @@ module	sddma_mm2s #(
 		wb_outstanding <= 0;
 		// wb_pipeline_full <= 1'b0;
 	else case({ (o_rd_stb && !i_rd_stall), i_rd_ack })
-		2'b10: wb_outstanding <= wb_outstanding + 1;
-		2'b01: wb_outstanding <= wb_outstanding - 1;
-		default: begin end
+	2'b10: wb_outstanding <= wb_outstanding + 1;
+	2'b01: wb_outstanding <= wb_outstanding - 1;
+	default: begin end
 	endcase
 	// }}}
 
@@ -752,22 +752,22 @@ module	sddma_mm2s #(
 	end else if (o_rd_cyc && i_rd_ack)
 	begin
 		case(r_size)
-			SZ_BYTE: pre_shift <= pre_shift + (r_inc ? 1 : 0);
-			SZ_16B:  begin
-				// {{{
-				pre_shift <= pre_shift + (r_inc ? 2 : 0);
-				pre_shift[0] <= 1'b0;
-				end
-				// }}}
-			SZ_32B:  begin
-				// {{{
-				// Verilator lint_off WIDTH
-				pre_shift <= pre_shift + (r_inc ? 4 : 0);
-				// Verilator lint_on  WIDTH
-				pre_shift[1:0] <= 2'b0;
-				end
-				// }}}
-			SZ_BUS:  pre_shift <= 0;
+		SZ_BYTE: pre_shift <= pre_shift + (r_inc ? 1 : 0);
+		SZ_16B:  begin
+			// {{{
+			pre_shift <= pre_shift + (r_inc ? 2 : 0);
+			pre_shift[0] <= 1'b0;
+			end
+			// }}}
+		SZ_32B:  begin
+			// {{{
+			// Verilator lint_off WIDTH
+			pre_shift <= pre_shift + (r_inc ? 4 : 0);
+			// Verilator lint_on  WIDTH
+			pre_shift[1:0] <= 2'b0;
+			end
+			// }}}
+		SZ_BUS:  pre_shift <= 0;
 		endcase
 	end
 
@@ -859,7 +859,8 @@ module	sddma_mm2s #(
 	// Verilator coverage_off
 	// Verilator lint_off UNUSED
 	wire	unused;
-	assign	unused = &{ 1'b0, M_READY, last_request_addr[0] };
+	assign	unused = &{ 1'b0, M_READY, last_request_addr[0],
+				r_addr[ADDRESS_WIDTH-1:WBLSB] };
 	// Verilator lint_on  UNUSED
 	// Verilator coverage_on
 	// }}}
@@ -1548,9 +1549,8 @@ module	sddma_mm2s #(
 		if (!M_VALID)
 		begin
 			assert(f_rcvd == f_sent);
-		end else begin
+		end else
 			assert(f_rcvd == f_sent + M_BYTES);
-		end
 	end
 
 	always @(*)

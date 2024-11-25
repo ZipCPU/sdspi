@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	sdax_s2mm.v
+// Filename:	rtl/sdax_s2mm.v
 // {{{
-// Project:	Zip CPU -- a small, lightweight, RISC CPU soft core
+// Project:	SD-Card controller
 //
 // Purpose:	ZipDMA -- Writes data from a stream to the bus, in this case to
 //		an AXI bus.  Data arrives packed, goes through a gearbox and
@@ -511,6 +511,7 @@ module	sdax_s2mm #(
 	case(r_size)
 	SZ_BYTE: pre_shift = { {(2*DW-16){1'b0}}, gears_data[7:0] };
 	SZ_16B:  begin
+		// Verilator lint_off WIDTH
 		if (sr_offset[0])
 			pre_shift = { {(2*DW-4*8){1'b0}},
 				gears_data[15:0], sr_data[23:16] };
@@ -525,6 +526,7 @@ module	sdax_s2mm #(
 		pre_shift = { {(DW){1'b0}}, sr_data[2*DW-9:DW] };
 		pre_shift = pre_shift | (gears_data[DW-1:0] << (sr_offset*8));
 		end
+		// Verilator lint_on  WIDTH
 	endcase
 
 	initial	sr_data = 0;
@@ -809,6 +811,7 @@ module	sdax_s2mm #(
 		r_max_initial <= 0;
 	else if (!o_busy && i_inc)
 	begin
+		// Verilator lint_off WIDTH
 		case(i_size)
 		SZ_BYTE: if (i_addr[0 +: LCLMAXBURST_SUB] != 0)
 			begin
@@ -832,6 +835,7 @@ module	sdax_s2mm #(
 			end else
 				r_max_initial <= (9'h1 << LCLMAXBURST)-1;
 		endcase
+		// Verilator lint_on  WIDTH
 	end
 
 	assign	w_max_burst = (r_initial_burst) ? r_max_initial : r_max_burst;
@@ -947,7 +951,7 @@ module	sdax_s2mm #(
 	initial	axi_waddr = 0;
 	always @(posedge i_clk)
 	if (OPT_LOWPOWER && (i_reset || (!o_busy && !i_request)))
-		axi_waddr = 0;
+		axi_waddr <= 0;
 	else if (!o_busy)
 	begin
 		axi_waddr <= i_addr;
@@ -1033,22 +1037,20 @@ module	sdax_s2mm #(
 		SZ_32B:  last_count[1:0] <= i_addr[1:0];
 		SZ_BUS:  last_count      <= i_addr[AXILSB-1:0];
 		endcase
-	end else if (S_VALID && S_READY && S_LAST)
+	end else if (S_VALID && S_READY)
 	begin
-		if (S_LAST)
-		begin
-			// Verilator lint_off WIDTH
-			last_count <= last_count + S_BYTES;
-			// Verilator lint_on  WIDTH
-			case(r_size)
-			SZ_BYTE: last_count <= 1;
-			SZ_16B:  last_count[AXILSB-1:1] <= 0;
-			SZ_32B:  if (AXILSB > 2)
-				last_count[AXILSB-1:(AXILSB > 2 ? 2 : 0)] <= 0;
-			SZ_BUS:  begin end
-			endcase
-		end // else the count = count + the full bus width, which
-		// would overflow and leave us with no change.
+		// Verilator lint_off WIDTH
+		last_count <= last_count + S_BYTES;
+		// Verilator lint_on  WIDTH
+		case(r_size)
+		SZ_BYTE: last_count <= 1;
+		SZ_16B:  last_count[AXILSB-1:1] <= 0;
+		SZ_32B:  if (AXILSB > 2)
+			last_count[AXILSB-1:(AXILSB > 2 ? 2 : 0)] <= 0;
+		SZ_BUS:  begin end
+		endcase
+		// else the count = count + the full bus width, which
+		//	 would overflow and leave us with no change.
 	end
 
 	always @(posedge i_clk)
@@ -1068,8 +1070,8 @@ module	sdax_s2mm #(
 		w_last_mask = ~w_last_mask;
 		case(r_size)
 		SZ_BYTE: w_last_mask = -1;
-		SZ_16B:  w_last_mask = {(DW/8/2){w_last_mask[DW/8-1:DW/8-2]}};
-		SZ_32B:  w_last_mask = {(DW/8/4){w_last_mask[DW/8-1:DW/8-4]}};
+		SZ_16B:  w_last_mask = {(DW/8/2){w_last_mask[1:0]}};
+		SZ_32B:  w_last_mask = {(DW/8/4){w_last_mask[3:0]}};
 		SZ_BUS:  begin end // w_last_mask= {(1){w_last_mask[DW/8-1:0]}};
 		endcase
 		end
@@ -1129,7 +1131,9 @@ module	sdax_s2mm #(
 
 		if ((sr_valid || !OPT_LOWPOWER) && sr_last[0])
 			axi_wlast <= 1'b1;
+		// Verilator lint_off WIDTH
 		if (cmd_abort && beats_committed == 1 + phantom_w)
+			// Verilator lint_on  WIDTH
 			axi_wlast <= 1'b1;
 	end
 `ifdef	FORMAL
@@ -1587,20 +1591,22 @@ module	sdax_s2mm #(
 	always @(*)
 	if (!i_reset && r_busy)
 	begin
-		assert(faxi_wposn == 0);
+		if (r_initial_burst)
+		begin
+			assert(faxi_wposn == 0);
+		end
+
 		if (r_inc)
 		begin
 			if (r_initial_burst)
 			begin
 				assert(M_AWADDR == f_cfg_addr);
-			end else if (M_AWADDR != f_cfg_addr || phantom_aw
-				|| !M_AWVALID)
+			end else if (M_AWADDR != f_cfg_addr || !M_AWVALID)
 			case(r_size)
 			SZ_BYTE: assert(M_AWADDR[0 +: LCLMAXBURST_SUB] == 0);
 			SZ_16B:  assert(M_AWADDR[0 +: (1+LCLMAXBURST_SUB)]== 0);
 			SZ_32B:  assert(M_AWADDR[0 +: (2+LCLMAXBURST_SUB)]== 0);
-			SZ_BUS:  assert(M_AWADDR[0 +: (AXILLSB+LCLMAXBURST)]
-								== 0);
+			SZ_BUS:  assert(M_AWADDR[0 +: (AXILSB+LCLMAXBURST)]==0);
 			endcase
 		end else case(r_size)
 		SZ_BYTE: assert(M_AWADDR == f_cfg_addr);
@@ -1622,11 +1628,15 @@ module	sdax_s2mm #(
 		faxi_awposn = 0;
 	else begin
 		case(r_size)
-		SZ_BYTE: faxi_awposn = faxi_wposn -  beats_committed;
-		SZ_16B:  faxi_awposn = faxi_wposn - (beats_committed<<1) - f_cfg_addr[0];
-		SZ_32B:  faxi_awposn = faxi_wposn - (beats_committed<<2) - f_cfg_addr[1:0];
+		SZ_BYTE: faxi_awposn = faxi_wposn -  beats_committed
+			+ ((M_AWVALID && !phantom_aw) ? (M_AWLEN+1) : 0);
+		SZ_16B:  faxi_awposn = faxi_wposn - (beats_committed<<1) - f_cfg_addr[0]
+			+ ((M_AWVALID && !phantom_aw) ? ((M_AWLEN+1)<<1) : 0);
+		SZ_32B:  faxi_awposn = faxi_wposn - (beats_committed<<2) - f_cfg_addr[1:0]
+			+ ((M_AWVALID && !phantom_aw) ? ((M_AWLEN+1)<<2) : 0);
 		SZ_BUS:  faxi_awposn = faxi_wposn - (beats_committed<<AXILSB)
-				- f_cfg_addr[AXILSB-1:0];
+				- f_cfg_addr[AXILSB-1:0]
+			+ ((M_AWVALID && !phantom_aw) ? ((M_AWLEN+1)<<AXILSB) : 0);
 		endcase
 	end
 
@@ -1635,6 +1645,9 @@ module	sdax_s2mm #(
 	begin
 		if (r_inc && !last_rcvd)
 			assert(M_AWADDR == f_cfg_addr + faxi_awposn);
+		// The following *should* be true, but needs to be modified
+		// to fit the last number of bytes in the last beat
+		// assert(f_awposn <= f_posn);
 	end
 
 	// How many valid bytes are in the shift register?
@@ -1686,7 +1699,8 @@ module	sdax_s2mm #(
 	end
 
 	always @(*)
-	if (!i_reset && o_busy && !o_err && !cmd_abort && sr_last == 0)
+	if (!i_reset && o_busy && !o_err && !cmd_abort
+					&& (sr_last == 0 || !sr_valid))
 		assert(f_posn == faxi_wposn + f_fifo_bytes
 			+ f_gears_bytes + f_sr_bytes
 			+ (M_WVALID ? $countones(M_WSTRB) : 0));
@@ -1844,6 +1858,28 @@ module	sdax_s2mm #(
 		endcase
 	end
 	*/
+
+	always @(*)
+		f_tmp_last = f_posn + f_cfg_addr;
+
+	always @(*)
+	if (r_busy)
+	begin
+		if (!last_rcvd)
+		begin
+			case(r_size)
+			SZ_BYTE: assert(0 == last_count);
+			SZ_16B:  assert(last_count == { {(AW-1){1'b0}}, f_cfg_addr[  0] });
+			SZ_32B:  assert(last_count == { {(AW-2){1'b0}}, f_cfg_addr[1:0] });
+			SZ_BUS:  assert(last_count == { {(AW-AXILSB){1'b0}}, f_cfg_addr[AXILSB-1:0] });
+		end else begin
+			case(r_size)
+			SZ_BYTE: assert(last_count == 1);
+			SZ_16B:  assert(last_count == { f_tmp_last[AXILSB-1:1], 1'b0 });
+			SZ_32B:  assert(last_count == { f_tmp_last[AXILSB-1:2], 2'b0 });
+			endcase
+		end
+	end
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////

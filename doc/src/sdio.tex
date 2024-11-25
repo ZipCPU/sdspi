@@ -65,7 +65,7 @@
 %
 % Revision level.  If you change this, be sure to change the revision history
 % to match it
-\revision{Rev.~1.94}
+\revision{Rev.~1.95}
 \begin{document}
 \pagestyle{gqtekspecplain}
 \titlepage
@@ -94,6 +94,7 @@ with this program.  If not, see \texttt{http://www.gnu.org/licenses/} for a copy
 1.92 & 7/22/2024 & Gisselquist & New CRC token handling feature added\\\hline
 1.93 & 8/27/2024 & Gisselquist & Updated token handling and DMA stream discussions\\\hline
 1.94 & 9/05/2024 & Gisselquist & Note that ACKs should always be expected on block writes.\\\hline
+1.95 & 11/25/2024 & Gisselquist & The design now fully supports AXI in addition to Wishbone, to include an (optional) AXI DMA\\\hline
 \end{revisionhistory}
 % Revision History
 % Table of Contents, named Contents
@@ -236,13 +237,12 @@ specific requirements:
 
 \item 32-bit Wishbone interface.
 
-	An optional AXI--Lite interface also exists.
+	An optional AXI interface also exists.
 
 \item An optional DMA interface exists.  This DMA interface can be used to
 	transfer many blocks of data sequentially as part of a single command.
 
-	At present, the DMA interface supports the Wishbone bus only.
-
+	The DMA interface can master either Wishbone or AXI4 buses.
 \end{itemize}
 
 Many, although not all, of these features have been tested as part of the
@@ -349,7 +349,7 @@ the controller before going to the card, or after coming from the card.
 A second, alternative, controller implementation exists in
 \zhref{../rtl/sdaxil.v}{\tt sdaxil.v}.  This controller is nearly line for line
 identical to the \zhref{../rtl/sdwb.v}{\tt sdwb.v} controller, save that
-interaction with this controller takes place over AXI-Lite instead of Wishbone.
+interaction with this controller takes place over AXI instead of Wishbone.
 
 The controller maintains a PHY register for configuring the front end.  This
 register also controls the clock generator, \zhref{../rtl/sdckgen.v}{\tt sdckgen.v}.  This clock
@@ -491,14 +491,14 @@ That's a high level overview, from the perspective of a DMA enabled control
 module.  Let's now turn our attention to how the DMA supplies and deals
 with the data streams given to it.
 
-Data arrives in the DMA module from one of three sources.  First, if
-both {\tt OPT\_ISTREAM} and the MSB of the DMA address are set, data may
-arrive from an AXI stream.  If used, this most-significant bit is one wider
-than the address width of the devices bus.  Alternatively, data may be read
-from memory using the \zhref{../rtl/sddma\_zipmms.v}{\tt sddma\_zipmms.v}
-component.  Finally, when reading from the card, data will arrive first in the
-controller module, and then be forwarded from it once the respective buffer
-is full.
+Data arrives in the DMA module from one of three sources.  First, if both
+{\tt OPT\_ISTREAM} and the MSB of the DMA address are set, data may arrive from
+an AXI stream.  If used, this most-significant bit is one wider than the
+address width of the devices bus.  Alternatively, data may be read from memory
+using the \zhref{../rtl/sddma\_mm2s.v}{\tt sddma\_mm2s.v} (or
+\zhref{../rtl/sdax\_mm2s.v}{\tt sdax\_mm2s.v}) component.  Finally, when reading
+from the card, data will arrive first in the controller module, and then be
+forwarded from it once the respective buffer is full.
 
 These sources may have different data widths.  Data arriving from memory will
 arrive packed in bits that may be up to the full bus width in size.  Data

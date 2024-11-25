@@ -87,10 +87,10 @@ Both open-drain and push-pull IOs are supported, and the front end can switch
 between the two as necessary based upon options within a PHY configuration
 register.  No support is planned for any of the UHS-II protocols.
 
-Both Wishbone and AXI-Lite interfaces are supported.
+Both Wishbone and AXI interfaces are supported.
 
-*Status*: The SDIO controller has now been **silicon proven**.  It is currently
-  working successfully in [its first FPGA
+*Status*: The SDIO controller has now been **silicon proven**.  It is
+  currently working successfully in [its first FPGA
   project](https://github.com/ZipCPU/eth10g), where it is being used to control
   both an SD card as well as an eMMC chip.  It is also now working successfully
   in a [second project](https://github.com/ZipCPU/videozip/).  Many of the
@@ -126,16 +126,8 @@ this controller will be a completed product:
 
 - **`OPT_DMA`**: An optional DMA is now available, and passing tests in silicon.
 
-  Only the Wishbone version of the DMA controller exists at present.
-
-  Although components exist in my [wb2axip
-  repository](https://github.com/ZipCPU/wb2axip) which could support an AXI
-  DMA, these components have neither been integrated nor tested as part of this
-  design.  Other user's have successfully connected external AXI
-  [MM2S](https://github.com/ZipCPU/wb2axip/blob/master/rtl/aximm2s.v) and
-  [S2MM](https://github.com/ZipCPU/wb2axip/blob/master/rtl/axis2mm.v)
-  components to the AXI stream interface, and have thus demonstrated successful
-  DMA support in AXI environments.
+  Both Wishbone and AXI versions of the DMA controller exist and pass all
+  simulation based testing.
 
 - **STREAM DMA**: At customer request, hooks now exist for an (optional)
   stream DMA interface.  This interface will accept an AXI stream input,
@@ -178,15 +170,8 @@ this controller will be a completed product:
 - **AXI Support**: This design has also been demonstrated in AXI environments.
   The control interface has an AXI-Lite port which can be used to interact
   with the IP.  A flag exists to swap endianness, so that the design will be
-  properly little endian when using this interface.  At present, however,
-  there is no integrated AXI DMA master capability--only AXI stream ports.
-  (Integrated AXI DMA master support is planned, just not funded at present.)
-
-  When coupled with external AXI
-  [MM2S](https://github.com/ZipCPU/wb2axip/blob/master/rtl/aximm2s.v) and
-  [S2MM](https://github.com/ZipCPU/wb2axip/blob/master/rtl/axis2mm.v)
-  components, the IP may sufficiently provide for the needs of most AXI
-  environments.
+  properly little endian when using this interface.  The design even includes
+  an integrated AXI DMA.
 
 - **CRC Tokens**: CRC token's are 5b response values, indicating whether
   or not a page has transferred successfully.

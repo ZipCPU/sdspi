@@ -1559,8 +1559,9 @@ EMMCDRV *emmc_init(EMMC *dev) {
 	EMMCDRV	*dv = (EMMCDRV *)malloc(sizeof(EMMCDRV));
 
 	if (NULL == dv) {
-		txstr("PANIC!  No memory for driver\n");
+		txstr("PANIC!  No memory for eMMC driver\n");
 		PANIC;
+		return NULL;
 	}
 
 	dv->d_dev = dev;

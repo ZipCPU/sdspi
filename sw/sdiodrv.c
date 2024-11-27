@@ -1318,6 +1318,13 @@ SDIODRV *sdio_init(SDIO *dev) {
 	unsigned op_cond_query;
 	unsigned	clk_phase = 16 << 16;
 
+	// Check for memory allocation failure.
+	if (NULL == dv) {
+		txstr("PANIC:  No memory for SDIO driver!\n");
+		// PANIC;
+		return NULL;
+	}
+
 	dv->d_dev = dev;
 	dv->d_RCA = 0;
 	dv->d_sector_count = 0;

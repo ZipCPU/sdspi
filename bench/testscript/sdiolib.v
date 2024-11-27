@@ -666,7 +666,7 @@ $display("Waiting for completion");
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
 	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: H, Write DMA error"); error_flag = 1'b1; end
+		else begin $display("ERROR: I, Write DMA error"); error_flag = 1'b1; end
 end endtask
 // }}}
 
@@ -695,7 +695,7 @@ begin
 	end
 
 	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: I, Read block ERR"); error_flag = 1'b1; end
+		else begin $display("ERROR: J, Read block ERR"); error_flag = 1'b1; end
 
 	for(ik=0; ik<512/4; ik=ik+1)
 		u_bfm.writeio(ADDR_FIFOA, $random);
@@ -730,7 +730,7 @@ begin
 	end
 
 	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: J, Read DMA ERR"); error_flag = 1'b1; end
+		else begin $display("ERROR: K, Read DMA ERR"); error_flag = 1'b1; end
 end endtask
 // }}}
 
@@ -764,6 +764,6 @@ begin
 	end
 
 	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: J, Read DMA ERR"); error_flag = 1'b1; end
+		else begin $display("ERROR: L, Read DMA ERR"); error_flag = 1'b1; end
 end endtask
 // }}}

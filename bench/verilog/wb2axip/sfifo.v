@@ -65,10 +65,10 @@ module sfifo #(
 	// Register/net declarations
 	// {{{
 	localparam	FLEN=(1<<LGFLEN);
-	reg			r_full, r_empty;
+	wire			r_full;
+	reg			r_empty;
 	reg	[(BW-1):0]	mem[0:(FLEN-1)];
 	reg	[LGFLEN:0]	wr_addr, rd_addr;
-	reg	[LGFLEN-1:0]	rd_next;
 
 	wire	w_wr = (i_wr && !o_full);
 	wire	w_rd = (i_rd && !o_empty);

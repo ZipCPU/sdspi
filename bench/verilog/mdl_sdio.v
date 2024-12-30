@@ -37,15 +37,18 @@
 `timescale 1ns/1ps
 // }}}
 module	mdl_sdio #(
+		// {{{
 		parameter [0:0]	OPT_DUAL_VOLTAGE = 1'b0,
 		parameter [0:0]	OPT_HIGH_CAPACITY = 1'b0,
 		parameter	LGMEMSZ = 16,	// Log_2(Mem size in bytes)
 		localparam	MEMSZ = (1<<LGMEMSZ)
+		// }}}
 	) (
 		// {{{
 		input	wire		sd_clk,
 		inout	wire		sd_cmd,
-		inout	wire	[3:0]	sd_dat
+		inout	wire	[3:0]	sd_dat,
+		input	wire		i_1p8v	// Set if source is 1.8V
 		// , output	wire		sd_ds
 		// }}}
 	);
@@ -61,6 +64,9 @@ module	mdl_sdio #(
 	// I have no idea what sort of read time is appropriate.  Therefore,
 	// the following is nothing more than a guess.
 	localparam realtime	READ_TIME = 400.0;
+	// I have even less of an idea of how much time should be expected
+	// before sending a tuning response
+	localparam realtime	TUNING_TIME = 20.0;
 	// REPLY_DELAY is the time from recognizing a command until a reply
 	// is requested.  This time should come from the SDIO spec, but my
 	// copy is the simplified spec that doesn't contain this value.  Too
@@ -83,7 +89,7 @@ module	mdl_sdio #(
 	reg	[119:0]	CID;
 	reg	[31:0]	ocr;
 	reg		power_up_busy, cmd_alt, cmd8_sent, card_reset,
-			host_supports_hcs, r_1p8v_request, r_1p8v;
+			host_supports_hcs, r_1p8v_request, permit_1p8v,set_1p8v;
 	reg	[15:0]	RCA;
 	reg	[31:0]	R1;
 	reg		drive_cmd, card_selected;
@@ -266,7 +272,7 @@ module	mdl_sdio #(
 	initial	cmd8_sent = 1'b0;
 	initial	host_supports_hcs = OPT_HIGH_CAPACITY;
 	initial	r_1p8v_request = 1'b0;
-	initial	r_1p8v = 1'b0;
+	initial	permit_1p8v = 1'b0;
 	initial	RCA = 16'h0;
 	initial	R1  = 32'h0;
 	initial	drive_cmd = 1'b0;
@@ -305,7 +311,6 @@ module	mdl_sdio #(
 		reply_crc <= 1'b1;	// All replies get CRCs by default
 		reply_type <= 1'b0;
 		card_reset <= 0;
-		r_1p8v_request <= 1'b0;
 		casez({ cmd_alt, cmd[5:0] })
 		// AMDs
 		{ 1'b1, 6'd6 }: begin
@@ -432,12 +437,17 @@ module	mdl_sdio #(
 			// }}}
 		{ 1'b?, 6'd11 }: begin // CMD11: Voltage switch
 			// {{{
-			if (r_1p8v_request && OPT_DUAL_VOLTAGE && !r_1p8v && !power_up_busy)
+			if (r_1p8v_request && OPT_DUAL_VOLTAGE && !power_up_busy)
 			begin
 				reply_valid <= #REPLY_DELAY 1'b1;
 				reply <= 6'd11;
-				reply_data <= { {(120-32){1'b0}}, 32'h0 };
-				cmd_alt <= 1'b1;
+				reply_data <= { {(120-32){1'b0}}, R1 };
+				if (!OPT_DUAL_VOLTAGE || !r_1p8v_request || i_1p8v)
+				begin
+					// Illegal command
+					reply_data[11] <= 1'b1;
+				end else
+					permit_1p8v <= 1'b1;
 			end end
 			// }}}
 		{ 1'b?, 6'd12 }: begin // CMD12: STOP_TRANSMISSION
@@ -454,7 +464,7 @@ module	mdl_sdio #(
 				write_en <= 1'b0;
 			end end
 			// }}}
-		{ 1'b?, 6'd17 }: begin // CMD19: Read block
+		{ 1'b?, 6'd17 }: begin // CMD17: Read block
 			// {{{
 			if (card_selected)
 			begin
@@ -473,7 +483,7 @@ module	mdl_sdio #(
 				stop_transmission <= 1'b0;
 			end end
 			// }}}
-		{ 1'b?, 6'd18 }: begin // CMD20: Read multiple
+		{ 1'b?, 6'd18 }: begin // CMD18: Read multiple
 			// {{{
 			if (card_selected)
 			begin
@@ -489,6 +499,22 @@ module	mdl_sdio #(
 				else
 					read_posn <= cmd_arg >> 2;
 				rx_addr <= 0;
+				stop_transmission <= 1'b0;
+			end end
+			// }}}
+		{ 1'b?, 6'd19 }: begin // CMD19: Send tuning block
+			// {{{
+			if (card_selected)
+			begin
+				pending_write <= #TUNING_TIME 1'b1;
+				multi_block <= 1'b0;
+				// write_en <= 1'b1;
+				reply_valid <= #REPLY_DELAY 1'b1;
+				reply <= 6'd19;
+				reply_data <= { {(120-32){1'b0}}, R1};
+
+				// read_posn <= 0;
+				// rx_addr <= 0;
 				stop_transmission <= 1'b0;
 			end end
 			// }}}
@@ -510,7 +536,7 @@ module	mdl_sdio #(
 				rx_addr <= 0;
 			end end
 			// }}}
-		{ 1'b?, 6'd25 }: begin // CMD24: Write multiple
+		{ 1'b?, 6'd25 }: begin // CMD25: Write multiple
 			// {{{
 			if (card_selected)
 			begin
@@ -542,6 +568,53 @@ module	mdl_sdio #(
 	always @(posedge sd_clk)
 	if (reply_valid && !reply_busy)
 		reply_valid <= 1'b0;
+
+	////////////////////////////////////////////////////////////////////////
+	//
+	// 1.8V transition checking
+	// {{{
+	initial begin
+		// Allow the simulation a moment to get settled, to help
+		// guarantee we're not looking at the transition of 1p8v
+		// from 'x to a valid value.
+		//
+		// set_1p8v == a 1.8v edge will be valid
+		set_1p8v = 1'b0;
+		#1;
+		wait(!i_1p8v);
+		set_1p8v = 1'b1;
+	end
+
+	always @(posedge i_1p8v)
+	if (set_1p8v)
+	begin
+		// Now, on a valid transition to 1.8V, we must've been told
+		// previously that we were going to do this.
+		assert(OPT_DUAL_VOLTAGE);
+		assert(r_1p8v_request);
+		assert(permit_1p8v);
+		assert(!reply_valid);
+		// The reply *might* be busy when we activate 1.8V--it might
+		// be sending a stop bit.  Therefore, we cannot test for this
+		// here.
+		// assert(!reply_busy);
+		assert(sd_cmd !== 1'b0);
+	end
+
+	// It is illegal to ever change from 1.8V back to 3.3V while the card
+	// is inserted.
+	always @(negedge i_1p8v)
+		assert(!set_1p8v) else $display("NEGEDGE ASSERTION FAIL at %t", $time);
+
+	// Following a request to switch to 1p8v, we *must* switch to 1p8v.
+	always @(posedge sd_clk)
+	if (cmd_valid && permit_1p8v)
+		assert(i_1p8v);
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Write block (host to SD) handling
+	// {{{
 
 	always @(posedge sd_clk)
 	if (stop_transmission && !cmd_valid)
@@ -586,7 +659,11 @@ module	mdl_sdio #(
 			mem[write_ik+read_posn] = mem_buf[write_ik];
 		read_posn = read_posn + 512/4;
 	end
-
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// Read block (SD to host) handling
+	// {{{
 	initial	begin
 		pending_write = 0;
 		write_en = 1'b0;
@@ -600,19 +677,22 @@ module	mdl_sdio #(
 	if (cmd_valid && !cmd_crc_err && { cmd_alt, cmd[5:0] } == 7'd12
 						&& card_selected)
 	begin // STOP_TRANSMISSION
+		// {{{
 		write_en <= 1'b0;
 		tx_valid <= 1'b0;
 		tx_addr <= 0;
 		tx_last <= 0;
+		// pending_write <= 1'b0;
+		// }}}
 	end else if (pending_write && !reply_valid && !reply_busy)
 	begin
+		// {{{
 		// We can place a delay here, to simulate read access time
 		// if desired ...
 		if (!internal_card_busy && !stop_transmission)
 		begin
 			pending_write <= 1'b0;
-			if (!stop_transmission && (cmd[5:0] == 6'd17
-					|| cmd[5:0] == 6'd18))
+			if (cmd[5:0] == 6'd17 || cmd[5:0] == 6'd18)
 			begin
 				write_en <= 1'b1;
 				mem_blkread(read_posn);
@@ -621,8 +701,34 @@ module	mdl_sdio #(
 				tx_data <= mem_buf[0];
 				tx_addr <= 1;
 				tx_last <= 0;
+			end else if (cmd[5:0] == 6'd19)
+			begin	// SEND_TUNING_BLOCK
+				//
+				write_en <= 1'b1;
+				tx_valid <= 1'b1;
+				mem_buf[112+00] <= 32'hFF0FFF00;
+				mem_buf[112+01] <= 32'hFFCCC3CC;
+				mem_buf[112+02] <= 32'hC33CCCFF;
+				mem_buf[112+03] <= 32'hFEFFFEEF;
+				mem_buf[112+04] <= 32'hFFDFFFDD;
+				mem_buf[112+05] <= 32'hFFFBFFFB;
+				mem_buf[112+06] <= 32'hBFFF7FFF;
+				mem_buf[112+07] <= 32'h77F7BDEF;
+				mem_buf[112+08] <= 32'hFFF0FFF0;
+				mem_buf[112+09] <= 32'h0FFCCC3C;
+				mem_buf[112+10] <= 32'hCC33CCCF;
+				mem_buf[112+11] <= 32'hFFEFFFEE;
+				mem_buf[112+12] <= 32'hFFFDFFFD;
+				mem_buf[112+13] <= 32'hDFFFBFFF;
+				mem_buf[112+14] <= 32'hBBFFF7FF;
+				mem_buf[112+15] <= 32'hF77F7BDE; // End of 512B
+				//
+				tx_data <= 32'hFF0FFF00;
+				tx_addr <= 113;	// So TX_LAST is at 512Bytes
+				tx_last <= 0;
 			end
 		end
+		// }}}
 	end else if (write_en && tx_valid && tx_ready)
 	begin
 		tx_data <= mem_buf[tx_addr];
@@ -639,10 +745,18 @@ module	mdl_sdio #(
 		if (tx_ready)
 		begin
 			write_en <= 1'b0;
-			internal_card_busy <= 1'b1;
-			internal_card_busy <= #READ_TIME 1'b0;
-			if (multi_block)
-				pending_write <= 1'b1;
+			if (cmd[5:0] !== 6'd19)
+			begin
+				// On all reads from the card, we
+				// get busy again once complete.
+				// 6'd19 is a tuning block, not a card read,
+				// so we don't need to get busy when done with
+				// it.
+				internal_card_busy <= 1'b1;
+				internal_card_busy <= #READ_TIME 1'b0;
+				if (multi_block)
+					pending_write <= 1'b1;
+			end
 		end
 	end else if (!write_en)
 	begin
@@ -650,6 +764,7 @@ module	mdl_sdio #(
 		tx_data  <= 0;
 		tx_last  <= 0;
 	end
+	// }}}
 
 	// }}}
 

@@ -84,7 +84,7 @@ $display("Done waiting on initial clock change");
 		sample_shift = { 11'h0, 5'h0c, 16'h0 };
 	else
 		// OPT_SERDES
-		sample_shift = { 11'h0, 5'h09, 16'h0 };
+		sample_shift = { 11'h0, 5'h03, 16'h0 };
 	// }}}
 
 	// Now set up for the capabilities we will be using
@@ -98,6 +98,8 @@ $display("Done waiting on initial clock change");
 	u_bfm.readio(ADDR_SDCARD, read_data);
 	sdcard_go_idle;
 
+	// IF condition and OP-Cond
+	// {{{
 	if_cond = 32'h01a5;
 	sdcard_send_if_cond(if_cond);
 	u_bfm.readio(ADDR_SDCARD, read_data);
@@ -113,24 +115,23 @@ $display("Done waiting on initial clock change");
 		assert(if_cond[7:0] == 8'ha5);
 
 		op_cond = 32'h4000_0000;
-		op_cond[24] = 1'b0; // OPT_DUAL_VOLTAGE;
+		op_cond[24] = OPT_1P8V;
 		sdcard_send_op_cond(op_cond);
 
 		do begin
 			op_cond = 32'h40ff_8000;
-			op_cond[24] = 1'b0; // OPT_DUAL_VOLTAGE;
+			op_cond[24] = OPT_1P8V;
 			sdcard_send_op_cond(op_cond);
 		end while(1'b0 === op_cond[31]);
 	end
 	$display("OP-COND: %08x", op_cond);
+	// }}}
 
-	/*
-	if (OPT_DUAL_VOLTAGE && op_cond[24])
+	if (OPT_1P8V && op_cond[24])
 	begin
-		// CMD11	// Voltage switch command
-		// sdcard_switch_voltage;
-	end
-	*/
+		sdcard_send_voltage_switch;	// CMD11
+	end else
+		max_spd = SPEED_50MHZ;
 
 	// Assign RCAs
 	// {{{
@@ -191,7 +192,6 @@ $display("Done waiting on initial clock change");
 		sdcard_read_block(32'h05);
 	end
 	// }}}
-	//
 
 	// Test at SPEED_HSSDR=50MHZ SDR
 	// {{{
@@ -215,6 +215,9 @@ $display("Done waiting on initial clock change");
 	begin
 		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR100 | SDPHY_W4 | sample_shift);
 
+		if (OPT_1P8V && op_cond[24])
+			sdcard_send_tuning_block;
+
 		sdcard_send_random_block(32'h0c);
 		sdcard_send_random_block(32'h0d);
 		sdcard_send_random_block(32'h0e);
@@ -230,6 +233,9 @@ $display("Done waiting on initial clock change");
 	if (numio >= 4 && SPEED_HSSDR[7:0] >= max_spd)
 	begin
 		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_SDR200 | SDPHY_W4 | sample_shift);
+
+		if (OPT_1P8V && op_cond[24])
+			sdcard_send_tuning_block;
 
 		sdcard_send_random_block(32'h10);
 		sdcard_send_random_block(32'h11);

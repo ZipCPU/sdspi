@@ -201,6 +201,7 @@ module	sdio #(
 		input	wire		i_card_detect,
 		output	wire		o_hwreset_n,
 		output	wire		o_1p8v,
+		input	wire		i_1p8v,
 		output	wire		o_int,
 		// Interface to PHY
 		// {{{
@@ -401,7 +402,7 @@ module	sdio #(
 		.i_card_detect(i_card_detect),
 		.i_card_busy(i_card_busy),
 		.o_hwreset_n(o_hwreset_n),
-		.o_1p8v(o_1p8v),
+		.o_1p8v(o_1p8v), .i_1p8v(i_1p8v),
 		.o_int(o_int)
 		// }}}
 	);
@@ -501,7 +502,7 @@ module	sdio #(
 		.i_card_detect(i_card_detect),
 		.i_card_busy(i_card_busy),
 		.o_hwreset_n(o_hwreset_n),
-		.o_1p8v(o_1p8v),
+		.o_1p8v(o_1p8v), .i_1p8v(i_1p8v),
 		.o_int(o_int)
 		// .o_debug(w_debug)
 		// }}}

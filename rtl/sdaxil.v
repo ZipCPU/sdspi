@@ -218,6 +218,7 @@ module	sdaxil #(
 		input	wire			i_card_busy,
 		output	wire			o_hwreset_n,
 		output	wire			o_1p8v,
+		input	wire			i_1p8v,
 		output	reg			o_int
 		// }}}
 	);
@@ -1113,7 +1114,7 @@ module	sdaxil #(
 	// {{{
 	generate if (OPT_1P8V)
 	begin : GEN_1P8V
-		reg	r_1p8v;
+		reg	new_1p8v, r_1p8v;
 
 		// Chips always start up at 3.3V, so we need to disable 1.8V
 		// on startup.  Once they switch to 1.8V, they cannot switch
@@ -1129,13 +1130,9 @@ module	sdaxil #(
 		// then query the card to know if the card supports 1.8V, and
 		// then switch the card and other hardware confidently.
 		//
-		initial	r_1p8v = 1'b0;
-		always @(posedge i_clk)
-		if (i_reset || !card_present)
-			r_1p8v <= 1'b0;
-		else if (bus_phy_stb && bus_wstrb[2])
+		always @(*)
 		begin
-			r_1p8v <= bus_wdata[22];
+			new_1p8v = bus_wdata[22];
 
 			// If 1.8v has already been set, then only allow it to
 			// be unset during a hardware reset.  That reset must
@@ -1146,21 +1143,33 @@ module	sdaxil #(
 				if (!OPT_HWRESET)
 					// If HWRESET isn't supported, then we
 					// can't drop r_1p8v once it is set.
-					r_1p8v <= 1'b1;
+					new_1p8v = 1'b1;
 				if ( bus_wstrb[3] && !bus_wdata[25])
 					// If HWRESET is supported, and the user
 					// is requesting the reset be *off*,
 					// then we don't permit r_1p8v to drop.
-					r_1p8v <= 1'b1;
+					new_1p8v = 1'b1;
 				if (!bus_wstrb[3] && o_hwreset_n)
 					// If HWRESET is supported, and the
 					// user's request doesn't touch the
 					// reset line but reset is not active,
 					// then don't allow the 1.8v setting to
 					// be released.
-					r_1p8v <= 1'b1;
+					new_1p8v = 1'b1;
 			end
+
+			if (!bus_phy_stb || !bus_wstrb[2])
+				new_1p8v = r_1p8v;
+			if (i_reset || !card_present)
+				new_1p8v = 1'b0;
 		end
+
+		initial	r_1p8v = 1'b0;
+		always @(posedge i_clk)
+		if (i_reset || !card_present)
+			r_1p8v <= 1'b0;
+		else
+			r_1p8v <= new_1p8v;
 
 		assign	o_1p8v = r_1p8v;
 
@@ -1476,7 +1485,7 @@ module	sdaxil #(
 		w_phy_ctrl[31:28] = LGFIFO; // Can also set lgblk=15, & read MAX
 		w_phy_ctrl[27:24] = lgblk;
 		w_phy_ctrl[23]    = OPT_1P8V;
-		w_phy_ctrl[22]    = o_1p8v;
+		w_phy_ctrl[22]    = i_1p8v;
 		w_phy_ctrl[21]    = o_cfg_dscmd;
 		w_phy_ctrl[20:16] = o_cfg_sample_shift;
 		w_phy_ctrl[15]    = r_clk_shutdown;

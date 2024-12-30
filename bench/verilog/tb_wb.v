@@ -41,12 +41,13 @@ module	tb_wb
 	#(
 		// Local declarations
 		// {{{
-		parameter	[1:0]	OPT_SERDES = 1'b1,
-		parameter	[1:0]	OPT_DDR = 1'b1,
+		parameter	[0:0]	OPT_SERDES = 1'b1,
+		parameter	[0:0]	OPT_DDR = 1'b0,
 		parameter	[0:0]	OPT_DMA = 1'b0,
 		parameter	[0:0]	OPT_VCD = 1'b0,
 		parameter	[0:0]	OPT_CPU = 1'b0,
 		parameter	[0:0]	OPT_STREAM = 1'b0,
+		parameter	[0:0]	OPT_1P8V = OPT_SERDES,
 		parameter		DW = 512,
 		parameter		SW = 32,
 		parameter		MEM_FILE = "",
@@ -243,6 +244,22 @@ module	tb_wb
 	wire	[3:0]		sd_dat;
 	wire			emmc_cmd, emmc_ck, emmc_ds;
 	wire	[7:0]		emmc_dat;
+
+	pullup(sd_cmd);
+	pullup(sd_dat[0]);
+	pullup(sd_dat[1]);
+	pullup(sd_dat[2]);
+	pullup(sd_dat[3]);
+
+	pullup(emmc_cmd);
+	pullup(emmc_dat[0]);
+	pullup(emmc_dat[1]);
+	pullup(emmc_dat[2]);
+	pullup(emmc_dat[3]);
+	pullup(emmc_dat[4]);
+	pullup(emmc_dat[5]);
+	pullup(emmc_dat[6]);
+	pullup(emmc_dat[7]);
 `endif
 	wire			sdio_interrupt, emmc_interrupt, cpu_interrupt,
 				gpio_interrupt;
@@ -265,7 +282,7 @@ module	tb_wb
 			#(CLK_PERIOD/8) ckcounter = ckcounter + 1;
 	end
 
-	assign	hsclk = ckcounter[0];
+	assign	hsclk = !ckcounter[0];
 	assign	clk   = ckcounter[2];
 
 	initial	reset <= 1;
@@ -455,7 +472,9 @@ module	tb_wb
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
 		.OPT_CARD_DETECT(1'b1), .LGTIMEOUT(10),
-		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b0)
+		.OPT_1P8V(OPT_1P8V),
+		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b0),
+		.HWDELAY(OPT_SERDES ? 9 : 0)
 		// }}}
 	) u_sdio (
 		// {{{
@@ -508,7 +527,8 @@ module	tb_wb
 `endif
 		// }}}
 		.i_card_detect(gpio_sdcard_present), .o_int(sdio_interrupt),
-		.o_hwreset_n(ign_sdio_reset_n), .o_1p8v(sdio_1p8v),
+		.o_hwreset_n(ign_sdio_reset_n),
+		.o_1p8v(sdio_1p8v), .i_1p8v(OPT_1P8V && sdio_1p8v),
 		.o_debug(sdio_debug)
 		// }}}
 	);
@@ -522,6 +542,7 @@ module	tb_wb
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
 		.OPT_CARD_DETECT(0), .LGTIMEOUT(10),
+		.OPT_1P8V(OPT_1P8V),
 		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b1)
 		// }}}
 	) u_emmc (
@@ -575,7 +596,8 @@ module	tb_wb
 			.io_cmd(emmc_cmd), .io_dat(emmc_dat), .i_ds(emmc_ds),
 `endif
 		.i_card_detect(1'b1), .o_int(emmc_interrupt),
-		.o_hwreset_n(emmc_reset_n), .o_1p8v(emmc_1p8v),
+		.o_hwreset_n(emmc_reset_n),
+		.o_1p8v(emmc_1p8v), .i_1p8v(OPT_1P8V && emmc_1p8v),
 		.o_debug(emmc_debug)
 		// }}}
 	);
@@ -598,7 +620,8 @@ module	tb_wb
 	) u_mcchip (
 		.rst_n(emmc_reset_n),
 		.sd_clk(emmc_ck), .sd_cmd(emmc_cmd), .sd_dat(emmc_dat),
-			.sd_ds(emmc_ds)
+			.sd_ds(emmc_ds),
+		.i_1p8v(emmc_1p8v)
 	);
 
 	// }}}
@@ -611,10 +634,12 @@ module	tb_wb
 
 	mdl_sdio #(
 		.LGMEMSZ(16),
-		.OPT_HIGH_CAPACITY(1'b1)
+		.OPT_HIGH_CAPACITY(1'b1),
+		.OPT_DUAL_VOLTAGE(OPT_1P8V)
 	) u_sdcard (
 		// .rst_n(1'b1),
-		.sd_clk(sd_ck), .sd_cmd(sd_cmd), .sd_dat(sd_dat)
+		.sd_clk(sd_ck), .sd_cmd(sd_cmd), .sd_dat(sd_dat),
+		.i_1p8v(sdio_1p8v)
 	);
 
 	// }}}
@@ -629,6 +654,7 @@ module	tb_wb
 
 	generate if (OPT_STREAM)
 	begin : GEN_STREAM_CHECKER
+		// {{{
 		wire			sck_cyc, sck_stb, sck_we,
 					sck_stall, sck_ack, sck_err;
 		wire	[AW+$clog2(DW/32)-1:0]	sck_addr;
@@ -691,6 +717,7 @@ module	tb_wb
 		);
 
 		assign	sck_err = 1'b0;
+		// }}}
 	end else begin : NO_STREAM_CHECKER
 		// {{{
 
@@ -836,6 +863,7 @@ module	tb_wb
 	generate if (OPT_CPU)
 	begin : GEN_CPU
 		// {{{
+`ifdef	INCLUDE_CPU
 		wire				cpu_prof_stb;
 		wire	[ADDRESS_WIDTH-1:0]	cpu_prof_addr;
 		wire	[31:0]			cpu_prof_ticks;
@@ -883,9 +911,14 @@ module	tb_wb
 			.o_prof_ticks(cpu_prof_ticks)
 			// }}}
 		);
+`endif
 		// }}}
 	end else begin : TESTSCRIPT
+`ifdef	REGRESSION
 `include	`SCRIPT
+`else
+`include	"testscript.v"
+`endif
 		// {{{
 		initial begin
 			error_flag = 1'b0;

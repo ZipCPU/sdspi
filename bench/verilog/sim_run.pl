@@ -114,7 +114,11 @@ sub simline($) {
 	my $tstname = "";
 	my $args = "";
 
-	my $defs = "";
+	# Vivado can't handle include `SCRIPT when running from the GUI, so we
+	# instead create a DEFINE to be used anytime we are running from this
+	# Perl-based regression running script (as defined by this file,
+	# sim_run.pl).
+	my $defs = " -DREGRESSION";
 	my $parm = "";
 	my $cpu_flag = 0;
 

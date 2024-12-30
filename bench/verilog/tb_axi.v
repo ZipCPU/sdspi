@@ -37,32 +37,40 @@
 `default_nettype none
 `timescale 1ns / 1ps
 // }}}
-module	tb_axi;
+module	tb_axi
+	#(
+		// Design configuration parameters
+		// {{{
+// `define	SDIO_AXI
+		parameter	[0:0]	OPT_SERDES = 1'b1,
+		parameter	[0:0]	OPT_DDR = 1'b1,
+		parameter	[0:0]	OPT_DMA = 1'b0,
+		parameter	[0:0]	OPT_VCD = 1'b0,
+		parameter	[0:0]	OPT_CPU = 1'b0,
+		parameter	[0:0]	OPT_STREAM = 1'b0,
+		parameter	[0:0]	OPT_1P8V = OPT_SERDES,
+		parameter		DW = 64,
+		parameter		SW = 32,	// May only be 32 or DW
+		parameter		MEM_FILE = "",
+		parameter		CONSOLE_FILE = "",
+		parameter		AXI_IW = 2,
+		localparam		BFM_DW=32,
+		localparam		VCD_FILE = "axtrace.vcd",
+		parameter		LGMEMSZ = 16,	// 64kB
+		localparam		ADDRESS_WIDTH = LGMEMSZ + 1
+		// }}}
+	// ) (
+	);
+
 	// Local declarations
 	// {{{
-// `define	SDIO_AXI
-	parameter	[1:0]	OPT_SERDES = 1'b1;
-	parameter	[1:0]	OPT_DDR = 1'b1;
-	parameter	[0:0]	OPT_DMA = 1'b0;
-	parameter	[0:0]	OPT_VCD = 1'b0;
-	parameter	[0:0]	OPT_CPU = 1'b0;
-	parameter	[0:0]	OPT_STREAM = 1'b0;
-	parameter		DW = 64;
-	parameter		SW = 32;	// May only be 32 or DW
-	parameter		MEM_FILE = "";
-	parameter		CONSOLE_FILE = "";
-	parameter		AXI_IW = 2;
-	localparam		BFM_DW=32;
-	localparam		VCD_FILE = "axtrace.vcd";
-	parameter		LGMEMSZ = 16;	// 64kB
-	localparam		ADDRESS_WIDTH = LGMEMSZ + 1;
-
 	localparam	CPU_LGCACHE = 10;
 	localparam	AXILSB = $clog2(DW/8);
 	localparam	AW = ADDRESS_WIDTH,
 			BFM_AW = AW;
 
-	parameter	MEM_ADDR  = { 1'b1, {(AW-1){1'b0}} },
+	localparam [ADDRESS_WIDTH-1:0]
+			MEM_ADDR  = { 1'b1, {(AW-1){1'b0}} },
 			AXILP_ADDR= { 4'b0001,{(AW-4){1'b0}} },
 			SCK_ADDR  = { 4'b0010,{(AW-4){1'b0}} },
 			CON_ADDR  = { 4'b0011,{(AW-4){1'b0}} },
@@ -70,7 +78,8 @@ module	tb_axi;
 			SDIO_ADDR = { 4'b0101,{(AW-4){1'b0}} },
 			EMMC_ADDR = { 4'b0110,{(AW-4){1'b0}} };
 	//
-	parameter	MEM_MASK = { 1'b1, {(AW-1){1'b0}} },
+	localparam [ADDRESS_WIDTH-1:0]
+			MEM_MASK = { 1'b1, {(AW-1){1'b0}} },
 			AXILP_MASK= { 4'b1111,{(AW-4){1'b0}} },
 			SCK_MASK  = { 4'b1111,{(AW-4){1'b0}} },
 			CON_MASK  = { 4'b1111,{(AW-4){1'b0}} },
@@ -1281,7 +1290,9 @@ module	tb_axi;
 		.DW(DW), .AXI_IW(AXI_IW),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
 		.OPT_CARD_DETECT(1'b1), .LGTIMEOUT(10),
-		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b0)
+		.OPT_1P8V(OPT_1P8V),
+		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b0),
+		.HWDELAY(OPT_SERDES ? 6 : 0)
 		// }}}
 	) u_sdio (
 		// {{{
@@ -1376,7 +1387,8 @@ module	tb_axi;
 		.o_ck(sd_ck), .i_ds(1'b0), .io_cmd(sd_cmd), .io_dat(sd_dat),
 		// }}}
 		.i_card_detect(gpio_sdcard_present), .o_int(sdio_interrupt),
-		.o_hwreset_n(ign_sdio_reset_n), .o_1p8v(sdio_1p8v),
+		.o_hwreset_n(ign_sdio_reset_n),
+		.o_1p8v(sdio_1p8v), .i_1p8v(OPT_1P8V && sdio_1p8v),
 		.o_debug(sdio_debug)
 		// }}}
 	);
@@ -1389,6 +1401,7 @@ module	tb_axi;
 		.DW(DW), .AXI_IW(AXI_IW),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
 		.OPT_CARD_DETECT(0), .LGTIMEOUT(10),
+		.OPT_1P8V(OPT_1P8V),
 		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b1)
 		// }}}
 	) u_emmc (
@@ -1482,7 +1495,8 @@ module	tb_axi;
 		.o_ck(emmc_ck),
 			.io_cmd(emmc_cmd), .io_dat(emmc_dat), .i_ds(emmc_ds),
 		.i_card_detect(1'b1), .o_int(emmc_interrupt),
-		.o_hwreset_n(emmc_reset_n), .o_1p8v(emmc_1p8v),
+		.o_hwreset_n(emmc_reset_n),
+		.o_1p8v(emmc_1p8v), .i_1p8v(OPT_1P8V && emmc_1p8v),
 		.o_debug(emmc_debug)
 		// }}}
 	);
@@ -1503,7 +1517,8 @@ module	tb_axi;
 	) u_mcchip (
 		.rst_n(emmc_reset_n),
 		.sd_clk(emmc_ck), .sd_cmd(emmc_cmd), .sd_dat(emmc_dat),
-			.sd_ds(emmc_ds)
+			.sd_ds(emmc_ds),
+		.i_1p8v(emmc_1p8v)
 	);
 
 	// }}}
@@ -1514,10 +1529,12 @@ module	tb_axi;
 
 	mdl_sdio #(
 		.LGMEMSZ(16),
-		.OPT_HIGH_CAPACITY(1'b1)
+		.OPT_HIGH_CAPACITY(1'b1),
+		.OPT_DUAL_VOLTAGE(OPT_1P8V)
 	) u_sdcard (
 		// .rst_n(1'b1),
-		.sd_clk(sd_ck), .sd_cmd(sd_cmd), .sd_dat(sd_dat)
+		.sd_clk(sd_ck), .sd_cmd(sd_cmd), .sd_dat(sd_dat),
+		.i_1p8v(sdio_1p8v)
 	);
 
 	// }}}
@@ -2408,7 +2425,11 @@ module	tb_axi;
 
 		// }}}
 	end else begin : TESTSCRIPT
+`ifdef	REGRESSION
 `include	`SCRIPT
+`else
+`include	"testscript.v"
+`endif
 		// {{{
 		initial begin
 			error_flag = 1'b0;

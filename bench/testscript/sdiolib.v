@@ -136,12 +136,14 @@ $display("WAIT-WHILE-BUSY");
 $display("FIRST-CHECK: %08x", read_data);
 	if(read_data & SDIO_BUSY)
 	begin
-		do begin
+		while(!prior_interrupt && (read_data & SDIO_BUSY))
+		begin
 			prior_interrupt = prior_interrupt || r_interrupted;
 			u_bfm.readio(ADDR_SDCARD, read_data);
 			// $display("CHECK IF BUSY -- %08x", read_data);
 			// if (read_data & SDIO_BUSY) assert(!prior_interrupt);
-		end while(!prior_interrupt && (read_data & SDIO_BUSY));
+		end
+
 		if (read_data & SDIO_BUSY)
 		begin
 			$display("ERROR: INTERRUPTED, but still busy. CMD= %08x, PRIOR=%1d, INT=%1d", read_data, prior_interrupt, r_interrupted);
@@ -150,11 +152,13 @@ $display("FIRST-CHECK: %08x", read_data);
 		if (1'b1 !== r_interrupted)
 		begin
 			$display("ERROR: NO INTERRUPT!");
-			assert(r_interrupted)
-				else begin
-					$display("ERROR: I");
-					error_flag = 1'b1;
-				end
+			if (1'b1 !== r_interrupted)
+			begin
+				$display("ERROR: I");
+				error_flag = 1'b1;
+			end
+			
+			assert(r_interrupted);
 		end
 	end
 
@@ -173,8 +177,13 @@ begin
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(!ctrl_reg[15])
-		else begin $display("ERROR: A"); error_flag = 1'b1; end // && ctrl_reg[17:16] == 2'b01);
+	if (1'b0 !== ctrl_reg[15])
+	begin
+		$display("ERROR: A");
+		error_flag = 1'b1;
+	end
+
+	assert(!ctrl_reg[15]);
 end endtask
 // }}}
 
@@ -189,8 +198,13 @@ begin
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: B"); error_flag = 1'b1; end
+	if (1'b0 !== ctrl_reg[15] || 2'b01 !== ctrl_reg[17:16])
+	begin
+		$display("ERROR: B");
+		error_flag = 1'b1;
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 
 	// We leave the CID in the FIFO to be read out later
 end endtask
@@ -207,9 +221,44 @@ begin
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: C"); error_flag = 1'b1; end
+	if (1'b0 !== ctrl_reg[15] || 2'b01 !== ctrl_reg[17:16])
+	begin
+		$display("ERROR: C");
+		error_flag = 1'b1;
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 	u_bfm.readio(ADDR_SDDATA, r6);
+end endtask
+// }}}
+
+task	sdcard_send_switch(input [31:0] swcmd);		// CMD6
+	// {{{
+	reg	[31:0]	ctrl_reg, phy_reg;
+begin
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	if (4'h6 !== phy_reg[27:24])
+	begin
+		phy_reg[27:24] = 4'h6;
+		u_bfm.write_f(ADDR_SDPHY, phy_reg);
+	end
+
+	// Send CMD6: SEND_SWITCH
+	u_bfm.writeio(ADDR_SDDATA, swcmd);
+	u_bfm.write_f(ADDR_SDCARD, (SDIO_READREG|SDIO_MEM) + 6);
+
+	sdio_wait_while_busy;
+
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+	if (1'b0 !== ctrl_reg[15] || 2'b01 !== ctrl_reg[17:16])
+	begin
+		$display("ERROR: SWITCH-ERR"); error_flag = 1'b1;
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
+
+	phy_reg[27:24] = 4'h9;
+	u_bfm.write_f(ADDR_SDPHY, phy_reg);
 end endtask
 // }}}
 
@@ -224,8 +273,12 @@ begin
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: D"); error_flag = 1'b1; end
+	if (1'b0 !== ctrl_reg[15] || 2'b01 !== ctrl_reg[17:16])
+	begin
+		$display("ERROR: D"); error_flag = 1'b1;
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 	// u_bfm.readio(ADDR_SDDATA, r6);
 end endtask
 // }}}
@@ -245,9 +298,12 @@ $display("SEND-IF-COND");
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
 	if(1'b0 !== ctrl_reg[15] || 2'b01 !== ctrl_reg[17:16])
+	begin
 		$display("ERROR: IF-COND, Invalid response");
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: E"); error_flag = 1'b1; end
+		error_flag = 1'b1;
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 	u_bfm.readio(ADDR_SDDATA, ifcond);
 end endtask
 // }}}
@@ -271,6 +327,128 @@ $display("SEND-OP-COND");
 end endtask
 // }}}
 
+task	sdcard_send_voltage_switch;	// CMD11
+	// {{{
+	reg	[31:0]	ctrl_reg, phy_reg;
+begin
+$display("VOLTAGE-SWITCH");
+	assert(OPT_1P8V);
+	u_bfm.writeio(ADDR_SDDATA, 32'h0);
+	u_bfm.write_f(ADDR_SDCARD, SDIO_READREG + 11);
+
+	sdio_wait_while_busy;
+
+	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+	if(1'b0 !== ctrl_reg[15] || ctrl_reg[17:16] !== 2'b01)
+	begin
+		$display("ERROR: Voltage switch unsuccessful");
+		error_flag = 1'b1;
+	end
+
+	assert(!ctrl_reg[15] && ctrl_reg[17:16] == 2'b01);
+
+	$display("Switching voltages!\n");
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	phy_reg[22] = 1;
+	u_bfm.write_f(ADDR_SDPHY, phy_reg);
+	$display("  ... DONE!\n");
+
+end endtask
+// }}}
+
+reg	[31:0]	tuning_pat[0:15];
+
+initial begin
+	tuning_pat[ 0]=	32'hFF0FFF00;
+	tuning_pat[ 1]=	32'hFFCCC3CC;
+	tuning_pat[ 2]=	32'hC33CCCFF;
+	tuning_pat[ 3]=	32'hFEFFFEEF;
+	tuning_pat[ 4]=	32'hFFDFFFDD;
+	tuning_pat[ 5]=	32'hFFFBFFFB;
+	tuning_pat[ 6]=	32'hBFFF7FFF;
+	tuning_pat[ 7]=	32'h77F7BDEF;
+	tuning_pat[ 8]=	32'hFFF0FFF0;
+	tuning_pat[ 9]=	32'h0FFCCC3C;
+	tuning_pat[10]=	32'hCC33CCCF;
+	tuning_pat[11]=	32'hFFEFFFEE;
+	tuning_pat[12]=	32'hFFFDFFFD;
+	tuning_pat[13]=	32'hDFFFBFFF;
+	tuning_pat[14]=	32'hBBFFF7FF;
+	tuning_pat[15]=	32'hF77F7BDE;
+end
+
+task	sdcard_send_tuning_block;	// CMD19
+	// {{{
+	reg	[31:0]	ctrl_reg, dat_reg, phy_reg;
+	reg	[31:0]	vmask, best_eye, best_ph, first_eye, eyesz, ph, k;
+	reg		vld;
+begin
+$display("SEND-TUNING-BLOCK");
+	vmask     = 0;
+	best_eye  = 0;
+	best_ph   = 0;
+	first_eye = 0;
+	eyesz     = 0;
+	ph        = 0;
+	k         = 0;
+
+	u_bfm.readio(ADDR_SDPHY, phy_reg);
+	if (phy_reg[27:24] != 4'h6)	// 64 bytes, 128bits per lane
+	begin
+		phy_reg[27:24] = 4'h6;
+	end
+
+	for(ph=0; ph<24; ph=ph+1)
+	begin
+		phy_reg[20:16] = ph;
+		u_bfm.writeio(ADDR_SDPHY, phy_reg);
+
+		u_bfm.writeio(ADDR_SDDATA, 32'h0);
+		u_bfm.write_f(ADDR_SDCARD, (SDIO_READREG|SDIO_MEM) + 19);
+
+		sdio_wait_while_busy;
+
+		u_bfm.readio(ADDR_SDCARD, ctrl_reg);
+
+		vld = 1;
+		if (ctrl_reg[15] !== 1'b0)
+			vld = 1'b0;
+		else for(k=0; k<16 && vld; k=k+1)
+		begin
+			u_bfm.readio(ADDR_FIFOA, dat_reg);
+			if (tuning_pat[k] !== dat_reg)
+				vld = 0;
+		end
+
+		if (vld)
+		begin
+			vmask[ph] = 1'b1;
+			if (0 == eyesz)
+				first_eye = ph;
+			eyesz = eyesz + 1;
+			$display("-- %2d is valid", ph);
+		end else begin
+			$display("-- %2d *INVALID*", ph);
+			if (eyesz > best_eye)
+			begin
+				best_ph = (ph - first_eye)/ 2 + first_eye;
+				best_eye = eyesz;
+				$display("-- New best at %2d, eyesz=%2d from %2d", best_ph, eyesz, first_eye);
+			end
+
+			first_eye = 0;
+			eyesz = 0;
+		end
+	end
+
+	phy_reg[27:24] = 4'h9;		// Return us to 512B blocks
+	phy_reg[20:16] = best_ph;	// Use the best phase offset we've found
+	u_bfm.write_f(ADDR_SDPHY, phy_reg);
+
+	// u_bfm.readio(ADDR_SDDATA, r6);
+end endtask
+// }}}
+
 task	sdcard_set_bus_width(input [1:0] width);	// ACMD6
 	// {{{
 	reg	[31:0]	ctrl_reg, read_reg;
@@ -284,8 +462,13 @@ begin
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: F"); error_flag = 1'b1; end
+	if(1'b0 !== ctrl_reg[15] || ctrl_reg[17:16] !== 2'b01)
+	begin
+		$display("ERROR: Set-Bus width CMD failure");
+		error_flag = 1'b1;
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 end endtask
 // }}}
 
@@ -300,8 +483,11 @@ $display("SEND-APP-CMD");
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(!ctrl_reg[15] && ctrl_reg[17:16] == 2'b01)
-		else begin $display("ERROR: G"); error_flag = 1'b1; end
+	if(1'b0 !== ctrl_reg[15] || ctrl_reg[17:16] !== 2'b01)
+	begin
+		$display("ERROR: APP-CMD FAIL"); error_flag = 1'b1;
+	end
+	assert(!ctrl_reg[15] && ctrl_reg[17:16] == 2'b01);
 	// u_bfm.readio(ADDR_SDDATA, r6);
 end endtask
 // }}}
@@ -332,8 +518,12 @@ begin
 	if (read_data[24])
 		$display("  S18A: Switching to 1.8V allowed");
 
-	assert(read_data[30:0] == u_sdcard.ocr[30:0])
-		else begin $display("ERROR: F"); error_flag = 1'b1; end
+	if (read_data[30:0] !== u_sdcard.ocr[30:0])
+	begin
+		$display("ERROR: F"); error_flag = 1'b1;
+	end
+
+	assert(read_data[30:0] == u_sdcard.ocr[30:0]);
 end endtask
 // }}}
 
@@ -356,8 +546,12 @@ begin
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: G"); error_flag = 1'b1; end
+	if(1'b0 !== ctrl_reg[15] || 2'b01 !== ctrl_reg[17:16])
+	begin
+		$display("ERROR: WRITEBLK FAIL"); error_flag = 1'b1;
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 end endtask
 // }}}
 
@@ -635,8 +829,11 @@ $display("Waiting for completion");
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: H, Write DMA error"); error_flag = 1'b1; end
+	if(1'b0 !== ctrl_reg[15] || 2'b01 !== ctrl_reg[17:16])
+	begin
+		$display("ERROR: H, Write DMA error"); error_flag = 1'b1;
+	end
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 end endtask
 // }}}
 
@@ -665,8 +862,12 @@ $display("Waiting for completion");
 	sdio_wait_while_busy;
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: I, Write DMA error"); error_flag = 1'b1; end
+	if(1'b0 !== ctrl_reg[15] || 2'b01 !== ctrl_reg[17:16])
+	begin
+		$display("ERROR: I, Write DMA error"); error_flag = 1'b1;
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 end endtask
 // }}}
 
@@ -694,8 +895,12 @@ begin
 		$display("CMD FAILED CODE (%d) at %t", ctrl_reg[17:16], $time);
 	end
 
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: J, Read block ERR"); error_flag = 1'b1; end
+	if(1'b0 !== ctrl_reg[15] || 2'b01 !== ctrl_reg[17:16])
+	begin
+		$display("ERROR: J, Read block ERR"); error_flag = 1'b1;
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 
 	for(ik=0; ik<512/4; ik=ik+1)
 		u_bfm.writeio(ADDR_FIFOA, $random);
@@ -729,8 +934,12 @@ begin
 		$display("CMD FAILED CODE (%d) at %t", ctrl_reg[17:16], $time);
 	end
 
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: K, Read DMA ERR"); error_flag = 1'b1; end
+	if(1'b0 !== ctrl_reg[15] || 2'b01 !== ctrl_reg[17:16])
+	begin
+		$display("ERROR: K, Read DMA ERR"); error_flag = 1'b1;
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 end endtask
 // }}}
 
@@ -763,7 +972,11 @@ begin
 		$display("CMD FAILED CODE (%d) at %t", ctrl_reg[17:16], $time);
 	end
 
-	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16])
-		else begin $display("ERROR: L, Read DMA ERR"); error_flag = 1'b1; end
+	if(1'b0 !== ctrl_reg[15] || 2'b01 !== ctrl_reg[17:16])
+	begin
+		$display("ERROR: L, Read DMA ERR"); error_flag = 1'b1;
+	end
+
+	assert(1'b0 === ctrl_reg[15] && 2'b01 === ctrl_reg[17:16]);
 end endtask
 // }}}

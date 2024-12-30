@@ -338,6 +338,7 @@ module sdio_top #(
 		input	wire		i_card_detect,
 		output	wire		o_hwreset_n,
 		output	wire		o_1p8v,
+		input	wire		i_1p8v,
 		output	wire		o_int,
 		output	wire	[31:0]	o_debug
 		// }}}
@@ -506,7 +507,7 @@ module sdio_top #(
 		// }}}
 		.i_card_detect(i_card_detect),
 		.o_hwreset_n(o_hwreset_n),
-		.o_1p8v(o_1p8v),
+		.o_1p8v(o_1p8v), .i_1p8v(i_1p8v),
 		.o_int(o_int),
 		// Interface to PHY
 		// {{{

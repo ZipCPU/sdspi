@@ -77,15 +77,23 @@ module mdl_sdtx #(
 	wire	[7:0]	w_dat;
 	// }}}
 
+	// r_ready -- set on the posedge of the clock
+	// {{{
+	always @(posedge sd_clk or negedge rst_n)
+	if (!rst_n)
+		r_ready <= 1'b0;
+	else if (r_token || i_crcack || i_crcnak || (i_valid && o_ready))
+		r_ready <= 1'b0;
+	else if (!i_en)
+		r_ready <= 1'b1;
+	else
+		r_ready <= (r_active && r_count <= (1 + i_ddr));
+	// }}}
+
+
 	// tx_sreg, r_count, r_crc r_active: positive edge of the clock
 	// {{{
 	// Setup for the positive clock edge
-	always @(negedge sd_clk or negedge rst_n)
-	if (!rst_n)
-		r_ready <= 1'b0;
-	else
-		r_ready <= o_ready;
-
 	always @(negedge sd_clk or negedge rst_n)
 	if (!rst_n)
 	begin
@@ -96,7 +104,7 @@ module mdl_sdtx #(
 		r_active<= 0;
 		r_token <= 0;
 	end else if (r_token)
-	begin
+	begin // We're sending a token
 		// {{{
 		r_count  <= r_count - 1;
 		r_token  <= (r_count > 1);
@@ -114,7 +122,7 @@ module mdl_sdtx #(
 			tx_sreg <= { tx_sreg[78:0], 1'b1 };
 		// }}}
 	end else if (i_crcack || i_crcnak)
-	begin
+	begin // Receive a request to send a token
 		// {{{
 		r_token  <= 1;
 		r_crc    <= 0;
@@ -324,9 +332,8 @@ module mdl_sdtx #(
 
 	assign	sd_ds = ds;
 
-	assign	o_ready = !r_token && (!r_active
-				|| (!r_crc && ((sd_clk && r_count == 1)
-						|| (!sd_clk && r_ready))));
+	assign	o_ready = !r_token && (!r_active || (!r_crc && r_ready));
+		// ((sd_clk && r_count == 1) || (!sd_clk && r_ready))));
 
 	// CRC generation
 	// {{{

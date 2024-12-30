@@ -109,8 +109,8 @@ module	sdcmd #(
 	// {{{
 	localparam [1:0]	R_NONE = 2'b00,
 				R_R1   = 2'b01,
-				R_R2   = 2'b10;
-				// R_R1b  = 2'b11;
+				R_R2   = 2'b10,
+				R_R1b  = 2'b11;
 
 	localparam [1:0]	ECODE_TIMEOUT = 2'b00,
 				ECODE_OKAY    = 2'b01,
@@ -299,7 +299,7 @@ module	sdcmd #(
 		begin
 			if (S_ASYNC_VALID)
 				resp_count <= resp_count + 2;
-		end else if (cmd_type[0])
+		end else if (cmd_type == R_R1 || cmd_type == R_R1b)
 		begin
 			if (resp_count + (i_cmd_strb[1] ? 1:0)
 					+ (i_cmd_strb[0] ? 1:0) >= 48)
@@ -343,7 +343,7 @@ module	sdcmd #(
 	begin
 		if (S_ASYNC_VALID)
 			rx_sreg <= { rx_sreg[37:0], S_ASYNC_DATA[1:0] };
-	end else if (cmd_type[0])
+	end else if (cmd_type == R_R1 || cmd_type == R_R1b)
 	begin
 		if (resp_count < 47 && i_cmd_strb[1])
 		begin
@@ -367,7 +367,7 @@ module	sdcmd #(
 
 	assign	w_done = waiting_on_response
 			&&((cmd_type == R_R2 && o_mem_valid && o_mem_addr >= 3)
-			|| (cmd_type[0] && resp_count == 48));
+			|| ((cmd_type == R_R1 || cmd_type == R_R1b) && resp_count == 48));
 
 	assign	w_no_response = (active && cmd_type == R_NONE && i_ckstb
 						// Verilator lint_off WIDTH
@@ -380,7 +380,7 @@ module	sdcmd #(
 	always @(posedge i_clk)
 	if (i_reset || !waiting_on_response || cmd_type == R_NONE || o_cmd_response)
 		o_cmd_response <= 1'b0;
-	else if (!cmd_type[1])
+	else if (cmd_type == R_R1 || cmd_type == R_R1b)
 		o_cmd_response <= (resp_count == 48) && !r_done;
 	else // if (cmd_type == R_R2)
 		o_cmd_response <= (resp_count == 136) && !r_done;
@@ -475,7 +475,8 @@ module	sdcmd #(
 		r_frame_err <= 1'b1;
 
 	assign	frame_err = r_frame_err || (waiting_on_response
-			&&((cmd_type[1] && !rx_sreg[0] && resp_count == 48)
+			&&(((cmd_type == R_R1 || cmd_type == R_R1b)
+				 && !rx_sreg[0] && resp_count == 48)
 			||((cmd_type==R_R2&& !rx_sreg[0] && resp_count == 136))));
 	// }}}
 
@@ -619,7 +620,7 @@ module	sdcmd #(
 	always @(posedge i_clk)
 	if (i_reset || !waiting_on_response || o_cmd_en)
 		crc_fill <= 0;
-	else if (cmd_type[0] || resp_count > 7)
+	else if (cmd_type == R_R1 || cmd_type == R_R1b || resp_count > 7)
 	begin
 		if (OPT_DS && cfg_ds && S_ASYNC_VALID)
 			crc_fill <= STEPCRC(STEPCRC(crc_fill,

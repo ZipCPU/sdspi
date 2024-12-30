@@ -54,7 +54,7 @@ module	xsdserdes8x #(
 		// {{{
 		input	wire		i_clk,
 					i_hsclk,
-		// input	wire		i_reset,
+		input	wire		i_reset,
 		//
 		input	wire		i_en,
 		input	wire	[7:0]	i_data,
@@ -113,13 +113,13 @@ module	xsdserdes8x #(
 	// {{{
 	// Verilator lint_off UNUSED
 	wire	unused;
-	assign	unused = &{ 1'b0 };
+	assign	unused = &{ 1'b0, i_reset };
 	// Verilator lint_on  UNUSED
 	// }}}
 	// }}}
 `else
 	wire	w_pin, w_in, w_reset, high_z, fabric_return;
-	assign	w_reset = 1'b0;	// Active high reset
+	assign	w_reset = i_reset;	// Active high reset
 
 	OSERDESE2 #(
 		// {{{

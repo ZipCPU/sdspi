@@ -67,7 +67,8 @@ module	mdl_emmc #(
 		input	wire		sd_clk,
 		inout	wire		sd_cmd,
 		inout	wire	[7:0]	sd_dat,
-		output	wire		sd_ds
+		output	wire		sd_ds,
+		input	wire		i_1p8v
 		// }}}
 	);
 

@@ -1549,8 +1549,9 @@ module	sddma_mm2s #(
 		if (!M_VALID)
 		begin
 			assert(f_rcvd == f_sent);
-		end else
+		end else begin
 			assert(f_rcvd == f_sent + M_BYTES);
+		end
 	end
 
 	always @(*)

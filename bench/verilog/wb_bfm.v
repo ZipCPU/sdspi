@@ -97,8 +97,11 @@ module	wb_bfm #(
 			@(posedge i_clk);
 		end
 
-		fifo[fifo_wraddr[LGFIFO-1:0]] = { 1'b1,4'hf, addr[ADDR_WIDTH-1:WBLSB],dat };
-		fifo_wraddr = fifo_wraddr + 1;
+		@(posedge i_clk)
+		begin
+			fifo[fifo_wraddr[LGFIFO-1:0]] <= { 1'b1,4'hf, addr[ADDR_WIDTH-1:WBLSB],dat };
+			fifo_wraddr <= fifo_wraddr + 1;
+		end
 	end endtask
 	// }}}
 
@@ -133,11 +136,15 @@ module	wb_bfm #(
 			@(posedge i_clk);
 		end
 
-		fifo[fifo_wraddr[LGFIFO-1:0]] = { 1'b0, {(DW/8){1'b1}},
-			addr[ADDR_WIDTH-1:WBLSB], {(DW){1'b0}} };
-		fifo_wraddr = fifo_wraddr + 1;
-		read_busaddr= fifo_wraddr;
+		@(posedge i_clk)
+		begin
+			fifo[fifo_wraddr[LGFIFO-1:0]] <= { 1'b0, {(DW/8){1'b1}},
+				addr[ADDR_WIDTH-1:WBLSB], {(DW){1'b0}} };
+			fifo_wraddr <= fifo_wraddr + 1;
+		end
 
+		wait (!i_clk);
+		read_busaddr = fifo_wraddr;
 
 		do begin
 			@(posedge i_clk)

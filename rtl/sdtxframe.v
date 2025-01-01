@@ -1278,6 +1278,13 @@ module	sdtxframe #(
 			assume(i_cfg_ddr == f_cfg_ddr);
 			assume(i_cfg_pp  == f_cfg_pp);
 		end
+
+		case(f_cfg_width)
+		WIDTH_1W: begin end
+		WIDTH_4W: begin end
+		WIDTH_8W: begin end
+		default: assume(0);
+		endcase
 	end
 
 	always @(posedge i_clk)
@@ -1573,7 +1580,38 @@ module	sdtxframe #(
 	begin
 		assert(pstate != P_IDLE);
 		if (fp_count == fc_posn && pstate == P_DATA)
-			assert(pre_data == fc_data);
+		begin
+			if (!f_cfg_ddr || f_cfg_width == WIDTH_8W)
+			begin
+				assert(pre_data == fc_data);
+			end else if (f_cfg_width == WIDTH_4W)
+			begin
+				assert(pre_data == {
+					fc_data[31:28], fc_data[23:20],
+					fc_data[27:24], fc_data[19:16],
+					fc_data[15:12], fc_data[ 7: 4],
+					fc_data[11: 8], fc_data[ 3: 0] });
+			end else if (f_cfg_width == WIDTH_1W)
+			begin
+				assert(pre_data == {
+					fc_data[31], fc_data[23],
+					fc_data[30], fc_data[22],
+					fc_data[29], fc_data[21],
+					fc_data[28], fc_data[20],
+					fc_data[27], fc_data[19],
+					fc_data[26], fc_data[18],
+					fc_data[25], fc_data[17],
+					fc_data[24], fc_data[16],
+					fc_data[15], fc_data[ 7],
+					fc_data[14], fc_data[ 6],
+					fc_data[13], fc_data[ 5],
+					fc_data[12], fc_data[ 4],
+					fc_data[11], fc_data[ 3],
+					fc_data[10], fc_data[ 2],
+					fc_data[ 9], fc_data[ 1],
+					fc_data[ 8], fc_data[ 0] });
+			end
+		end
 	end else begin
 		assert(pstate == P_IDLE || pstate == P_LAST);
 	end

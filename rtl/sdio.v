@@ -602,10 +602,7 @@ module	sdio #(
 		.i_en(tx_en), .i_ckstb(clk_stb), .i_hlfck(clk_half),
 		//
 		.S_VALID(tx_en && tx_mem_valid), .S_READY(tx_mem_ready),
-		.S_DATA((o_cfg_ddr && cfg_width == 2'b01)
-				? { tx_mem_data[31:24], 8'h0,
-					tx_mem_data[15:8], 8'h0 }
-				: tx_mem_data), .S_LAST(tx_mem_last),
+		.S_DATA(tx_mem_data), .S_LAST(tx_mem_last),
 		//
 		.tx_valid(o_data_en), .tx_data(o_tx_data),
 			.tx_tristate(o_data_tristate),

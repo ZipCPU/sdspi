@@ -1682,7 +1682,7 @@ module	sdwb #(
 	// tx_mem_addr
 	// {{{
 	always @(posedge i_clk)
-	if (i_reset || !o_tx_en || o_soft_reset || o_tx_mem_last)
+	if (i_reset || !o_tx_en || o_soft_reset || o_tx_mem_last || r_tx_sent)
 		tx_mem_addr <= 0;
 	else if (!o_tx_mem_valid || i_tx_mem_ready || !tx_pipe_valid)
 		tx_mem_addr <= tx_mem_addr + 1;
@@ -1734,7 +1734,7 @@ module	sdwb #(
 		reg	[$clog2(MW/32)-1:0]	r_tx_shift;
 
 		always @(posedge i_clk)
-		if (OPT_LOWPOWER && (i_reset || o_soft_reset || !o_tx_en))
+		if (OPT_LOWPOWER && (i_reset || o_soft_reset || !o_tx_en || r_tx_sent))
 			r_tx_shift <= 0;
 		else if (!o_tx_mem_valid || i_tx_mem_ready)
 			r_tx_shift <= tx_mem_addr[$clog2(MW/32)-1:0];
@@ -1749,7 +1749,7 @@ module	sdwb #(
 	end
 
 	always @(posedge i_clk)
-	if (!o_tx_mem_valid || i_tx_mem_ready)
+	if ((!o_tx_mem_valid || i_tx_mem_ready) && !r_tx_sent)
 		o_tx_mem_data <= next_tx_mem[31:0];
 	// }}}
 

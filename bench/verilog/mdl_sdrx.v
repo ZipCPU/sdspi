@@ -267,7 +267,24 @@ module	mdl_sdrx(
 	else if (!i_rx_en)
 		o_data <= 32'b0;
 	else if (full_count != 0 && full_count[4:0] == 0)
-		o_data <= rx_sreg;
+	begin
+		if (!i_ddr || i_width[1])
+			o_data <= rx_sreg;
+		else if (i_width[0])
+			// 4b DDR
+			o_data <= {	rx_sreg[15:12], rx_sreg[ 7:4],
+					rx_sreg[11: 8], rx_sreg[ 3:0] };
+		else // 1b DDR
+			o_data <= {	rx_sreg[15], rx_sreg[13],
+					rx_sreg[11], rx_sreg[ 9],
+					rx_sreg[ 7], rx_sreg[ 5],
+					rx_sreg[ 3], rx_sreg[ 1],
+					//
+					rx_sreg[14], rx_sreg[12],
+					rx_sreg[10], rx_sreg[ 8],
+					rx_sreg[ 6], rx_sreg[ 4],
+					rx_sreg[ 2], rx_sreg[ 0] };
+	end
 
 	initial	o_last = 0;
 	always @(posedge sd_clk or negedge rst_n)

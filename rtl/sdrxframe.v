@@ -97,7 +97,7 @@ module	sdrxframe #(
 
 	reg		s2_valid;
 	reg	[1:0]	s2_fill;
-	reg	[15:0]	s2_data;
+	reg	[15:0]	s2_data, ddr_s2_data;
 
 	reg				mem_valid, mem_full, rnxt_strb;
 	reg	[MW/8-1:0]		mem_strb;
@@ -160,17 +160,15 @@ module	sdrxframe #(
 		sync_fill <= 0;
 	else if (i_rx_strb == 0)
 	begin
-		sync_fill[4:3] <= 2'b0;
-	// Verilator lint_off WIDTH
+		sync_fill[4] <= 1'b0;
 	end else case(i_cfg_width)
-	WIDTH_1W: sync_fill <= sync_fill[2:0] + (i_rx_strb[1] ? 1:0)
+	WIDTH_1W: sync_fill <= sync_fill[3:0] + (i_rx_strb[1] ? 1:0)
 						+ (i_rx_strb[0] ? 1:0);
-	WIDTH_4W: sync_fill <= sync_fill[2:0] + (i_rx_strb[1] ? 4:0)
+	WIDTH_4W: sync_fill <= sync_fill[3:0] + (i_rx_strb[1] ? 4:0)
 						+ (i_rx_strb[0] ? 4:0);
-	default:  sync_fill <= sync_fill[2:0] + (i_rx_strb[1] ? 8:0)
+	default:  sync_fill <= sync_fill[3:0] + (i_rx_strb[1] ? 8:0)
 						+ (i_rx_strb[0] ? 8:0);
 	endcase
-	// Verilator lint_on  WIDTH
 
 	always @(posedge i_clk)
 	if (!i_rx_en)
@@ -219,7 +217,7 @@ module	sdrxframe #(
 	if (i_reset || !i_rx_en || (i_cfg_ds && OPT_DS))
 		s2_fill <= 0;
 	else
-		s2_fill <= sync_fill[4:3];
+		s2_fill <= { sync_fill[4], 1'b0 }; // sync_fill[4:3];
 
 	// Verilator lint_off WIDTH
 	always @(posedge i_clk)
@@ -227,8 +225,8 @@ module	sdrxframe #(
 		s2_data <= 0;
 	else if (sync_fill[4])
 		s2_data <= sync_sreg >> sync_fill[2:0];
-	else if (sync_fill[3])
-		s2_data <= {sync_sreg, 8'h0} >> sync_fill[2:0];
+	// else if (sync_fill[3])
+	//	s2_data <= {sync_sreg, 8'h0} >> sync_fill[2:0];
 	// Verilator lint_on  WIDTH
 	// }}}
 
@@ -304,6 +302,22 @@ module	sdrxframe #(
 
 	// o_mem_data, o_mem_strb
 	// {{{
+	always @(*)
+	if (!i_cfg_ddr || i_cfg_width == WIDTH_8W)
+		ddr_s2_data = s2_data;
+	else if (i_cfg_width == WIDTH_4W)
+		ddr_s2_data = { s2_data[15:12], s2_data[7:4],
+				s2_data[11: 8], s2_data[3:0] };
+	else
+		ddr_s2_data = { s2_data[15], s2_data[13],
+				s2_data[11], s2_data[ 9],
+				s2_data[ 7], s2_data[ 5],
+				s2_data[ 3], s2_data[ 1],
+				s2_data[14], s2_data[12],
+				s2_data[10], s2_data[ 8],
+				s2_data[ 6], s2_data[ 4],
+				s2_data[ 2], s2_data[ 0] };
+
 	always @(posedge i_clk)
 	if (i_reset || !i_rx_en || mem_full)
 	begin
@@ -317,16 +331,20 @@ module	sdrxframe #(
 		if (s2_fill[1])
 		begin
 			{ mem_data, rnxt_data } <= { rnxt_data, {(MW){1'b0}} }
-				|({ s2_data[15:0], {(MW-8){1'b0}} } >> (next_subaddr*8));
+				|({ ddr_s2_data[15:0], {(MW-8){1'b0}} } >> (next_subaddr*8));
 			{ mem_strb, rnxt_strb } <= { rnxt_strb, {(MW/8){1'b0}} }
 				|({ 2'b11, {(MW/8-1){1'b0}} } >> (next_subaddr));
-		end else if (s2_fill[0])
+		end
+		/*
+		else if (s2_fill[0])
 		begin
 			{ mem_data, rnxt_data } <= {rnxt_data, {(MW){1'b0}} }
 				|({ s2_data[15:8], {(MW){1'b0}} } >> (next_subaddr*8));
 			{ mem_strb, rnxt_strb } <= { rnxt_strb, {(MW/8){1'b0}} }
 				|({ s2_fill[0],{(MW/8){1'b0}} }>> next_subaddr);
-		end else begin
+		end
+		*/
+		else begin
 			{ mem_data, rnxt_data } <= {rnxt_data,{(MW  ){1'b0}} };
 			{ mem_strb, rnxt_strb } <= {rnxt_strb,{(MW/8){1'b0}} };
 		end

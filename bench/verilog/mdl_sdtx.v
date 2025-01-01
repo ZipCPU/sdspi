@@ -67,6 +67,7 @@ module mdl_sdtx #(
 
 	genvar		gk;
 
+	reg	[31:0]	ddr_idata;
 	reg	[15:0]	crc	[15:0];
 	reg	[79:0]	tx_sreg;
 	reg	[5:0]	r_count;
@@ -90,6 +91,34 @@ module mdl_sdtx #(
 		r_ready <= (r_active && r_count <= (1 + i_ddr));
 	// }}}
 
+	// ddr_idata
+	// {{{
+	always @(*)
+	if (!i_ddr || i_width[1])
+		ddr_idata = i_data;
+	else if (i_width[0])
+		ddr_idata = {	i_data[31:28], i_data[23:20],
+				i_data[27:24], i_data[19:16],
+				i_data[15:12], i_data[ 7: 4],
+				i_data[11: 8], i_data[ 3: 0] };
+	else
+		ddr_idata = {	i_data[31], i_data[23],
+				i_data[30], i_data[22],
+				i_data[29], i_data[21],
+				i_data[28], i_data[20],
+				i_data[27], i_data[19],
+				i_data[26], i_data[18],
+				i_data[25], i_data[17],
+				i_data[24], i_data[16],
+				i_data[15], i_data[ 7],
+				i_data[14], i_data[ 6],
+				i_data[13], i_data[ 5],
+				i_data[12], i_data[ 4],
+				i_data[11], i_data[ 3],
+				i_data[10], i_data[ 2],
+				i_data[ 9], i_data[ 1],
+				i_data[ 8], i_data[ 0] };
+	// }}}
 
 	// tx_sreg, r_count, r_crc r_active: positive edge of the clock
 	// {{{
@@ -195,27 +224,27 @@ module mdl_sdtx #(
 			if (i_width[0])
 			begin // 4b width
 				if (i_ddr)
-					tx_sreg  <= #FF_HOLD { 4'b0, 4'bx, i_data, 8'hff, 32'hffff_ffff };
+					tx_sreg  <= #FF_HOLD { 4'b0, 4'bx, ddr_idata, 8'hff, 32'hffff_ffff };
 				else
 					tx_sreg  <= #FF_HOLD { 4'b0, i_data, 12'hfff, 32'hffff_ffff };
 				r_count  <= 9 + (i_ddr ? 1:0);
 			end else if (i_width[1])
 			begin // 8b width
 				if (i_ddr)
-					tx_sreg  <= #FF_HOLD { 8'b0, 8'bx, i_data, 32'hffff_ffff };
+					tx_sreg  <= #FF_HOLD { 8'b0, 8'bx, ddr_idata, 32'hffff_ffff };
 				else
 					tx_sreg  <= #FF_HOLD { 8'b0, i_data, 8'hff, 32'hffff_ffff };
 				r_count  <= 5 + (i_ddr ? 1:0);
 			end else begin // 1b width
 				if (i_ddr)
-					tx_sreg  <= #FF_HOLD { 1'b0, 1'bx, i_data, 6'h3f, 8'hff, 32'hffff_ffff };
+					tx_sreg  <= #FF_HOLD { 1'b0, 1'bx, ddr_idata, 6'h3f, 8'hff, 32'hffff_ffff };
 				else
 					tx_sreg  <= #FF_HOLD { 1'b0, i_data, 7'h7f, 8'hff, 32'hffff_ffff };
 				r_count  <= 33 + (i_ddr ? 1:0);
 			end
 			// }}}
 		end else begin
-			tx_sreg  <= #FF_HOLD { i_data, 16'hffff, 32'hffff_ffff };
+			tx_sreg  <= #FF_HOLD { ddr_idata, 16'hffff, 32'hffff_ffff };
 			r_count  <= (i_width[0]) ? 8 : (i_width[1]) ? 4 : 32;
 		end
 		r_active <= 1'b1;

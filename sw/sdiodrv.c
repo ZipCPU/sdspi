@@ -48,7 +48,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2025, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -173,6 +173,7 @@ typedef	struct	SDIODRV_S {
 
 static	const	uint32_t
 		// Command bit enumerations
+		SDIO_NULLCMD  = 0x00000080,
 		SDIO_RNONE    = 0x00000000,
 		SDIO_R1       = 0x00000100,
 		SDIO_R2       = 0x00000200,
@@ -224,21 +225,23 @@ static	const	uint32_t
 		SDIOCK_100MHZ = 0x00000001,
 		SDIOCK_200MHZ = 0x00000000,
 		SDIOCK_MASK   = 0x000000ff,
-		SDPHY_1P2V    = 0x00400000,
+		SDPHY_1P8V    = 0x00400000,
+		SDPHY_1P8VSPT = 0x00800000,	// 1.8v is supported
 		SDIOCK_DS     = SDIOCK_25MHZ | SDPHY_W4 | SDPHY_PUSHPULL,
 		SDIOCK_HS     = SDIOCK_50MHZ | SDPHY_W4 | SDPHY_PUSHPULL,
 		// Speed abbreviations
-		SDIOCK_SDR50  = SDIOCK_50MHZ  | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_1P2V,
-		SDIOCK_DDR50  = SDIOCK_50MHZ  | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_DDR | SDPHY_1P2V,
-		SDIOCK_SDR104 = SDIOCK_100MHZ | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_1P2V,
-		SDIOCK_SDR200 = SDIOCK_200MHZ | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_1P2V,
-		// SDIOCK_HS400= SDIOCK_200MHZ | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_DS,
+		SDIOCK_SDR12  = SDIOCK_DS | SDPHY_1P8V,
+		SDIOCK_SDR25  = SDIOCK_HS | SDPHY_1P8V,
+		SDIOCK_DDR50  = SDIOCK_50MHZ  | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_DDR | SDPHY_1P8V,
+		SDIOCK_SDR50  = SDIOCK_100MHZ | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_1P8V,
+		SDIOCK_SDR104 = SDIOCK_200MHZ | SDPHY_W4 | SDPHY_PUSHPULL | SDPHY_1P8V,
 		//
 		SPEED_SLOW   = SDIOCK_400KHZ,
 		SPEED_DEFAULT= SDIOCK_DS,
 		SPEED_FAST   = SDIOCK_HS,
 		//
 		SECTOR_16B   = 0x04000000,
+		SECTOR_64B   = 0x06000000,
 		SECTOR_512B  = 0x09000000,
 		SECTOR_MASK  = 0x0f000000,
 		//
@@ -247,16 +250,20 @@ static	const	uint32_t
 		SDIO_READREGb = SDIO_CMD | SDIO_R1b,
 		SDIO_READR2  = (SDIO_CMD | SDIO_R2),
 		SDIO_WRITEBLK = (SDIO_CMD | SDIO_R1b | SDIO_ERR
-				| SDIO_ACK | SDIO_WRITE | SDIO_MEM) + 24,
+				| SDIO_ACK
+				| SDIO_WRITE | SDIO_MEM) + 24,
 		SDIO_WRMULTI = (SDIO_CMD | SDIO_R1b
-				| SDIO_ACK | SDIO_WRITE | SDIO_MEM) + 25,
+				| SDIO_ACK
+				| SDIO_WRITE | SDIO_MEM) + 25,
 		SDIO_WRDMA = SDIO_WRMULTI | SDIO_DMA,
 		SDIO_READBLK  = (SDIO_CMD | SDIO_R1
 					| SDIO_MEM) + 17,
 		SDIO_RDMULTI  = (SDIO_CMD | SDIO_R1
 					| SDIO_MEM) + 18,
 		SDIO_READDMA  = SDIO_RDMULTI | SDIO_DMA,
-		SDIO_R1ERR   = 0xff800000;
+		SDIO_R1ERR   = 0xff800000,
+		S18R         = (1<<24),
+		XPC          = (1<<28);
 
 static	void	sdio_wait_while_busy(SDIODRV *dev);
 static	void	sdio_go_idle(SDIODRV *dev);
@@ -264,11 +271,15 @@ static	void	sdio_all_send_cid(SDIODRV *dev);
 static	void	sdio_dump_cid(SDIODRV *dev);
 static	uint32_t sdio_send_rca(SDIODRV *dev);
 static	void	sdio_select_card(SDIODRV *dev);	// CMD7
+static	void	sdio_unselect_card(SDIODRV *dev);	// CMD7
 static	uint32_t sdio_send_if_cond(SDIODRV *dev, uint32_t ifcond); // CMD8
 static	uint32_t sdio_send_op_cond(SDIODRV *dev, uint32_t opcond); // ACMD41
-static	void	sdio_set_bus_width(SDIODRV *dev, uint32_t width); // CMD6
+static	void	sdio_send_voltage_switch(SDIODRV *dev); // CMD11
+static	void	sdio_send_tuning_block(SDIODRV *dev); // CMD19
+static	void	sdio_set_bus_width(SDIODRV *dev, uint32_t width); // ACMD6
 static	void	sdio_send_app_cmd(SDIODRV *dev);  // CMD 55
 static	uint32_t sdio_read_ocr(SDIODRV *dev, uint32_t width);	  // CMD 58
+static	void	sdio_decode_cmd(const uint32_t cmd);
 static	void	sdio_dump_err(unsigned);
 static	void	sdio_dump_scr(SDIODRV *dev);
 static	void	sdio_dump_ocr(SDIODRV *dev);
@@ -324,11 +335,27 @@ void	sdio_go_idle(SDIODRV *dev) {				// CMD0
 }
 // }}}
 
+void sdio_clear_fifo(SDIODRV *dev, unsigned fifo) {  // No CMD
+	// {{{
+	unsigned	phy, k, lglen;
+
+	phy = dev->d_dev->sd_phy;
+	lglen = (phy >> 28);
+	dev->d_dev->sd_cmd = SDIO_NULLCMD;
+	if (fifo) {
+		for(int k=0; k< (1<<lglen); k++)
+			dev->d_dev->sd_fifb = 0;
+	} else
+		for(int k=0; k< (1<<lglen); k++)
+			dev->d_dev->sd_fifa = 0;
+}
+// }}}
+
 void	sdio_all_send_cid(SDIODRV *dev) {	// CMD2
 	// {{{
 	unsigned	c;
 
-	if (SDDEBUG)	txstr("READ-CID\n");
+	if (SDDEBUG)	txstr("CMD2: READ-CID\n");
 
 	dev->d_dev->sd_data = 0;
 	dev->d_dev->sd_cmd = (SDIO_ERR|SDIO_READR2)+2;
@@ -477,7 +504,7 @@ void	sdio_select_card(SDIODRV *dev) {			// CMD7
 	unsigned c, r;
 
 	dev->d_dev->sd_data = dev->d_RCA << 16;
-	dev->d_dev->sd_cmd = SDIO_READREGb + 7;
+	dev->d_dev->sd_cmd = (SDIO_ERR | SDIO_READREGb) + 7;
 
 	sdio_wait_while_busy(dev);
 	c = dev->d_dev->sd_cmd;
@@ -494,6 +521,29 @@ void	sdio_select_card(SDIODRV *dev) {			// CMD7
 		txstr("  Cmd:     "); txhex(c); txstr("\n");
 		txstr("  Data:    "); txhex(r); txstr("\n");
 	}
+}
+// }}}
+
+void	sdio_unselect_card(SDIODRV *dev) {			// CMD7
+	// {{{
+	unsigned c, r;
+
+	dev->d_dev->sd_data = 0;
+	dev->d_dev->sd_cmd = (SDIO_ERR | SDIO_READREGb) + 7;
+
+	sdio_wait_while_busy(dev);
+	c = dev->d_dev->sd_cmd;
+	r = dev->d_dev->sd_data;
+
+	if (SDDEBUG && SDINFO) {
+		// An error is expected, so we don't trigger here on error.
+		txstr("CMD7:    (UN)SELECT_CARD\n");
+		txstr("  Cmd:     "); txhex(c); txstr("\n");
+		txstr("  Data:    "); txhex(r); txstr("\n");
+	}
+
+	// Clear the (expected) error
+	dev->d_dev->sd_cmd = SDIO_ERR | SDIO_NULLCMD;
 }
 // }}}
 
@@ -525,6 +575,10 @@ uint32_t sdio_send_op_cond(SDIODRV *dev, uint32_t opcond) { // ACMD41
 
 	sdio_send_app_cmd(dev);
 
+	// The following should be handled one level above us
+	// if (phy & SDPHY_1P8VSPT)
+	//	// Declare to the SD card that the PHY is 1.8v capable
+	//	dev->d_dev->sd_data = opcond | S18R;
 	dev->d_dev->sd_data = opcond;
 	dev->d_dev->sd_cmd = SDIO_READREG+41;
 
@@ -543,7 +597,168 @@ uint32_t sdio_send_op_cond(SDIODRV *dev, uint32_t opcond) { // ACMD41
 }
 // }}}
 
-void	sdio_set_bus_width(SDIODRV *dev, uint32_t width) { // CMD6
+void sdio_send_voltage_switch(SDIODRV *dev) { // CMD11
+	// {{{
+	unsigned	c, r;
+
+	dev->d_dev->sd_data = 0;
+	dev->d_dev->sd_cmd = (SDIO_ERR | SDIO_READREG)+11;
+
+	sdio_wait_while_busy(dev);
+
+	c = dev->d_dev->sd_cmd;
+	r = dev->d_dev->sd_data;
+
+	if (SDDEBUG && SDINFO) {
+		txstr("CMD11:   SEND_VOLTAGE_SWITCH : \n");
+		txstr("  Cmd:     "); txhex(c); txstr("\n");
+		txstr("  Data:    "); txhex(r); txstr("\n");
+	}
+
+	if (0 == (c & SDIO_ERR)) {
+		// Switch to 1.8V
+		unsigned	phy, noop;
+
+		phy = dev->d_dev->sd_phy;
+		// We can't quite use SDIOCK_SDR12 here, since we aren't
+		// switching to 4b mode.  That requires an additional command,
+		// the ACMD6.
+		phy &= ~SDIOCK_MASK;
+		phy |= SDPHY_1P8V | SDIOCK_25MHZ | SDPHY_PUSHPULL;
+				// Must also shut down the clock at this time
+		dev->d_dev->sd_phy = phy | SDIOCK_SHUTDN;
+
+		// Need to wait about 5ms
+		for(unsigned k=0; k<150000; k++)
+			noop = dev->d_dev->sd_phy;
+
+		// Can then re-enable the clock
+		dev->d_dev->sd_phy = phy & (~SDIOCK_SHUTDN);
+
+		// Then need to wait another 1ms
+		for(unsigned k=0; k<30000; k++)
+			noop = dev->d_dev->sd_phy;
+
+		while(SDIOCK_25MHZ != (dev->d_dev->sd_phy & 0x0ff))
+			; // Wait for the clock to change to 25MHz
+	} else if (SDDEBUG)
+		// sdio_decode_cmd(c);
+		sdio_dump_err(c);
+
+	// return r;
+}
+// }}}
+
+static	void	sdio_send_tuning_block(SDIODRV *dev) { // CMD19
+	// {{{
+	unsigned	phy, vmask = 0, best_eye=0, best_ph=0,
+			first_eye=0, eyesz=0, ph;
+	const	unsigned	pat[16] = {
+			0xFF0FFF00, 0xFFCCC3CC, 0xC33CCCFF, 0xFEFFFEEF,
+			0xFFDFFFDD, 0xFFFBFFFB, 0xBFFF7FFF, 0x77F7BDEF,
+			0xFFF0FFF0, 0x0FFCCC3C, 0xCC33CCCF, 0xFFEFFFEE,
+			0xFFFDFFFD, 0xDFFFBFFF, 0xBBFFF7FF, 0xF77F7BDE
+		};
+	unsigned	rxv[16];
+
+	phy = dev->d_dev->sd_phy;
+	best_ph = (phy >> 16) & 0x1f;
+
+	phy &= ~SECTOR_MASK;
+	phy |= SECTOR_64B;
+	dev->d_dev->sd_data = 0;
+
+	for(ph = 0; ph<31; ph++) {
+		phy &= ~SDPHY_PHASEMSK;
+		phy |= (ph << 16);
+		dev->d_dev->sd_phy = phy;
+
+		// We *must* reset any error flags here, since many of these
+		// phase tests will generate errors in the first place.  This
+		// is just normal.
+		dev->d_dev->sd_cmd = (SDIO_ERR | SDIO_CMD | SDIO_R1 | SDIO_MEM) + 19;
+
+		sdio_wait_while_busy(dev);
+
+		if (SDDEBUG && SDINFO) {
+			// {{{
+			unsigned	c, r;
+
+			c = dev->d_dev->sd_cmd;
+			r = dev->d_dev->sd_data;
+
+			txstr("CMD19:   SEND_TUNING_COMMAND : \n");
+			txstr("  Cmd:     "); txhex(c);
+				if (c & SDIO_ERR)
+					txstr(" -- FAILED");
+				txstr("\n");
+			txstr("  Data:    "); txhex(r); txstr("\n");
+			txstr("  Phy:     "); txhex(phy);
+				txstr(", Phase = "); txdecimal((phy >> 16)&0x1f);
+				txstr("\n");
+		}
+		// }}}
+
+		unsigned vld = 1;
+		for(int k=0; k<16; k++)
+			rxv[k] = dev->d_dev->sd_fifa;
+		for(int k=0; k<16; k++) {
+		for(int k=0; (k<16) && vld; k++) {
+			unsigned	r;
+			r = rxv[k];
+			if (pat[k] != r) {
+				vld = 0;
+				break;
+			}
+		} if (vld) {
+			vmask |= (1u<<ph);
+			if (0 == eyesz)
+				first_eye = ph;
+			eyesz++;
+		} else {
+			if (eyesz > best_eye) {
+				best_ph = (ph - first_eye)/2;
+				best_ph += first_eye;
+				best_eye = eyesz;
+
+				if (SDDEBUG && SDINFO) {
+					txstr("New best eye: ");
+					txdecimal(best_ph); txstr(", ");
+					txdecimal(best_eye); txstr("\n");
+				}
+			}
+
+			first_eye = 0;
+			eyesz = 0;
+		}
+	}
+
+	// Clear any prior errors before continuing
+	dev->d_dev->sd_cmd = SDIO_ERR | SDIO_NULLCMD;
+	if (vmask != 0) {
+		phy &= ~(SDPHY_PHASEMSK | SECTOR_MASK);
+		phy |= (best_ph << 16) | SECTOR_512B;
+		dev->d_dev->sd_phy = phy;
+	}
+
+	if (SDINFO && SDDEBUG) {
+		// {{{
+		txstr("CMD19:   SEND_TUNING_COMMAND, Analysis Complete ----\n");
+		txstr("  Vld msk: "); txhex(vmask);
+		if (vmask == 0)
+			txstr(" -- Failed\n");
+		else {
+			txstr("\n  BestPh:  "); txdecimal(best_ph); txstr("\n");
+			txstr("  Phy:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
+		}
+	}
+	// }}}
+
+	// return	vmask != 0;
+}
+// }}}
+
+void	sdio_set_bus_width(SDIODRV *dev, uint32_t width) { // ACMD6
 	// {{{
 	sdio_send_app_cmd(dev);
 
@@ -558,7 +773,7 @@ void	sdio_set_bus_width(SDIODRV *dev, uint32_t width) { // CMD6
 		c = dev->d_dev->sd_cmd;
 		r = dev->d_dev->sd_data;
 
-		txstr("CMD6:    SET_BUS_WIDTH\n");
+		txstr("ACMD6:   SET_BUS_WIDTH\n");
 		txstr("  Cmd:     "); txhex(c); txstr("\n");
 		txstr("  Data:    "); txhex(r); txstr("\n");
 	}
@@ -747,6 +962,94 @@ void	sdio_dump_err(unsigned c) {
 				txstr("    Data Watchdog timeout\n");
 		}
 	}
+}
+// }}}
+
+static void sdio_decode_cmd(const uint32_t cmd) {
+	// {{{
+#ifdef	STDIO_DEBUG
+	if (cmd & 0x40)
+		printf("CMD:   0x%02x\n", cmd & 0x07f);
+	else if (0x3f == (cmd & 0x3f))
+		printf("REPLY: (None)\n");
+	else
+		printf("REPLY: 0x%02x\n", cmd & 0x07f);
+
+	//
+	if (0 == (cmd & 0x0300))
+		printf("EXPECT: (No reply)\n");
+	else if (SDIO_R1 == (cmd & 0x0300))
+		printf("EXPECT: R1\n");
+	else if (SDIO_R2 == (cmd & 0x0300))
+		printf("EXPECT: R2\n");
+	else if (SDIO_R1b == (cmd & 0x0300))
+		printf("EXPECT: R1b (R1 w/ Busy)\n");
+
+	//
+	if (cmd & SDIO_MEM) {
+		if (cmd & SDIO_WRITE)
+			printf("TYPE:   Data WRITE command\n");
+		else // if (cmd & SDIO_WRITE)
+			printf("TYPE:   Data READ command\n");
+	}
+
+	if (SDIO_FIFO & cmd)
+		printf("FIFO:   B\n");
+	else
+		printf("FIFO:   A\n");
+
+	if (SDIO_DMA & cmd)
+		printf("DMA:    Enabled\n");
+	else
+		printf("DMA:    Idle\n");
+
+	if (SDIO_CMDBUSY & cmd)
+		printf("Status: Still busy\n");
+	else
+		printf("Status: Idle\n");
+
+	if (SDIO_ERR & cmd) {
+		printf("ERR:    ERROR!\n");
+		if (SDIO_CMDERR & cmd) {
+			if (SDIO_CMDTMOUT == (SDIO_CMDECODE & cmd)) {
+				printf("ERR:    Command timeout!\n");
+			} else if (SDIO_CMDEOKAY == (SDIO_CMDECODE & cmd)) {
+				printf("ERR:    Command okay?  Error set\n");
+			} else if (SDIO_CMDCRCER == (SDIO_CMDECODE & cmd)) {
+				printf("ERR:    Command CRC failure\n");
+			} else if (SDIO_CMDFRMER == (SDIO_CMDECODE & cmd)) {
+				printf("ERR:    Command framing error\n");
+			}
+		}
+
+		if (cmd & SDIO_RXERR) {
+			if (cmd & SDIO_RXECODE) {
+				printf("ERR:    Transfer Timeout\n");
+				printf("ERR:    Transfer CRC Error\n");
+			}
+		}
+
+		if (cmd & SDIO_DMAERR)
+			printf("ERR:    DMA Error\n");
+	} else
+		printf("ERR:    None\n");
+
+	if (cmd & SDIO_PRESENTN)
+		printf("CARD:   Not inserted\n");
+	else if (cmd & SDIO_REMOVED)
+		printf("CARD:   Present, but has been removed\n");
+	else
+		printf("CARD:   Present\n");
+
+	if (cmd & SDIO_CARDBUSY)
+		printf("BUSY:   Card is still busy\n");
+
+	if (cmd & SDIO_ACK)
+		printf("ACK:    Command expects an acknowledgment\n");
+
+	if (cmd & SDIO_HWRESET)
+		printf("HWRESET: Hardware reset active\n");
+#endif
 }
 // }}}
 
@@ -958,7 +1261,7 @@ void sdio_read_csd(SDIODRV *dev) {	  // CMD 9
 }
 // }}}
 
-unsigned sdio_switch(SDIODRV *dev, unsigned swcmd, unsigned *ubuf) {  // CMD 6
+unsigned sdio_switch(SDIODRV *dev, unsigned swcmd, unsigned *ubuf) {  // CMD6
 	// {{{
 	unsigned	c, phy, fail = 0;
 
@@ -1003,6 +1306,10 @@ unsigned sdio_switch(SDIODRV *dev, unsigned swcmd, unsigned *ubuf) {  // CMD 6
 		txstr("\n");
 		txstr("  Data:    "); txhex(swcmd);
 			txstr(" -> "); txhex(r); txstr("\n");
+		if (fail) {
+			txstr("  SD-ERR: ");
+			sdio_dump_err(c);
+		}
 	}
 	// }}}
 
@@ -1338,9 +1645,30 @@ SDIODRV *sdio_init(SDIO *dev) {
 	// Start by resetting the interface--in case we're being called
 	// to restart from an uncertain state.
 	dv->d_dev->sd_cmd = SDIO_REMOVED;
-	dv->d_dev->sd_cmd = SDIO_RESET;
+	dv->d_dev->sd_cmd = SDIO_RESET | SDIO_REMOVED;
 
+	dv->d_dev->sd_phy = SPEED_SLOW | SECTOR_512B | (18u << 16);
+	if (SDIO_HWRESET & dv->d_dev->sd_cmd) {
+		// Release the device from reset
+		dv->d_dev->sd_cmd = SDIO_NULLCMD | SDIO_REMOVED;
+
+		if (SDDEBUG && SDINFO) {
+			txstr("SDIO INIT: Waiting on reset release\n");
+		}
+
+		// Wait for reset to be released
+		while(dv->d_dev->sd_cmd & SDIO_HWRESET)
+			;
+
+		if (dv->d_dev->sd_cmd & SDIO_REMOVED)
+			dv->d_dev->sd_cmd = SDIO_NULLCMD | SDIO_REMOVED;
+	}
+
+	// If we were actually reset, the speed would've changed to the
+	// default speed (100kHz).  Therefore, let's set it again to the
+	// speed we want (400kHz).
 	dv->d_dev->sd_phy = SPEED_SLOW | SECTOR_512B | SDPHY_PHASEMSK;
+
 	while(SPEED_SLOW != (dv->d_dev->sd_phy & SDIOCK_MASK))
 		;
 
@@ -1350,7 +1678,7 @@ SDIODRV *sdio_init(SDIO *dev) {
 		// SDPHY_PHASEMSK= 0x001f0000,
 		if (0x010000 & phy) {
 			// OPT_SERDES
-			clk_phase = 16 << 16;	// 0x18_0000
+			clk_phase = 20 << 16;	// 0x16_0000
 		} else if (0x040000 & phy) {
 			// OPT_DDR
 			clk_phase = 16 << 16;
@@ -1358,6 +1686,8 @@ SDIODRV *sdio_init(SDIO *dev) {
 			// Raw front end I/O
 			clk_phase = 16 << 16;
 		}
+		phy = (dv->d_dev->sd_phy & (~SDPHY_PHASEMSK)) | clk_phase;
+		dv->d_dev->sd_phy = phy;
 	}
 
 	sdio_go_idle(dv);
@@ -1402,12 +1732,19 @@ SDIODRV *sdio_init(SDIO *dev) {
 	{
 		// Query the card to see what it supports
 		op_cond_query = 0;
+		// If we support 1.8V, let's tell the card that--even in query
+		// if (dv->d_dev->sd_phy & SDPHY_1P8VSPT)
+		//	op_cond_query |= S18R | XPC;
 		op_cond_query = sdio_send_op_cond(dv, op_cond_query);
 
 		// We'll support anything in the 0x0ff8000 range by default
 		// since we have no more insight into what the FPGA & PCB
 		// are actually producing.
 		op_cond_query &= 0x0ff8000;
+
+		// If we support 1.8V, let's tell the card that
+		if (dv->d_dev->sd_phy & SDPHY_1P8VSPT)
+			op_cond_query |= S18R | XPC;
 
 		// Note that an HCS capable card will *not* return 0x40000000
 		// on a Query.  We know it might be HCS because it replied to
@@ -1438,127 +1775,421 @@ SDIODRV *sdio_init(SDIO *dev) {
 		}
 
 		do {
+			// By spec, this may take up to a second
 			op_cond = sdio_send_op_cond(dv, op_cond_query);
 		} while(0 == (op_cond & 0x80000000));
 	} if (SDINFO)
 		sdio_dump_ocr(dv);
 	// }}}
 
-	sdio_all_send_cid(dv);
-
-	sdio_send_rca(dv);
-	sdio_send_cid(dv);
-
-	sdio_read_csd(dv);
-
-	sdio_select_card(dv);
-
-	dv->d_dev->sd_phy = SECTOR_512B | SDIOCK_25MHZ | SDPHY_PUSHPULL
-			| clk_phase;
-	while(SDIOCK_25MHZ != (dv->d_dev->sd_phy & 0x0ff))
-		; // Wait for the clock to change
-
-
-	// SEND_SCR
-	sdio_read_scr(dv);
-
-	// LOCK_UNLOCK ?
-	// SET_BUS_WIDTH
-	if (dv->d_SCR[1] & 0x04) {
-		dv->d_dev->sd_phy |= SDPHY_WBEST;
-		if (0 != (dv->d_dev->sd_phy & SDPHY_WBEST)) {
-			// Set a 4-bit bus width via ACMD6
-			sdio_set_bus_width(dv, 2);
-			dv->d_dev->sd_phy |= SDPHY_W4;
-			if (SDDEBUG) txstr("4b Width set\n");
-		}
-	}
-
-	// Do we support HS mode?  If so, let's switch to it
+	// Can we go even faster?  Switch to 1.8V signaling if possible
 	// {{{
-	if (SDDEBUG) txstr("Check for HS mode\n");
-	{
-		unsigned phy = dv->d_dev->sd_phy;
-
-		// Shut the clock down and switch to 50MHz.  Then come back
-		// and read the clock.  If it doesn't set to 50MHz, then we
-		// couldn't set the clock, and so we should abandon our attempt.
-		dv->d_dev->sd_phy = SDIOCK_SHUTDN
-					| (phy & ~(SDPHY_PHASEMSK|SDIOCK_MASK))
-					| clk_phase | SDIOCK_50MHZ;
-
-		for(int k=0; k<50; k++)
-			if (SDIOCK_50MHZ == (dv->d_dev->sd_phy & SDIOCK_MASK))
-				break;
-
-		if ((dv->d_dev->sd_phy & SDIOCK_MASK) != SDIOCK_50MHZ) {
-			// 50MHz is not supported by our PHY
-
-			if (SDDEBUG) {
-				txstr("No PHY support for 50MHz: ");
-				txhex(dv->d_dev->sd_phy);
-				txstr("\n");
-			}
-
-			// Return the PHY to its original setting
-			dv->d_dev->sd_phy = phy;
-		} else if ((dv->d_SCR[1] & 0x0f) > 0) {
-			// CMD6 to move to HS mode
-			unsigned	ubuf[16];
-
-			// Return the PHY to its original setting
-			dv->d_dev->sd_phy = phy;
-
-			// First, query if the mode is available
-			sdio_switch(dv, 0x00fffff1, ubuf);
-
-			if (SDINFO) {
-				// {{{
-				txstr("Function modes supported: ");
-				txhex(ubuf[3]);
-				txstr("\n");
-			}
-			// }}}
-
-			// If HS mode is available, switch to it
-			// {{{
-			if ((0 == (dv->d_dev->sd_cmd & SDIO_ERR))
-					&& (0 != (ubuf[3] & 0x020000))) {
-				// We don't need to read the response, since
-				// we now know it's supported--just send the
-				// request.
-				sdio_switch(dv, 0x80fffff1, NULL);
-				phy = (dv->d_dev->sd_phy & (~SDIOCK_MASK))
-							| SDIOCK_50MHZ;
-				dv->d_dev->sd_phy = phy;
-				phy = dv->d_dev->sd_phy;
-				phy = (phy & ~SDPHY_PHASEMSK) | clk_phase;
-				if (SDDEBUG) {
-					txstr("Adjusting PHY to: ");
-					txhex(phy);
-					txstr(" (HS mode)\n");
-				}
-				dv->d_dev->sd_phy = phy;
-			} else if (SDINFO || SDDEBUG) {
-				txstr("HS mode is unavailable\n");
-				if (SDDEBUG) {
-					txstr("SD-CMD: "); txhex(dv->d_dev->sd_cmd);
-					txstr("\n");
-					txstr("BUF[3]: "); txhex(ubuf[3]);
-					txstr("\n");
-				}
-			}
-			// }}}
-		}
+	// if 1.8V signaling
+	if ((dv->d_dev->sd_phy & SDPHY_1P8VSPT)
+			&& (dv->d_OCR & 0x40000000)	// Must support CCS
+			&& (dv->d_OCR & S18R)) {
+		// txstr("Switching to 1.8V\n");
+		// CMD19, tuning block to determine sample point
+		sdio_send_voltage_switch(dv);	// CMD 11
 	}
 	// }}}
 
-	// Select drive strength?
-	/* if 1.8V signaling
-	if (dv->d_dev->sd_phy & (OPT_1P8V | SDIO_18V)) {
-		// CMD19, tuning block to determine sample point
+	sdio_all_send_cid(dv);	// CMD2
+
+	sdio_send_rca(dv);	// CMD3
+
+	// If in UHS-I mode, we're in 1.8V, we need to select the card next.
+	// Else we can do CMD10 and CMD 9.
+	if (dv->d_dev->sd_phy & SDPHY_1P8V) {
+		unsigned	ubuf[16];
+
+		sdio_select_card(dv);	// CMD7
+
+		// Only 4b mode is supported in 1.8V mode.  This command will
+		// be illegal if the card is locked.  (... and will require a
+		// whole host of other software not yet implemented to deal
+		// with that case ...)
+		sdio_set_bus_width(dv, 2);	// ACMD6
+		dv->d_dev->sd_phy = (dv->d_dev->sd_phy & (~SDPHY_WBEST))
+							| SDPHY_W4;
+
+		// Do we support HS mode?  If so, let's switch to it
+		// {{{
+		if (SDDEBUG) txstr("Query speed mode(s)\n");
+
+		{
+			unsigned phy = dv->d_dev->sd_phy;
+
+			// We have 5 potential modes:
+			//	SDR12	via SDIOCK_25MHZ
+			//	SDR25	via SDIOCK_50MHZ
+			//			Max power = 0.72 Watts
+			//	DDR50	via SDIOCK_50MHZ | SDPHY_DDR
+			//			Max power = 1.44 Watts
+			//	SDR50	via SDIOCK_100MHZ (and not SDPHY_DDR)
+			//			Max power = 1.44 Watts
+			//	SDR104	via SDIOCK_200MHZ (and not SDPHY_DDR)
+			//			Max power = 2.88 Watts
+			//
+
+
+			// First, query which modes are available
+			sdio_switch(dv, 0x00fffff3, ubuf);
+			if (0 != (dv->d_dev->sd_cmd & SDIO_ERR)) {
+				txstr("SDIO ERR: Switch query failed\n");
+			} else {
+				unsigned	spd = 0;
+
+				if (0 != (ubuf[3] & 0x080000)) {
+					// SDR104 supported
+					spd = 4;
+				} else if (0 != (ubuf[3] & 0x100000)) {
+					// DDR50 supported
+					spd = 3;
+				} else if (0 != (ubuf[3] & 0x040000)) {
+					// SDR50 supported
+					spd = 2;
+				} else if (0 != (ubuf[3] & 0x020000)) {
+					// SDR25 supported
+					spd = 1;
+				} if (0 != (dv->d_dev->sd_cmd & SDIO_ERR))
+					spd = 0;
+
+				if (SDDEBUG && SDINFO) {
+					switch(spd) {
+					case 1: txstr("SDIO-INIT: 1, Fastest speed is SDR25\n"); break;
+					case 2: txstr("SDIO-INIT: 2, Fastest speed is SDR50\n"); break;
+					case 3: txstr("SDIO-INIT: 3, Fastest speed is DDR50\n"); break;
+					case 4: txstr("SDIO-INIT: 4, Fastest speed is SDR104\n"); break;
+					// case 0:
+					default:
+						txstr("SDIO-INIT: 0, Fastest speed is SDR12\n"); break;
+					}
+				}
+
+				// Now let's check what our PHY supports by
+				// shutting the clock down and switching to
+				// the highest speed we can.  If the PHY can't
+				// support the speed, then we'll need to back
+				// it back down.
+
+				if (4 == spd) {	// Check for 200MHz clk support
+					// {{{
+					dv->d_dev->sd_phy = SDIOCK_SHUTDN
+						| (phy & ~(SDPHY_PHASEMSK|SDIOCK_MASK))
+						| clk_phase | SDIOCK_SDR104;
+
+					for(int k=0; k<50; k++)
+					if ((SDIOCK_SDR104 & SDIOCK_MASK) == (dv->d_dev->sd_phy & (SDIOCK_MASK | SDPHY_DDR)))
+						break;
+
+					if ((SDIOCK_SDR104 & SDIOCK_MASK) != (dv->d_dev->sd_phy & (SDIOCK_MASK | SDPHY_DDR)))
+						spd = 3;
+					// }}}
+				} if (3 == spd) { // Check for 50MHz DDR support
+					// {{{
+					dv->d_dev->sd_phy = SDIOCK_SHUTDN
+						| (phy & ~(SDPHY_PHASEMSK|SDIOCK_MASK))
+						| clk_phase | SDIOCK_DDR50;
+
+					for(int k=0; k<50; k++)
+					if ((SDIOCK_DDR50 & (SDIOCK_MASK | SDPHY_DDR)) == (dv->d_dev->sd_phy & (SDIOCK_MASK|SDPHY_DDR)))
+						break;
+
+					if ((SDIOCK_DDR50 & (SDIOCK_MASK | SDPHY_DDR)) != (dv->d_dev->sd_phy & (SDIOCK_MASK|SDPHY_DDR)))
+						spd = 2;
+					// }}}
+				} if (2 == spd) { // Check for 100MHz support
+					// {{{
+					dv->d_dev->sd_phy = SDIOCK_SHUTDN
+						| (phy & ~(SDPHY_PHASEMSK|SDIOCK_MASK))
+						| clk_phase | SDIOCK_SDR50;
+
+					for(int k=0; k<50; k++)
+					if ((SDIOCK_SDR50 & SDIOCK_MASK) == (dv->d_dev->sd_phy & (SDIOCK_MASK | SDPHY_DDR)))
+						break;
+
+					if ((SDIOCK_SDR50 & SDIOCK_MASK) != (dv->d_dev->sd_phy & (SDIOCK_MASK | SDPHY_DDR)))
+						spd = 1;
+					// }}}
+				} if (1 == spd) { // Check for 50MHz support
+					// {{{
+					dv->d_dev->sd_phy = SDIOCK_SHUTDN
+						| (phy & ~(SDPHY_PHASEMSK|SDIOCK_MASK))
+						| clk_phase | SDIOCK_SDR25;
+
+					for(int k=0; k<50; k++)
+					if ((SDIOCK_SDR25 & SDIOCK_MASK) == (dv->d_dev->sd_phy & (SDIOCK_MASK | SDPHY_DDR)))
+						break;
+
+					if ((SDIOCK_SDR25 & SDIOCK_MASK) != (dv->d_dev->sd_phy & (SDIOCK_MASK | SDPHY_DDR)))
+						spd = 0;
+					// }}}
+				}
+
+				// Return the PHY to its original setting
+				// {{{
+				// We'll need this setting to tell the card we
+				// wish to switch to the higher speed mode.
+				dv->d_dev->sd_phy = phy;
+
+				for(int k=0; k<50; k++) {
+					if ((phy & (SDIOCK_MASK|SDPHY_DDR))
+							== (dv->d_dev->sd_phy & (SDIOCK_MASK|SDPHY_DDR)))
+						break;
+				}
+				// }}}
+
+				if (SDINFO) {
+					// {{{
+					txstr("Function modes supported: ");
+					txhex(ubuf[3]);
+					txstr("\n");
+
+					txstr("Switching to speed grade: ");
+					txchr(spd + '0');
+					txstr("\n");
+				}
+				// }}}
+
+				// If a faster mode is available, switch to it
+				// {{{
+				switch(spd) {
+				case 4: // SDR104, 200MHz clock
+					// {{{
+					sdio_switch(dv, 0x80fffff3, NULL);
+
+					// Wait a minimum of 8 clocks at
+					// 25 MHz, assuming a 100MHz system
+					// clock.  This is overkill, but it
+					// at least guarantees success.
+					for(int k=0; k<32; k++)
+						asm("NOP");
+
+					dv->d_dev->sd_phy = phy = SDIOCK_SHUTDN
+						| (phy & ~(SDPHY_PHASEMSK|SDIOCK_MASK))
+						| clk_phase | SDIOCK_SDR104;
+
+					for(int k=0; k<50; k++)
+					if ((SDIOCK_SDR104 & SDIOCK_MASK) == (dv->d_dev->sd_phy & SDIOCK_MASK))
+						break;
+
+					if (SDDEBUG) {
+						txstr("Adjusting PHY to: ");
+						txhex(phy);
+						txstr(" (SDR104)\n");
+					}
+					break;
+					// }}}
+				case 3: // DDR50, 50MHz clock
+					// {{{
+					sdio_switch(dv, 0x80fffff4, NULL);
+
+					// Wait a minimum of 8 clocks at
+					// 25 MHz, assuming a 100MHz system
+					// clock.  This is overkill, but it
+					// at least guarantees success.
+					for(int k=0; k<32; k++)
+						asm("NOP");
+
+					dv->d_dev->sd_phy = phy = SDIOCK_SHUTDN
+						| (phy & ~(SDPHY_PHASEMSK|SDIOCK_MASK))
+						| clk_phase | SDIOCK_DDR50;
+
+					for(int k=0; k<50; k++)
+					if ((SDIOCK_DDR50 & SDIOCK_MASK) == (dv->d_dev->sd_phy & SDIOCK_MASK))
+						break;
+
+					if (SDDEBUG) {
+						txstr("Adjusting PHY to: ");
+						txhex(phy);
+						txstr(" (DDR50)\n");
+					}
+					break;
+					// }}}
+				case 2: // SDR50, 100MHz clock
+					// {{{
+					sdio_switch(dv, 0x80fffff2, NULL);
+
+					// Wait a minimum of 8 clocks at
+					// 25 MHz, assuming a 100MHz system
+					// clock.  This is overkill, but it
+					// at least guarantees success.
+					for(int k=0; k<32; k++)
+						asm("NOP");
+
+					dv->d_dev->sd_phy = phy = SDIOCK_SHUTDN
+						| (phy & ~(SDPHY_PHASEMSK|SDIOCK_MASK))
+						| clk_phase | SDIOCK_SDR50;
+
+					for(int k=0; k<50; k++)
+					if ((SDIOCK_SDR50 & SDIOCK_MASK) == (dv->d_dev->sd_phy & SDIOCK_MASK))
+						break;
+					if (SDDEBUG) {
+						txstr("Adjusting PHY to: ");
+						txhex(phy);
+						txstr(" (SDR50)\n");
+					}
+					break;
+					// }}}
+				case 1: // SDR25,  50MHz clock
+					// {{{
+					sdio_switch(dv, 0x80fffff1, NULL);
+
+					// Wait a minimum of 8 clocks at
+					// 25 MHz, assuming a 100MHz system
+					// clock.  This is overkill, but it
+					// at least guarantees success.
+					for(int k=0; k<32; k++)
+						asm("NOP");
+
+					dv->d_dev->sd_phy = phy = SDIOCK_SHUTDN
+						| (phy & ~(SDPHY_PHASEMSK|SDIOCK_MASK))
+						| clk_phase | SDIOCK_SDR25;
+
+					for(int k=0; k<50; k++)
+					if ((SDIOCK_SDR25 & SDIOCK_MASK) == (dv->d_dev->sd_phy & SDIOCK_MASK))
+						break;
+					if (SDDEBUG) {
+						txstr("Adjusting PHY to: ");
+						txhex(phy);
+						txstr(" (SDR25)\n");
+					}
+					break;
+					// }}}
+				default: break; // No change necessary
+				}
+				// }}}
+			}
+		}
+		// }}}
+
+		sdio_send_tuning_block(dv);	// CMD19
+
+		// Sadly, we can't execute either CMD10 or CMD9 from the
+		// transfer state.  Therefore, we'll need to unselect the card
+		// to get this information and the select it again when done.
+		sdio_unselect_card(dv);	// CMD7
+		sdio_send_cid(dv);	// CMD10
+
+		sdio_read_csd(dv);	// CMD9
+		sdio_select_card(dv);	// CMD7
+
+	} else {
+		if (SDDEBUG && SDINFO) {
+			txstr("SDIO INIT: Continuing at 3.3v\n");
+			txstr("  SD-PHY = "); txhex(dv->d_dev->sd_phy);
+			txstr(" & "); txhex(SDPHY_1P8V);
+			txstr(" == 0\n");
+		}
+
+		sdio_send_cid(dv);	// CMD10
+
+		sdio_read_csd(dv);	// CMD9
+
+		sdio_select_card(dv);	// CMD7
+
+		dv->d_dev->sd_phy = SECTOR_512B | SDIOCK_25MHZ | SDPHY_PUSHPULL
+				| clk_phase;
+		while(SDIOCK_25MHZ != (dv->d_dev->sd_phy & 0x0ff))
+			; // Wait for the clock to change
+
+
+		// SEND_SCR
+		sdio_read_scr(dv);	// ACMD51
+
+		// LOCK_UNLOCK ?
+		// SET_BUS_WIDTH
+		if (dv->d_SCR[1] & 0x04) {
+			dv->d_dev->sd_phy |= SDPHY_WBEST;
+			if (0 != (dv->d_dev->sd_phy & SDPHY_WBEST)) {
+				// Set a 4-bit bus width via ACMD6
+				sdio_set_bus_width(dv, 2);
+				dv->d_dev->sd_phy |= SDPHY_W4;
+				if (SDDEBUG) txstr("4b Width set\n");
+			}
+		}
+
+		// Do we support HS mode?  If so, let's switch to it
+		// {{{
+		if (SDDEBUG) txstr("Check for HS mode\n");
+		{
+			unsigned phy = dv->d_dev->sd_phy;
+
+			// Shut the clock down and switch to 50MHz.  Then come
+			// back and read the clock.  If it doesn't set to 50MHz,
+			// then we couldn't set the clock, and so we should
+			// abandon our attempt.
+			dv->d_dev->sd_phy = SDIOCK_SHUTDN
+					| (phy & ~(SDPHY_PHASEMSK|SDIOCK_MASK))
+					| clk_phase | SDIOCK_50MHZ;
+
+			for(int k=0; k<50; k++)
+			if (SDIOCK_50MHZ == (dv->d_dev->sd_phy & SDIOCK_MASK))
+				break;
+
+			if ((dv->d_dev->sd_phy & SDIOCK_MASK) != SDIOCK_50MHZ) {
+				// 50MHz is not supported by our PHY
+
+				if (SDDEBUG) {
+					txstr("No PHY support for 50MHz: ");
+					txhex(dv->d_dev->sd_phy);
+					txstr("\n");
+				}
+
+				// Return the PHY to its original setting
+				dv->d_dev->sd_phy = phy;
+			} else if ((dv->d_SCR[1] & 0x0f) > 0) {
+				// CMD6 to move to HS mode
+				unsigned	ubuf[16];
+
+				// Return the PHY to its original setting
+				dv->d_dev->sd_phy = phy;
+
+				// First, query if the mode is available
+				sdio_switch(dv, 0x00fffff1, ubuf);
+
+				if (SDINFO) {
+					// {{{
+					txstr("Function modes supported: ");
+					txhex(ubuf[3]);
+					txstr("\n");
+				}
+				// }}}
+
+				// If HS mode is available, switch to it
+				// {{{
+				if ((0 == (dv->d_dev->sd_cmd & SDIO_ERR))
+					&& (0 != (ubuf[3] & 0x020000))) {
+					// We don't need to read the response,
+					// since we now know it's
+					// supported--just send the request.
+					sdio_switch(dv, 0x80fffff1, NULL);
+					phy = (dv->d_dev->sd_phy & (~SDIOCK_MASK))
+							| SDIOCK_50MHZ;
+					dv->d_dev->sd_phy = phy;
+					phy = dv->d_dev->sd_phy;
+					phy = (phy & ~SDPHY_PHASEMSK) | clk_phase;
+					if (SDDEBUG) {
+						txstr("Adjusting PHY to: ");
+						txhex(phy);
+						txstr(" (HS mode)\n");
+					}
+					dv->d_dev->sd_phy = phy;
+				} else if (SDINFO || SDDEBUG) {
+					txstr("HS mode is unavailable\n");
+					if (SDDEBUG) {
+						txstr("SD-CMD: "); txhex(dv->d_dev->sd_cmd);
+						txstr("\n");
+						txstr("BUF[3]: "); txhex(ubuf[3]);
+						txstr("\n");
+					}
+				}
+			// }}}
+			}
+		}
+		// }}}
 	}
-	*/
 
 	RELEASE_MUTEX;
 

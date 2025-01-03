@@ -65,7 +65,7 @@
 %
 % Revision level.  If you change this, be sure to change the revision history
 % to match it
-\revision{Rev.~1.95}
+\revision{Rev.~1.96}
 \begin{document}
 \pagestyle{gqtekspecplain}
 \titlepage
@@ -95,6 +95,7 @@ with this program.  If not, see \texttt{http://www.gnu.org/licenses/} for a copy
 1.93 & 8/27/2024 & Gisselquist & Updated token handling and DMA stream discussions\\\hline
 1.94 & 9/05/2024 & Gisselquist & Note that ACKs should always be expected on block writes.\\\hline
 1.95 & 11/25/2024 & Gisselquist & The design now fully supports AXI in addition to Wishbone, to include an (optional) AXI DMA\\\hline
+1.96 & 12/06/2024 & Gisselquist & Added the 1.8V feedback wire\\\hline
 \end{revisionhistory}
 % Revision History
 % Table of Contents, named Contents
@@ -246,8 +247,11 @@ specific requirements:
 \end{itemize}
 
 Many, although not all, of these features have been tested as part of the
-\zhref{https://github.com/ZipCPU/eth10g}{10Gb Ethernet switch KlusterLab
-project}.  It is in this project that the software has been tested and proven,
+\zhref{https://github.com/ZipCPU/eth10g}{10Gb Ethernet}
+\zhref{https://github.com/ZipCPU/eth10g}{switch}
+\zhref{https://github.com/ZipCPU/eth10g}{KlusterLab}
+\zhref{https://github.com/ZipCPU/eth10g}{project}.
+It is in this project that the software has been tested and proven,
 and where its utility has been demonstrated.  The SD card component of the
 design has since been ported to my
 \zhref{https://github.com/ZipCPU/videozip}{VideoZip} repository, where further
@@ -263,8 +267,8 @@ controller as it exists today.  It also provides a roadmap for future
 development.
 
 \begin{itemize}
-\item IO features not yet tested in hardware include: OSERDES support, DDR
-	support, and data strobe support.  To date, these features have only
+\item IO features not yet tested in hardware include:
+	data strobe support.  To date, these feature(s) have only
 	been tested either formally or in simulation or both.
 
 	This is due to both the voltage requirements of these extra features,
@@ -1557,11 +1561,7 @@ R & 1 & Card removed.  This bit will be set if both the {\tt OPT\_CARD\_DETECT}
 	thus needs to be set up. \\
 C$_C$&2& Command error code.  Indicates the type of error, if any, received
 	from the last command.  This is separate from any potential bus or
-	receive errors. \\
-E & 1 & Error.  Set if the last command or data transaction completed with
-	error.  Once set, further commands will be ignored until this bit is
-	cleared.  Write a one to this bit to clear it.  Errors may be cleared
-	concurrent with new transactions requests. \\\hline
+	receive errors. \\\hline
 \end{tabular}
 %% }}}
 \caption{CMD Register field descriptions, part one}\label{tbl:CMD1}
@@ -1571,6 +1571,10 @@ and~\ref{tbl:CMD2}.
 %% {{{
 \begin{tabular}{|p{1.2in}|p{0.5in}|p{4.0in}|}\hline
 	\rowcolor[gray]{0.85} Name & Width & Description\\\hline\hline
+E & 1 & Error.  Set if the last command or data transaction completed with
+	error.  Once set, further commands will be ignored until this bit is
+	cleared.  Write a one to this bit to clear it.  Errors may be cleared
+	concurrent with new transactions requests. \\
 B & 1 & Busy.  Either a command or data transfer is currently in
 	progress.\\
 D & 1 & DMA Enable.  Set this bit to enable a DMA operation as part of an
@@ -1894,11 +1898,13 @@ LgBlk & 4 & Log based two of the transfer block size.  Set to 9 for 512~Byte
 V$_O$ & 1 & Read only value reflecting the parameter {\tt OPT\_1P8V}.  If set,
 	indicates that the controller is capable of driving an output value
 	to direct hardware to switch to a lower voltage.\\
-V$_R$ & 1 & 1.8~Volt request.  Set to transition to 1.8~Volts, or leave clear
-	to operate at 3.3~Volts.  Only relevant if both {\tt OPT\_1P8V} is set,
-	and external hardware is present to allow voltage changes.  Once set,
-	this register cannot be cleared without either a hardware reset or
-	the card assertion pin (if supported) being withdrawn. \\
+V$_R$ & 1 & 1.8~Volt request \& status.  Set to transition to 1.8~Volts, or
+	leave clear to operate at 3.3~Volts.  On read, returns the current
+	value from the top level.  This value will only change if both
+	{\tt OPT\_1P8V} is set, and external hardware is present to allow
+	voltage changes.  Once set, this register cannot be cleared without
+	either a hardware reset or the card assertion pin (if supported)
+	being withdrawn. \\
 D$_C$ & 1 & Set for enhanced data strobe support.  If set, both the command
 	and data pins will use the data strobe as a clock pin.  Will only
 	be set if D$_S$ and D$_D$ are also set.
@@ -2024,14 +2030,21 @@ will typically suffice.  For faster speeds, getting the shift right will take
 some work.  Failing to get the shift right will likely result in receive CRC
 failures.
 
-Finally, the design contains a means within it of adjusting voltages.  This
-capability is designed to control a general purpose IO bit, {\tt o\_1p8v},
-which when/if set is designed to control an external voltage translator.
-The {o\_1p8v} value is clear upon reset, so that the external voltage can
-be set to 3.3~V.  It may later be set, causing the external voltage controller
-to switch to 1.8~V.  Consistent with the eMMC specification, there is no way
-to unset this value.  This pin is typically incompatible with most FPGAs, since
-FPGA IO voltages are fixed in any given configuration.
+Finally, if {\tt OPT\_1P8V} is set, then the design contains a means within it
+of adjusting voltages.  This capability is designed to control a general
+purpose IO bit, {\tt o\_1p8v}, which when/if set is designed to control an
+external voltage translator.  The {o\_1p8v} value is clear upon reset, so that
+the external voltage can be set to 3.3~V.  It may later be set, causing the
+external voltage controller to switch to 1.8~V.  Consistent with the eMMC
+specification, there is no way to unset this value.  This pin is typically
+incompatible with most FPGAs, since FPGA IO voltages are fixed in any given
+configuration.
+
+Even if voltage switching is not supported, the V$_R$ bit may be used to tell
+the design which voltage bank it is currently operating in.  If clear,
+software will know that the IO pins are operating in 3.3~Volt mode.  If set,
+the IO pins are operating in 1.8~Volt mode.  This can be used to help
+determine which speeds are available to the controller.
 
 The LgBlk field sets the log, base two, of the any memory transfer size.  The
 actual transfer length will be will be $2^{\mbox{\tiny LGBLK}}$ bytes.  The
@@ -2263,6 +2276,8 @@ o\_hwreset\_n & 1 & Output & Low if requesting a hardware reset, high otherwise.
 	Requires {\tt OPT\_HWRESET} be set.\\\hline
 o\_1p8v & 1 & Output & High if requesting 1.8 Volt IO.  Requires
 	{\tt OPT\_1P8V} be set.\\\hline\hline
+i\_1p8v & 1 & Input & High if the interface is currently operating at 1.8~Volt
+	IO, zero otherwise.\\\hline\hline
 o\_int & 1 & Output & An interrupt line to the CPU controller\\\hline
 o\_debug & 32 & Output & See Verilog for details\\\hline
 \end{portlist}
@@ -2287,6 +2302,13 @@ and controlled by the {\tt H} bit of the CMD register.
 The 1.8~Volt request line, {\tt o\_1p8v}, is used by the controller to
 indicate it's desire to switch from 3.3~Volts to 1.8~Volts.  The {\tt
 OPT\_1P8V} parameter should be set low if voltage switching is not supported.
+Likewise, the 1.8~Volt status line, {\tt i\_1p8v}, is used by software to
+know the current state of the 1.8~Volt switching.  If set, it indicates that
+the IOs are operating at 1.8~Volts.  This is to allow software to determine
+whether or not 1.8~Volt IOs are enabled, independent of whether or not
+{\tt OPT\_1P8V} indicates the IO voltage can be adjusted.  Hence, if
+{\tt OPT\_1P8V} is not set, this value should be a constant reflecting the
+IO value expected.
 
 The interrupt line, {\tt o\_int}, has been discussed in Chapt.~\ref{ch:int}.
 This line is synchronous with the system clock domain.  Most interrupts are

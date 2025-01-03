@@ -66,8 +66,9 @@ module	tb_txframe;
 	//
 	// Clock generator
 	// {{{
-	sdckgen
-	u_ckgen (
+	sdckgen #(
+		.OPT_SERDES(1'b1)
+	) u_ckgen (
 		// {{{
 		.i_clk(clk), .i_reset(reset),
 		//

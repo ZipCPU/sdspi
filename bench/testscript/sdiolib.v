@@ -157,7 +157,7 @@ $display("FIRST-CHECK: %08x", read_data);
 				$display("ERROR: I");
 				error_flag = 1'b1;
 			end
-			
+
 			assert(r_interrupted);
 		end
 	end

@@ -93,7 +93,7 @@ module	sdrxframe #(
 	genvar	gk;
 
 	reg	[4:0]	sync_fill;
-	reg	[19:0]	sync_sreg;
+	reg	[23:0]	sync_sreg;
 
 	reg		s2_valid;
 	reg	[1:0]	s2_fill;
@@ -189,11 +189,11 @@ module	sdrxframe #(
 			else
 				sync_sreg <= { sync_sreg[15:0], i_rx_data[3:0] };
 		default: if (i_rx_strb == 2'b11)
-			sync_sreg <= { sync_sreg[3:0], i_rx_data[15:8], i_rx_data[7:0] };
+			sync_sreg <= { sync_sreg[7:0], i_rx_data[15:8], i_rx_data[7:0] };
 			else if (i_rx_strb[1])
-				sync_sreg <= { sync_sreg[11:0], i_rx_data[15:8] };
+				sync_sreg <= { sync_sreg[15:0], i_rx_data[15:8] };
 			else
-				sync_sreg <= { sync_sreg[11:0], i_rx_data[7:0] };
+				sync_sreg <= { sync_sreg[15:0], i_rx_data[7:0] };
 		endcase
 	end
 	// }}}
@@ -211,7 +211,7 @@ module	sdrxframe #(
 		// Then keep s2 disabled
 		s2_valid <= 0;
 	else
-		s2_valid <= (sync_fill >= 8);
+		s2_valid <= (sync_fill[4]);
 
 	always @(posedge i_clk)
 	if (i_reset || !i_rx_en || (i_cfg_ds && OPT_DS))
@@ -224,7 +224,7 @@ module	sdrxframe #(
 	if (OPT_LOWPOWER && (!i_rx_en || (i_cfg_ds && OPT_DS)))
 		s2_data <= 0;
 	else if (sync_fill[4])
-		s2_data <= sync_sreg >> sync_fill[2:0];
+		s2_data <= sync_sreg >> sync_fill[3:0];
 	// else if (sync_fill[3])
 	//	s2_data <= {sync_sreg, 8'h0} >> sync_fill[2:0];
 	// Verilator lint_on  WIDTH
@@ -725,6 +725,20 @@ module	sdrxframe #(
 	//
 	// Configuration validation
 	// {{{
+	(* anyconst *)	reg		f_cfg_ds, f_cfg_ddr, f_cfg_crc;
+	(* anyconst *)	reg	[1:0]	f_cfg_width;
+
+	always @(*)
+	if (i_rx_en)
+	begin
+		assume(i_cfg_ds    == f_cfg_ds);
+		assume(i_cfg_ddr   == f_cfg_ddr);
+		assume(i_cfg_width == f_cfg_width);
+		assume(i_crc_en    == f_cfg_crc);
+
+		if (f_cfg_ds)
+			assume(f_cfg_ddr);
+	end
 
 	always @(*)
 	if (!OPT_DS)
@@ -821,7 +835,7 @@ module	sdrxframe #(
 		assume(!i_rx_strb[0]);
 
 	always @(*)
-	if (!OPT_DS)
+	if (!OPT_DS || !f_cfg_ds)
 		assume(!S_ASYNC_VALID);
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -860,6 +874,7 @@ module	sdrxframe #(
 		if (i_cfg_ds)
 		begin
 			assert(f_count[4:0] == 0);
+			assert(sync_fill == 0);
 		end else case(i_cfg_width)
 		WIDTH_1W: begin end
 		WIDTH_4W: assert(f_count[1:0] == 2'b0);
@@ -867,7 +882,7 @@ module	sdrxframe #(
 		endcase
 
 		if (!i_cfg_ds && data_phase)
-			assert(f_count[2:0] == sync_fill[2:0]);
+			assert(f_count[3:0] == sync_fill[3:0]);
 	end
 	// }}}
 
@@ -894,9 +909,9 @@ module	sdrxframe #(
 	else if (!$past(i_rx_en))
 		assert(sync_fill == 0);
 	else case(i_cfg_width)
-	WIDTH_1W: assert(sync_fill <= 5'd9);
-	WIDTH_4W: assert(sync_fill[1:0] == 2'b00 && sync_fill <= 5'd12);
-	WIDTH_8W: assert(sync_fill[2:0] == 3'b00 && sync_fill <= 5'd16);
+	WIDTH_1W: assert(sync_fill <= 5'd16+1);
+	WIDTH_4W: assert(sync_fill[1:0] == 2'b00 && sync_fill <= 5'd16+4);
+	WIDTH_8W: assert(sync_fill[2:0] == 3'b00 && sync_fill <= 5'd16+8);
 	default: assert(0);
 	endcase
 
@@ -931,14 +946,17 @@ module	sdrxframe #(
 	end
 
 	always @(posedge i_clk)
+	if (!i_reset && i_rx_en)
+		assert(!subaddr[0]);
+	always @(posedge i_clk)
 	if (!i_reset && i_rx_en && o_mem_valid)
 	begin
 		if (i_cfg_ds)
 		begin
 			assert($countones(o_mem_strb) == 4);
 		end else case(i_cfg_width)
-		WIDTH_1W: assert($countones(o_mem_strb) == 1);
-		WIDTH_4W: assert($countones(o_mem_strb) == 1);
+		WIDTH_1W: assert($countones(o_mem_strb) == 2);
+		WIDTH_4W: assert($countones(o_mem_strb) == 2);
 		WIDTH_8W: begin end // assert($countones(o_mem_strb) <= 2 + ($past(rnxt_strb) ? 1:0));
 		default: assert(0);
 		endcase
@@ -1113,66 +1131,146 @@ module	sdrxframe #(
 	always @(posedge i_clk)
 	if (i_rx_en && !i_cfg_ds && i_cfg_width == WIDTH_1W)
 	begin
-		// {{{
-		if (i_rx_strb[1] && f_count == { fc_posn, 3'd0 })
-			assume(i_rx_data[8] == fc_data[7]);
-		if (i_rx_strb[1] && f_count == { fc_posn, 3'd1 })
-			assume(i_rx_data[8] == fc_data[6]);
-		if (i_rx_strb[1] && f_count == { fc_posn, 3'd2 })
-			assume(i_rx_data[8] == fc_data[5]);
-		if (i_rx_strb[1] && f_count == { fc_posn, 3'd3 })
-			assume(i_rx_data[8] == fc_data[4]);
-		if (i_rx_strb[1] && f_count == { fc_posn, 3'd4 })
-			assume(i_rx_data[8] == fc_data[3]);
-		if (i_rx_strb[1] && f_count == { fc_posn, 3'd5 })
-			assume(i_rx_data[8] == fc_data[2]);
-		if (i_rx_strb[1] && f_count == { fc_posn, 3'd6 })
-			assume(i_rx_data[8] == fc_data[1]);
-		if (i_rx_strb[1] && f_count == { fc_posn, 3'd7 })
-			assume(i_rx_data[8] == fc_data[0]);
+		if (i_cfg_ddr)
+		begin
+			// {{{
+			if (i_rx_strb[1])
+			begin
+				if (f_count == { fc_posn[LGLEN:1], 3'd0, fc_posn[0] })
+					assume(i_rx_data[8] == fc_data[7]);
+				if (f_count == { fc_posn[LGLEN:1], 3'd1, fc_posn[0] })
+					assume(i_rx_data[8] == fc_data[6]);
+				if (f_count == { fc_posn[LGLEN:1], 3'd2, fc_posn[0] })
+					assume(i_rx_data[8] == fc_data[5]);
+				if (f_count == { fc_posn[LGLEN:1], 3'd3, fc_posn[0] })
+					assume(i_rx_data[8] == fc_data[4]);
+				if (f_count == { fc_posn[LGLEN:1], 3'd4, fc_posn[0] })
+					assume(i_rx_data[8] == fc_data[3]);
+				if (f_count == { fc_posn[LGLEN:1], 3'd5, fc_posn[0] })
+					assume(i_rx_data[8] == fc_data[2]);
+				if (f_count == { fc_posn[LGLEN:1], 3'd6, fc_posn[0] })
+					assume(i_rx_data[8] == fc_data[1]);
+				if (f_count == { fc_posn[LGLEN:1], 3'd7, fc_posn[0] })
+					assume(i_rx_data[8] == fc_data[0]);
+			end
 
-		if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd0 })
-			assume(i_rx_data[0] == fc_data[7]);
-		if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd1 })
-			assume(i_rx_data[0] == fc_data[6]);
-		if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd2 })
-			assume(i_rx_data[0] == fc_data[5]);
-		if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd3 })
-			assume(i_rx_data[0] == fc_data[4]);
-		if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd4 })
-			assume(i_rx_data[0] == fc_data[3]);
-		if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd5 })
-			assume(i_rx_data[0] == fc_data[2]);
-		if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd6 })
-			assume(i_rx_data[0] == fc_data[1]);
-		if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd7 })
-			assume(i_rx_data[0] == fc_data[0]);
-		// }}}
+			if (i_rx_strb[0])
+			begin
+				if (f_count + 1 == { fc_posn[LGLEN:1], 3'd0, fc_posn[0] })
+					assume(i_rx_data[0] == fc_data[7]);
+				if (f_count + 1 == { fc_posn[LGLEN:1], 3'd1, fc_posn[0] })
+					assume(i_rx_data[0] == fc_data[6]);
+				if (f_count + 1 == { fc_posn[LGLEN:1], 3'd2, fc_posn[0] })
+					assume(i_rx_data[0] == fc_data[5]);
+				if (f_count + 1 == { fc_posn[LGLEN:1], 3'd3, fc_posn[0] })
+					assume(i_rx_data[0] == fc_data[4]);
+				if (f_count + 1 == { fc_posn[LGLEN:1], 3'd4, fc_posn[0] })
+					assume(i_rx_data[0] == fc_data[3]);
+				if (f_count + 1 == { fc_posn[LGLEN:1], 3'd5, fc_posn[0] })
+					assume(i_rx_data[0] == fc_data[2]);
+				if (f_count + 1 == { fc_posn[LGLEN:1], 3'd6, fc_posn[0] })
+					assume(i_rx_data[0] == fc_data[1]);
+				if (f_count + 1 == { fc_posn[LGLEN:1], 3'd7, fc_posn[0] })
+					assume(i_rx_data[0] == fc_data[0]);
+			end
+			// }}}
+		end else begin
+			// {{{
+			if (i_rx_strb[1] && f_count == { fc_posn, 3'd0 })
+				assume(i_rx_data[8] == fc_data[7]);
+			if (i_rx_strb[1] && f_count == { fc_posn, 3'd1 })
+				assume(i_rx_data[8] == fc_data[6]);
+			if (i_rx_strb[1] && f_count == { fc_posn, 3'd2 })
+				assume(i_rx_data[8] == fc_data[5]);
+			if (i_rx_strb[1] && f_count == { fc_posn, 3'd3 })
+				assume(i_rx_data[8] == fc_data[4]);
+			if (i_rx_strb[1] && f_count == { fc_posn, 3'd4 })
+				assume(i_rx_data[8] == fc_data[3]);
+			if (i_rx_strb[1] && f_count == { fc_posn, 3'd5 })
+				assume(i_rx_data[8] == fc_data[2]);
+			if (i_rx_strb[1] && f_count == { fc_posn, 3'd6 })
+				assume(i_rx_data[8] == fc_data[1]);
+			if (i_rx_strb[1] && f_count == { fc_posn, 3'd7 })
+				assume(i_rx_data[8] == fc_data[0]);
+
+			if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd0 })
+				assume(i_rx_data[0] == fc_data[7]);
+			if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd1 })
+				assume(i_rx_data[0] == fc_data[6]);
+			if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd2 })
+				assume(i_rx_data[0] == fc_data[5]);
+			if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd3 })
+				assume(i_rx_data[0] == fc_data[4]);
+			if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd4 })
+				assume(i_rx_data[0] == fc_data[3]);
+			if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd5 })
+				assume(i_rx_data[0] == fc_data[2]);
+			if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd6 })
+				assume(i_rx_data[0] == fc_data[1]);
+			if (i_rx_strb[0] && f_count + 1 == { fc_posn, 3'd7 })
+				assume(i_rx_data[0] == fc_data[0]);
+			// }}}
+		end
 	end
 
 	always @(posedge i_clk)
 	if (i_rx_en && !i_cfg_ds && i_cfg_width == WIDTH_4W)
 	begin
-		// {{{
-		if (f_count == { fc_posn, 3'd0 } && i_rx_strb[1])
-			assume(i_rx_data[11:8] == fc_data[7:4]);
-		if (f_count == { fc_posn, 3'd4 } && i_rx_strb[1])
-			assume(i_rx_data[11:8] == fc_data[3:0]);
+		if (i_cfg_ddr)
+		begin
+			// {{{
+			if (i_rx_strb[1])
+			begin
+				if (!fc_posn[0] && f_count == { fc_posn, 3'd0 })
+				begin
+					assume(i_rx_data[11:8] == fc_data[7:4]);
+				end else if (fc_posn[0] && f_count == { fc_posn[LGLEN:1], 1'b0, 3'd4 })
+				begin
+					assume(i_rx_data[11:8] == fc_data[7:4]);
+				end else if (!fc_posn[0] && f_count == { fc_posn[LGLEN:1], 1'b1, 3'd0 })
+				begin
+					assume(i_rx_data[11:8] == fc_data[3:0]);
+				end else if (fc_posn[0] && f_count == { fc_posn[LGLEN:1], 1'b1, 3'd4 })
+				begin
+					assume(i_rx_data[11:8] == fc_data[3:0]);
+				end
+			end
 
-		if (f_count +4 == { fc_posn, 3'd0 } && i_rx_strb[0])
-			assume(i_rx_data[ 3: 0] == fc_data[7:4]);
-		if (f_count +4 == { fc_posn, 3'd4 } && i_rx_strb[0])
-			assume(i_rx_data[ 3: 0] == fc_data[3:0]);
-		// }}}
+			if (i_rx_strb[0])
+			begin
+				if (f_count + (i_rx_strb[1]? 4:0) == { fc_posn[LGLEN:1], 1'b0, fc_posn[0], 2'd0 })
+				begin
+					assume(i_rx_data[ 3: 0] == fc_data[7:4]);
+				end else if (f_count + (i_rx_strb[1] ? 4:0) == { fc_posn[LGLEN:1], 1'b1, fc_posn[0], 2'd0 })
+				begin
+					assume(i_rx_data[ 3: 0] == fc_data[3:0]);
+				end
+			end
+			// }}}
+		end else begin
+			// {{{
+			if (f_count == { fc_posn, 3'd0 } && i_rx_strb[1])
+				assume(i_rx_data[11:8] == fc_data[7:4]);
+			if (f_count == { fc_posn, 3'd4 } && i_rx_strb[1])
+				assume(i_rx_data[11:8] == fc_data[3:0]);
+
+			if (f_count +4 == { fc_posn, 3'd0 } && i_rx_strb[0])
+				assume(i_rx_data[ 3: 0] == fc_data[7:4]);
+			if (f_count +4 == { fc_posn, 3'd4 } && i_rx_strb[0])
+				assume(i_rx_data[ 3: 0] == fc_data[3:0]);
+			// }}}
+		end
 	end
 
 	always @(posedge i_clk)
 	if (i_rx_en && !i_cfg_ds && i_cfg_width == WIDTH_8W)
 	begin
+		// {{{
 		if (f_count == { fc_posn, 3'b0 } && i_rx_strb[1])
 			assume(i_rx_data[15:8] == fc_data);
 		if (f_count + 8 == { fc_posn, 3'b0 } && i_rx_strb[0])
 			assume(i_rx_data[ 7:0] == fc_data);
+		// }}}
 	end
 	// }}}
 
@@ -1180,25 +1278,386 @@ module	sdrxframe #(
 	// {{{
 	always @(*)
 	if (!i_reset && i_rx_en && !i_cfg_ds && sync_fill != 0
-		&& i_cfg_width == WIDTH_1W && f_count[LGLEN+3:3] == fc_posn)
+		&& !sync_fill[4]
+		&& i_cfg_width == WIDTH_1W
+		&& f_count[LGLEN+3:0] >= { fc_posn[LGLEN:1], 4'h0 })
+		// && f_count[LGLEN+3:0] <= { fc_posn, 3'h0 } + sync_fill)
 	begin
-		case(sync_fill[2:0])
-		3'd0: begin end // Nothing loaded, nothing to assert
-		3'd1: assert(sync_sreg[0:0] == fc_data[7:7]);
-		3'd2: assert(sync_sreg[1:0] == fc_data[7:6]);
-		3'd3: assert(sync_sreg[2:0] == fc_data[7:5]);
-		3'd4: assert(sync_sreg[3:0] == fc_data[7:4]);
-		3'd5: assert(sync_sreg[4:0] == fc_data[7:3]);
-		3'd6: assert(sync_sreg[5:0] == fc_data[7:2]);
-		3'd7: assert(sync_sreg[6:0] == fc_data[7:1]);
-		endcase
+		if (f_cfg_ddr)
+		begin
+			if (!fc_posn[0])
+			begin
+				// {{{
+				if (f_count == { fc_posn[LGLEN:1], 4'd1 })
+				begin
+					assert(sync_sreg[0] == fc_data[7]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'd2 })
+				begin
+					assert(sync_sreg[1] == fc_data[7]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'd3 })
+				begin
+					assert(sync_sreg[2] == fc_data[7]);
+					assert(sync_sreg[0] == fc_data[6]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'd4 })
+				begin
+					assert(sync_sreg[3] == fc_data[7]);
+					assert(sync_sreg[1] == fc_data[6]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'd5 })
+				begin
+					assert(sync_sreg[4] == fc_data[7]);
+					assert(sync_sreg[2] == fc_data[6]);
+					assert(sync_sreg[0] == fc_data[5]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'd6 })
+				begin
+					assert(sync_sreg[5] == fc_data[7]);
+					assert(sync_sreg[3] == fc_data[6]);
+					assert(sync_sreg[1] == fc_data[5]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'd7 })
+				begin
+					assert(sync_sreg[6] == fc_data[7]);
+					assert(sync_sreg[4] == fc_data[6]);
+					assert(sync_sreg[2] == fc_data[5]);
+					assert(sync_sreg[0] == fc_data[4]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'h8 })
+				begin
+					assert(sync_sreg[7] == fc_data[7]);
+					assert(sync_sreg[5] == fc_data[6]);
+					assert(sync_sreg[3] == fc_data[5]);
+					assert(sync_sreg[1] == fc_data[4]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'h9 })
+				begin
+					assert(sync_sreg[8] == fc_data[7]);
+					assert(sync_sreg[6] == fc_data[6]);
+					assert(sync_sreg[4] == fc_data[5]);
+					assert(sync_sreg[2] == fc_data[4]);
+					assert(sync_sreg[0] == fc_data[3]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'ha })
+				begin
+					assert(sync_sreg[9] == fc_data[7]);
+					assert(sync_sreg[7] == fc_data[6]);
+					assert(sync_sreg[5] == fc_data[5]);
+					assert(sync_sreg[3] == fc_data[4]);
+					assert(sync_sreg[1] == fc_data[3]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'hb })
+				begin
+					assert(sync_sreg[10] == fc_data[7]);
+					assert(sync_sreg[ 8] == fc_data[6]);
+					assert(sync_sreg[ 6] == fc_data[5]);
+					assert(sync_sreg[ 4] == fc_data[4]);
+					assert(sync_sreg[ 2] == fc_data[3]);
+					assert(sync_sreg[ 0] == fc_data[2]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'hc })
+				begin
+					assert(sync_sreg[11] == fc_data[7]);
+					assert(sync_sreg[ 9] == fc_data[6]);
+					assert(sync_sreg[ 7] == fc_data[5]);
+					assert(sync_sreg[ 5] == fc_data[4]);
+					assert(sync_sreg[ 3] == fc_data[3]);
+					assert(sync_sreg[ 1] == fc_data[2]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'hd })
+				begin
+					assert(sync_sreg[12] == fc_data[7]);
+					assert(sync_sreg[10] == fc_data[6]);
+					assert(sync_sreg[ 8] == fc_data[5]);
+					assert(sync_sreg[ 6] == fc_data[4]);
+					assert(sync_sreg[ 4] == fc_data[3]);
+					assert(sync_sreg[ 2] == fc_data[2]);
+					assert(sync_sreg[ 0] == fc_data[1]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'he })
+				begin
+					assert(sync_sreg[13] == fc_data[7]);
+					assert(sync_sreg[11] == fc_data[6]);
+					assert(sync_sreg[ 9] == fc_data[5]);
+					assert(sync_sreg[ 7] == fc_data[4]);
+					assert(sync_sreg[ 5] == fc_data[3]);
+					assert(sync_sreg[ 3] == fc_data[2]);
+					assert(sync_sreg[ 1] == fc_data[1]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'hf })
+				begin
+					assert(sync_sreg[14] == fc_data[7]);
+					assert(sync_sreg[12] == fc_data[6]);
+					assert(sync_sreg[10] == fc_data[5]);
+					assert(sync_sreg[ 8] == fc_data[4]);
+					assert(sync_sreg[ 6] == fc_data[3]);
+					assert(sync_sreg[ 4] == fc_data[2]);
+					assert(sync_sreg[ 2] == fc_data[1]);
+					assert(sync_sreg[ 0] == fc_data[0]);
+				end
+				// }}}
+			end else begin
+				// {{{
+				if (f_count == { fc_posn[LGLEN:1], 4'd2 })
+				begin
+					assert(sync_sreg[0] == fc_data[7]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'd3 })
+				begin
+					assert(sync_sreg[1] == fc_data[7]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'd4 })
+				begin
+					assert(sync_sreg[2] == fc_data[7]);
+					assert(sync_sreg[0] == fc_data[6]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'd5 })
+				begin
+					assert(sync_sreg[3] == fc_data[7]);
+					assert(sync_sreg[1] == fc_data[6]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'd6 })
+				begin
+					assert(sync_sreg[4] == fc_data[7]);
+					assert(sync_sreg[2] == fc_data[6]);
+					assert(sync_sreg[0] == fc_data[5]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'd7 })
+				begin
+					assert(sync_sreg[5] == fc_data[7]);
+					assert(sync_sreg[3] == fc_data[6]);
+					assert(sync_sreg[1] == fc_data[5]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'd8 })
+				begin
+					assert(sync_sreg[6] == fc_data[7]);
+					assert(sync_sreg[4] == fc_data[6]);
+					assert(sync_sreg[2] == fc_data[5]);
+					assert(sync_sreg[0] == fc_data[4]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'h9 })
+				begin
+					assert(sync_sreg[7] == fc_data[7]);
+					assert(sync_sreg[5] == fc_data[6]);
+					assert(sync_sreg[3] == fc_data[5]);
+					assert(sync_sreg[1] == fc_data[4]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'ha })
+				begin
+					assert(sync_sreg[8] == fc_data[7]);
+					assert(sync_sreg[6] == fc_data[6]);
+					assert(sync_sreg[4] == fc_data[5]);
+					assert(sync_sreg[2] == fc_data[4]);
+					assert(sync_sreg[0] == fc_data[3]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'hb })
+				begin
+					assert(sync_sreg[9] == fc_data[7]);
+					assert(sync_sreg[7] == fc_data[6]);
+					assert(sync_sreg[5] == fc_data[5]);
+					assert(sync_sreg[3] == fc_data[4]);
+					assert(sync_sreg[1] == fc_data[3]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'hc })
+				begin
+					assert(sync_sreg[10] == fc_data[7]);
+					assert(sync_sreg[ 8] == fc_data[6]);
+					assert(sync_sreg[ 6] == fc_data[5]);
+					assert(sync_sreg[ 4] == fc_data[4]);
+					assert(sync_sreg[ 2] == fc_data[3]);
+					assert(sync_sreg[ 0] == fc_data[2]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'hd })
+				begin
+					assert(sync_sreg[11] == fc_data[7]);
+					assert(sync_sreg[ 9] == fc_data[6]);
+					assert(sync_sreg[ 7] == fc_data[5]);
+					assert(sync_sreg[ 5] == fc_data[4]);
+					assert(sync_sreg[ 3] == fc_data[3]);
+					assert(sync_sreg[ 1] == fc_data[2]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'he })
+				begin
+					assert(sync_sreg[12] == fc_data[7]);
+					assert(sync_sreg[10] == fc_data[6]);
+					assert(sync_sreg[ 8] == fc_data[5]);
+					assert(sync_sreg[ 6] == fc_data[4]);
+					assert(sync_sreg[ 4] == fc_data[3]);
+					assert(sync_sreg[ 2] == fc_data[2]);
+					assert(sync_sreg[ 0] == fc_data[1]);
+				end
+
+				if (f_count == { fc_posn[LGLEN:1], 4'hf })
+				begin
+					assert(sync_sreg[13] == fc_data[7]);
+					assert(sync_sreg[11] == fc_data[6]);
+					assert(sync_sreg[ 9] == fc_data[5]);
+					assert(sync_sreg[ 7] == fc_data[4]);
+					assert(sync_sreg[ 5] == fc_data[3]);
+					assert(sync_sreg[ 3] == fc_data[2]);
+					assert(sync_sreg[ 1] == fc_data[1]);
+				end
+				// }}}
+			end
+		end else if (f_count >= { fc_posn, 3'h0 }
+			&& f_count[LGLEN+3:0] <= { fc_posn, 3'h0 } + sync_fill)
+		begin
+			if (fc_posn[0])
+			begin
+				assert(sync_fill[3]);
+
+				case(sync_fill[2:0])
+				3'h0: begin end // Nothing loaded, nothing to assert
+				3'h1: assert(sync_sreg[ 0:0] == fc_data[7:7]);
+				3'h2: assert(sync_sreg[ 1:0] == fc_data[7:6]);
+				3'h3: assert(sync_sreg[ 2:0] == fc_data[7:5]);
+				3'h4: assert(sync_sreg[ 3:0] == fc_data[7:4]);
+				3'h5: assert(sync_sreg[ 4:0] == fc_data[7:3]);
+				3'h6: assert(sync_sreg[ 5:0] == fc_data[7:2]);
+				3'h7: assert(sync_sreg[ 6:0] == fc_data[7:1]);
+				endcase
+			end else case(sync_fill[3:0])
+			4'h0: begin end // Nothing loaded, nothing to assert
+			4'h1: assert(sync_sreg[ 0:0] == fc_data[7:7]);
+			4'h2: assert(sync_sreg[ 1:0] == fc_data[7:6]);
+			4'h3: assert(sync_sreg[ 2:0] == fc_data[7:5]);
+			4'h4: assert(sync_sreg[ 3:0] == fc_data[7:4]);
+			4'h5: assert(sync_sreg[ 4:0] == fc_data[7:3]);
+			4'h6: assert(sync_sreg[ 5:0] == fc_data[7:2]);
+			4'h7: assert(sync_sreg[ 6:0] == fc_data[7:1]);
+			4'h8: assert(sync_sreg[ 7:0] == fc_data[7:0]);
+			4'h9: assert(sync_sreg[ 8:1] == fc_data[7:0]);
+			4'ha: assert(sync_sreg[ 9:2] == fc_data[7:0]);
+			4'hb: assert(sync_sreg[10:3] == fc_data[7:0]);
+			4'hc: assert(sync_sreg[11:4] == fc_data[7:0]);
+			4'hd: assert(sync_sreg[12:5] == fc_data[7:0]);
+			4'he: assert(sync_sreg[13:6] == fc_data[7:0]);
+			4'hf: assert(sync_sreg[14:7] == fc_data[7:0]);
+			endcase
+		end
 	end
 
 	always @(*)
 	if (!i_reset && i_rx_en && !i_cfg_ds && sync_fill != 0
-		&& i_cfg_width == WIDTH_4W && f_count == { fc_posn, 3'd4 })
+		&& i_cfg_width == WIDTH_4W)
 	begin
-		assert(sync_sreg[3:0] == fc_data[7:4]);
+		if (f_cfg_ddr)
+		begin
+			if (!fc_posn[0] && f_count == { fc_posn, 3'd4 })
+			begin
+				assert(sync_sreg[3:0] == fc_data[7:4]);
+			end
+
+			if (!fc_posn[0] && f_count == { fc_posn, 3'd0 } + 8
+				&& sync_fill >= 8)
+			begin
+				assert(sync_sreg[ 7: 4] == fc_data[7:4]);
+			end
+
+			if (!fc_posn[0] && f_count == { fc_posn, 3'd4 } + 8
+				&& sync_fill >= 12)
+			begin
+				assert(sync_sreg[11: 8] == fc_data[7:4]);
+				assert(sync_sreg[ 3: 0] == fc_data[3:0]);
+			end
+
+			if (!fc_posn[0] && f_count == { fc_posn, 3'd0 } + 16
+				&& sync_fill >= 16)
+			begin
+				assert(sync_sreg[15:12] == fc_data[7:4]);
+				assert(sync_sreg[ 7: 4] == fc_data[3:0]);
+			end
+
+			//
+			//////
+			//
+
+			if (fc_posn[0] && f_count == { fc_posn, 3'd0 })
+			begin
+				assert(sync_sreg[3:0] == fc_data[7:4]);
+			end
+
+			if (fc_posn[0] && f_count == { fc_posn, 3'd0 } + 4
+				&& sync_fill >= 4)
+			begin
+				// assert(sync_sreg[11: 8] == fc_data[7:4]);
+				assert(sync_sreg[ 7: 4] == fc_data[7:4]);
+			end
+
+			if (fc_posn[0] && f_count == { fc_posn, 3'd0 } + 8
+				&& sync_fill >= 8)
+			begin
+				assert(sync_sreg[11: 8] == fc_data[7:4]);
+				assert(sync_sreg[ 3: 0] == fc_data[3:0]);
+			end
+
+			if (fc_posn[0] && f_count == { fc_posn, 3'd0 } + 12
+				&& sync_fill >= 12)
+			begin
+				assert(sync_sreg[15:12] == fc_data[7:4]);
+				assert(sync_sreg[ 7: 4] == fc_data[3:0]);
+			end
+		end else begin
+			if (f_count == { fc_posn, 3'd4 })
+			begin
+				assert(sync_sreg[3:0] == fc_data[7:4]);
+			end
+
+			if (f_count == { fc_posn, 3'd0 } + 8 && sync_fill >= 8)
+			begin
+				assert(sync_sreg[7:0] == fc_data);
+			end
+
+			if (f_count == { fc_posn, 3'd0 } + 12 && sync_fill >= 12)
+			begin
+				assert(sync_sreg[11:4] == fc_data);
+			end
+
+			if (f_count == { fc_posn, 3'd0 } + 16 && sync_fill >= 16)
+			begin
+				assert(sync_sreg[15:8] == fc_data);
+			end
+		end
+	end
+
+	always @(*)
+	if (!i_reset && i_rx_en && !i_cfg_ds && sync_fill != 0
+		&& i_cfg_width == WIDTH_8W)
+	begin
+ 		if (f_count == { fc_posn, 3'd0 } + 8 && sync_fill != 0)
+			assert(sync_sreg[7:0] == fc_data[7:0]);
+ 		if (f_count == { fc_posn, 3'd0 } + 16 && sync_fill > 8)
+			assert(sync_sreg[15:8] == fc_data[7:0]);
+ 		if (f_count == { fc_posn, 3'd0 } + 24 && sync_fill > 16)
+			assert(sync_sreg[23:16] == fc_data[7:0]);
 	end
 	// }}}
 
@@ -1233,7 +1692,7 @@ module	sdrxframe #(
 		case({ i_cfg_ds, i_cfg_ddr, i_cfg_width })
 		4'b0000: begin
 				cover(!i_crc_en);
-				cover(o_err);		// !!!
+				cover(o_err);
 				cover(i_crc_en && !o_err);
 				end
 		4'b0001: begin
@@ -1242,27 +1701,27 @@ cover(fc_posn == 0 && fc_data == 8'hff);
 cover(fc_posn == 0 && fc_data == 8'ha5);
 cover(fc_posn == 0 && fc_data == 8'h5a);
 cover(fc_posn == 0 && fc_data == 8'h7e);
-				cover(o_err);		// !!!
+				cover(o_err);
 				cover(i_crc_en && !o_err);
 				end
 		4'b0010: begin
 				cover(!i_crc_en);
-				cover(o_err);		// !!!
+				cover(o_err);
 				cover(i_crc_en && !o_err);
 				end
 		4'b0100: begin
 				cover(!i_crc_en);
-				cover(o_err);		// !!!
+				cover(o_err);
 				cover(i_crc_en && !o_err);
 				end
 		4'b0101: begin
 				cover(!i_crc_en);
-				cover(o_err);		// !!!
+				cover(o_err);
 				cover(i_crc_en && !o_err);
 				end
 		4'b0110: begin
 				cover(!i_crc_en);
-				cover(o_err);		// !!!
+				cover(o_err);
 				cover(i_crc_en && !o_err);
 				end
 		// 4'b1110: cover(1);
@@ -1283,7 +1742,7 @@ cover(fc_posn == 0 && fc_data == 8'h7e);
 			// 4'b0101: cover(1);
 			// 4'b0110: cover(1);
 			4'b1110: begin
-				cover(!i_crc_en);
+				cover(!i_crc_en);		// !!!
 				cover(o_err);
 				cover(i_crc_en && !o_err);
 				end
@@ -1298,6 +1757,23 @@ cover(fc_posn == 0 && fc_data == 8'h7e);
 	//
 	// Careless assumptions
 	// {{{
+
+	// always @(*) assume(f_cfg_crc);
+	// always @(*) assume(!i_rx_strb[0]);
+	// always @(*) assume(!f_cfg_width[0]);
+	// always @(*) assume( f_cfg_width[1]);
+	// always @(*) assume(!f_cfg_ddr || f_cfg_width == 0);
+	// always @(*) assume(!f_cfg_ds);
+	// always @(*) assume(fc_posn[LGLEN:0] < 8);
+	// always @(*) assume(!fc_posn[0]);
+
+	// always @(*)
+	// if (!i_rx_strb[1]) assume(i_rx_data[15:8] == 0);
+	// else assume(i_rx_data[15:(16-NUMIO)] == 0);
+
+	// always @(*)
+	// if (!i_rx_strb[0]) assume(i_rx_data[7:0] == 0);
+	// else assume(i_rx_data[7:(8-NUMIO)] == 0);
 
 	// always @(*) assume(!r_watchdog);
 	// }}}

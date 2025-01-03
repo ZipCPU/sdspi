@@ -133,7 +133,7 @@ module	sdtxframe #(
 
 	// }}}
 	// Steps: #1, Packetizer: breaks incoming signal into wires
-	// 	#2, add CRC
+	//	#2, add CRC
 	//	#3, split across clocks
 	//
 	////////////////////////////////////////////////////////////////////////
@@ -368,42 +368,6 @@ module	sdtxframe #(
 
 			for(jk=0; jk<4; jk=jk+1)
 			begin
-				// FIXME!
-				// etc.
-				// 127:124 -> CRC #4-7
-				// 123:120 -> CRC #0-3
-				// 119:116 -> CRC #4-7
-				// 115:112 -> CRC #0-3
-				// 111:108 -> CRC #4-7
-				// 107:104 -> CRC #0-3
-				// 103:100 -> CRC #4-7
-				//  99: 96 -> CRC #0-3
-				//  95: 92 -> CRC #4-7
-				//  91: 88 -> CRC #0-3
-				//  87: 84 -> CRC #4-7
-				//  83: 80 -> CRC #0-3
-				//  79: 76 -> CRC #4-7
-				//  75: 72 -> CRC #0-3
-				//  71: 68 -> CRC #4-7
-				//  67: 64 -> CRC #0-3
-				//
-				//  63: 60 -> CRC #4-7
-				//  59: 56 -> CRC #0-3
-				//  55: 52 -> CRC #4-7
-				//  51: 48 -> CRC #0-3
-				//  47: 44 -> CRC #4-7
-				//  43: 40 -> CRC #0-3
-				//  39: 36 -> CRC #4-7
-				//  35: 32 -> CRC #0-3
-				//
-				//  31: 28 -> CRC #4-7
-				//  27: 24 -> CRC #0-3
-				//  23: 20 -> CRC #4-7
-				//  19: 16 -> CRC #0-3
-				//  15: 12 -> CRC #4-7
-				//  11:  8 -> CRC #0-3
-				//   7:  4 -> CRC #4-7
-				//   3:  0 -> CRC #0-3
 				di_crc_4d[(2*jk  )*NCRC+ik] = crc_4d_reg[2*ik*4  +jk];
 				di_crc_4d[(2*jk+1)*NCRC+ik] = crc_4d_reg[2*ik*4+4+jk];
 			end
@@ -418,25 +382,33 @@ module	sdtxframe #(
 
 		// Advance the CRCs based on S_DATA
 		// {{{
-		for(ik=0; ik<2; ik=ik+1)
-		begin
-			new_crc_2w[ik*NCRC +: NCRC] =
-				APPLYCRC16(di_crc_2w[ik*NCRC +: NCRC],
-			  		{ S_DATA[30+ik],S_DATA[28+ik],
-						S_DATA[26+ik],S_DATA[24+ik],
-						S_DATA[22+ik],S_DATA[20+ik],
-						S_DATA[18+ik],S_DATA[16+ik],
-						S_DATA[14+ik],S_DATA[12+ik],
-						S_DATA[10+ik],S_DATA[ 8+ik],
-						S_DATA[ 6+ik],S_DATA[ 4+ik],
-						S_DATA[ 2+ik],S_DATA[   ik] });
-		end
+		new_crc_2w[1*NCRC +: NCRC] =
+			APPLYCRC16(di_crc_2w[1*NCRC +: NCRC],
+				{ S_DATA[31],S_DATA[30],
+					S_DATA[29],S_DATA[28],
+					S_DATA[27],S_DATA[26],
+					S_DATA[25],S_DATA[24],
+					S_DATA[15],S_DATA[14],
+					S_DATA[13],S_DATA[12],
+					S_DATA[11],S_DATA[10],
+					S_DATA[ 9],S_DATA[ 8] });
+
+		new_crc_2w[0*NCRC +: NCRC] =
+			APPLYCRC16(di_crc_2w[0*NCRC +: NCRC],
+				{ S_DATA[23],S_DATA[22],
+					S_DATA[21],S_DATA[20],
+					S_DATA[19],S_DATA[18],
+					S_DATA[17],S_DATA[16],
+					S_DATA[ 7],S_DATA[ 6],
+					S_DATA[ 5],S_DATA[ 4],
+					S_DATA[ 3],S_DATA[ 2],
+					S_DATA[ 1],S_DATA[ 0] });
 
 		for(ik=0; ik<4; ik=ik+1)
 		begin
 			new_crc_4w[ik*NCRC +: NCRC] =
 				APPLYCRC8(di_crc_4w[ik*NCRC +: NCRC],
-			  		{ S_DATA[28+ik],S_DATA[24+ik],
+					{ S_DATA[28+ik],S_DATA[24+ik],
 						S_DATA[20+ik],S_DATA[16+ik],
 						S_DATA[12+ik],S_DATA[ 8+ik],
 						S_DATA[ 4+ik],S_DATA[   ik] });
@@ -446,12 +418,12 @@ module	sdtxframe #(
 		begin
 			new_crc_4d[(2*ik+1)*NCRC +: NCRC] =
 				APPLYCRC4(di_crc_4d[(2*ik+1)*NCRC +: NCRC],
-			  		{ S_DATA[28+ik], S_DATA[24+ik],
+					{ S_DATA[28+ik], S_DATA[24+ik],
 					  S_DATA[12+ik], S_DATA[ 8+ik] });
 
 			new_crc_4d[2*ik*NCRC +: NCRC] =
 				APPLYCRC4(di_crc_4d[2*ik*NCRC +: NCRC],
-			  		{ S_DATA[20+ik], S_DATA[16+ik],
+					{ S_DATA[20+ik], S_DATA[16+ik],
 					  S_DATA[ 4+ik], S_DATA[   ik] });
 		end
 
@@ -459,7 +431,7 @@ module	sdtxframe #(
 		begin
 			new_crc_8w[ik*NCRC +: NCRC] =
 				APPLYCRC4(di_crc_8w[ik*NCRC +: NCRC],
-			  		{ S_DATA[24+ik], S_DATA[16+ik],
+					{ S_DATA[24+ik], S_DATA[16+ik],
 						S_DATA[8+ik], S_DATA[ik] });
 		end
 
@@ -467,7 +439,7 @@ module	sdtxframe #(
 		begin
 			new_crc_8d[ik*NCRC +: NCRC] =
 				APPLYCRC2(di_crc_8d[ik*NCRC +: NCRC],
-			  		{ S_DATA[16+ik], S_DATA[ik] });
+					{ S_DATA[16+ik], S_DATA[ik] });
 		end
 		// }}}
 

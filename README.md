@@ -109,18 +109,11 @@ Both Wishbone and AXI interfaces are supported.
   [SDIO](bench/verilog/mdl_sdio.v) and [eMMC](bench/verilog/mdl_emmc.v)
   models, as well as the [SDIO C++](bench/cpp/sdiosim.cpp) model.
 
-For more information, please consult the [SDIO user guide](doc/sdio.pdf).
-
-### Roadmap and TODO items
-
-Although the initial RTL has both been fully drafted and successfully hardware
-tested, this project is far from finished.  Several key steps remain before
-this controller will be a completed product:
+Features include:
 
 - **Multi-block**: Multiple block commands have been demonstrated in
-  simulation when using the Verilog [SDIO model](bench/verilog/mdl_sdio.v).
-  Multiblock simulation support is still lacking in the Verilog [eMMC
-  model](bench/verilog/mdl_emmc.v).
+  simulation when using both the Verilog [SDIO model](bench/verilog/mdl_sdio.v)
+  and [eMMC model](bench/verilog/mdl_emmc.v)s.
 
   Multiblock commands form the basis for the DMA's operation.
 
@@ -149,7 +142,7 @@ this controller will be a completed product:
     the TLAST signal will be set at the end of each 512B block.  This may
     require the external DMA to be configured to transfer data one block at a
     time, or perhaps to ignore the TLAST signal.
-  - Transfer errors (failing CRCs, non-responsive cards, etc.) may cause the streams to be unsynchronized.  To fix, the design may be given a soft reset (if necessary), and the external [MM2S](https://github.com/ZipCPU/wb2axip/blob/master/rtl/aximm2s.v)/[S2MM](https://github.com/ZipCPU/wb2axip/blob/master/rtl/axis2mm.v) DMAs may also need to be given similar resets.
+  - Transfer errors (failing CRCs, non-responsive cards, etc.) may cause the streams to lose synchronization.  To fix, the design may be given a soft reset (if necessary), and the external [MM2S](https://github.com/ZipCPU/wb2axip/blob/master/rtl/aximm2s.v)/[S2MM](https://github.com/ZipCPU/wb2axip/blob/master/rtl/axis2mm.v) DMAs may also need to be given similar resets.
 
 - **C++ Model**: A [Verilator C++ model of an SDIO
   component](bench/cpp/sdiosim.cpp) is now a part of the repository.  This
@@ -170,7 +163,7 @@ this controller will be a completed product:
 - **AXI Support**: This design has also been demonstrated in AXI environments.
   The control interface has an AXI-Lite port which can be used to interact
   with the IP.  A flag exists to swap endianness, so that the design will be
-  properly little endian when using this interface.  The design even includes
+  properly little endian when using this interface.  The design now includes
   an integrated AXI DMA.
 
 - **CRC Tokens**: CRC token's are 5b response values, indicating whether
@@ -180,6 +173,17 @@ this controller will be a completed product:
 
   Failure to receive a CRC token when one is expected will (now) generate an
   error condition, as will receiving a negative CRC acknowledgment.
+
+For more information, please consult the [SDIO user guide](doc/sdio.pdf).
+
+### Roadmap and TODO items
+
+Now that the RTL has been fully drafted and successfully tested in hardware,
+it's moving from its development to application phase.  Further improvements
+could still be made, as listed below:
+
+- **C++ Model**: The design is missing a C++ model for testing the eMMC
+  interface.
 
 - **eMMC Boot mode**: No plan exists to support eMMC boot mode (at present).
   This decision will likely be revisited in the future.

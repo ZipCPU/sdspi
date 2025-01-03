@@ -11,7 +11,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2024, Gisselquist Technology, LLC
+// Copyright (C) 2016-2025, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -163,8 +163,8 @@ static	const	uint32_t
 		SDIO_CARDBUSY = 0x00100000,
 		SDIO_BUSY     = (SDIO_CARDBUSY|SDIO_CMDBUSY|SDIO_DMA|SDIO_MEM),
 		SDIO_CMDERR   = 0x00200000,
-		SDIO_RXERR    = 0x00400000,	// RX Error present
-		SDIO_RXECODE  = 0x00800000,	// RX Error code
+		SDIO_RXERR    = 0x00400000,	// Transfer error present
+		SDIO_RXECODE  = 0x00800000,	// Transfer error code
 		SDIO_DMAERR   = 0x01000000,
 		SDIO_HWRESET  = 0x02000000,
 		SDIO_ACK      = 0x04000000,	// Expect a CRC ACK token
@@ -1852,8 +1852,6 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 	// }}}
 
 	if (err) {
-		if (EMMCDEBUG)
-			txstr("EMMC-WRITE -> R1 ERR\n");
 		return	RES_ERROR;
 	} return RES_OK;
 }

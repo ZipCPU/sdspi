@@ -4,6 +4,5 @@ tb_sdckgen
 tb_txframe
 report.txt
 sdiosim
-sdio_report.txt
 test/
 /cpu/

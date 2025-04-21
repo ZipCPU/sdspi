@@ -1291,9 +1291,10 @@ module	sdfrontend #(
 
 			r_debug[15:14] <= { i_rx_en, i_data_en };
 			r_debug[13:12] <= { sync_ack, sync_nak };
-			r_debug[11:10] <= itok;
-			r_debug[ 9: 8] <= o_rx_strb;
-			r_debug[ 7: 0] <= { o_rx_data[11:8], o_rx_data[3:0] };
+			if (i_rx_en && i_cfg_ddr)
+				r_debug[13:12] <= { |sample_pck, |sample_ck };
+			if (i_rx_en && i_cfg_ddr && !i_data_en)
+				r_debug[14] <= ^io_started;
 
 			r_debug[11:10] <= r_debug[11:10];
 			if (|sample_pck[7:4])

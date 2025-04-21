@@ -7,3 +7,4 @@ sdiosim
 sdio_report.txt
 test/
 /cpu/
+/testscript.v

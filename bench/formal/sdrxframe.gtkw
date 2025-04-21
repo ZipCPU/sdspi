@@ -1,0 +1,98 @@
+[*]
+[*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
+[*] Fri Jul 14 20:27:46 2023
+[*]
+[dumpfile] "(null)"
+[timestart] 0
+[size] 2043 712
+[pos] 223 -122
+*-4.786479 40 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 362
+[signals_width] 174
+[sst_expanded] 1
+[sst_vpaned_height] 196
+@28
+sdrxframe.i_clk
+sdrxframe.i_reset
+sdrxframe.i_rx_en
+@800200
+-CONFIG
+@28
+sdrxframe.i_cfg_ddr
+sdrxframe.i_cfg_ds
+sdrxframe.i_cfg_width[1:0]
+sdrxframe.i_crc_en
+@22
+sdrxframe.i_length[15:0]
+@1000200
+-CONFIG
+@28
+sdrxframe.i_rx_strb[1:0]
+@22
+sdrxframe.i_rx_data[15:0]
+@200
+-
+@28
+sdrxframe.S_ASYNC_VALID
+@22
+sdrxframe.S_ASYNC_DATA[31:0]
+@c00200
+-STATE
+@28
+sdrxframe.busy
+sdrxframe.o_done
+sdrxframe.o_err
+sdrxframe.w_done
+@200
+-
+@28
+sdrxframe.last_strb
+sdrxframe.r_watchdog
+sdrxframe.data_phase
+sdrxframe.load_crc
+@1401200
+-STATE
+@c00200
+-PCHAIN
+@22
+sdrxframe.sync_fill[4:0]
+sdrxframe.sync_sreg[19:0]
+@200
+-
+@28
+sdrxframe.s2_valid
+sdrxframe.s2_fill[1:0]
+@22
+sdrxframe.s2_data[15:0]
+@1401200
+-PCHAIN
+@28
+sdrxframe.f_state
+@800201
+-MEM
+@29
+sdrxframe.o_mem_valid
+@23
+sdrxframe.o_mem_addr[12:0]
+sdrxframe.o_mem_data[31:0]
+sdrxframe.o_mem_strb[3:0]
+@29
+sdrxframe.subaddr[1:0]
+sdrxframe.mem_full
+sdrxframe.next_subaddr[1:0]
+@1000201
+-MEM
+@22
+sdrxframe.fc_posn[15:0]
+sdrxframe.fc_data[7:0]
+@200
+-
+@22
+sdrxframe.f_count[18:0]
+sdrxframe.f_recount[15:0]
+sdrxframe.fmem_count[15:0]
+sdrxframe.rail_count[18:0]
+@200
+-
+[pattern_trace] 1
+[pattern_trace] 0

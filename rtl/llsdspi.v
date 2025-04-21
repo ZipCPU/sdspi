@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	llsdspi.v
+// Filename:	rtl/llsdspi.v
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SD-Card controller
 //
 // Purpose:	This file implements the "lower-level" interface to the
 //		SD-Card controller.  Specifically, it turns byte-level
@@ -63,10 +63,10 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2022, Gisselquist Technology, LLC
+// Copyright (C) 2016-2025, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
-// modify it under the terms of  the GNU General Public License as published
+// modify it under the terms of the GNU General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or (at
 // your option) any later version.
 //
@@ -76,7 +76,7 @@
 // for more details.
 //
 // You should have received a copy of the GNU General Public License along
-// with this program.  (It's in the $(ROOT)/doc directory, run make with no
+// with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
 // }}}
@@ -86,6 +86,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
+`timescale	1ns/1ps
 `default_nettype	none
 // }}}
 module	llsdspi #(
@@ -154,8 +155,7 @@ module	llsdspi #(
 	wire			byte_accepted;
 	reg			restart_counter;
 
-	wire			bus_grant;
-	reg	startup_hold, powerup_hold;
+	wire			bus_grant, startup_hold, powerup_hold;
 `ifdef	FORMAL
 	reg	f_past_valid;
 `endif
@@ -170,21 +170,23 @@ module	llsdspi #(
 		// {{{
 		localparam	POWERUP_BITS = $clog2(POWERUP_IDLE);
 		reg	[POWERUP_BITS-1:0]	powerup_counter;
+		reg				r_powerup_hold;
 
 		initial powerup_counter = POWERUP_IDLE[POWERUP_BITS-1:0];
-		initial	powerup_hold = 1;
+		initial	r_powerup_hold = 1;
 		always @(posedge i_clk)
 		if (i_reset)
 		begin
 			powerup_counter <= POWERUP_IDLE;
-			powerup_hold    <= 1;
+			r_powerup_hold    <= 1;
 		end else if (powerup_hold)
 		begin
 			if (|powerup_counter)
 				powerup_counter <= powerup_counter - 1;
-			powerup_hold <= (powerup_counter > 0);
+			r_powerup_hold <= (powerup_counter > 0);
 		end
 
+		assign	powerup_hold = r_powerup_hold;
 `ifdef	FORMAL
 		always @(*)
 		if (!f_past_valid)
@@ -194,10 +196,9 @@ module	llsdspi #(
 			assert(powerup_hold);
 `endif
 		// }}}
-	end else begin
+	end else begin : NO_POWERUP_HOLD
 
-		always @(*)
-			powerup_hold = 0;
+		assign	powerup_hold = 0;
 	end endgenerate
 	// }}}
 
@@ -208,21 +209,23 @@ module	llsdspi #(
 		// {{{
 		localparam	STARTUP_BITS = $clog2(STARTUP_CLOCKS);
 		reg	[STARTUP_BITS-1:0]	startup_counter;
+		reg				r_startup_hold;
 
 		initial startup_counter = STARTUP_CLOCKS[STARTUP_BITS-1:0];
-		initial	startup_hold = 1;
+		initial	r_startup_hold = 1;
 		always @(posedge i_clk)
 		if (i_reset || powerup_hold)
 		begin
 			startup_counter <= STARTUP_CLOCKS;
-			startup_hold    <= 1;
+			r_startup_hold    <= 1;
 		end else if (startup_hold && r_z_counter && !o_sclk)
 		begin
 			if (|startup_counter)
 				startup_counter <= startup_counter - 1;
-			startup_hold <= (startup_counter > 0);
+			r_startup_hold <= (startup_counter > 0);
 		end
 
+		assign	startup_hold = r_startup_hold;
 `ifdef	FORMAL
 		always @(*)
 		if (!f_past_valid)
@@ -232,10 +235,9 @@ module	llsdspi #(
 			assert(startup_hold);
 `endif
 		// }}}
-	end else begin
+	end else begin : NO_STARTUP_HOLD
 
-		always @(*)
-			startup_hold = 0;
+		assign	startup_hold = 0;
 
 	end endgenerate
 	// }}}
@@ -667,6 +669,13 @@ module	llsdspi #(
 	else if (|(f_start_seq & {(8){2'b10}}))
 		assert(!o_sclk);
 
+	generate if (!OPT_CONTINUOUS_CLOCK)
+	begin
+		always @(*)
+		if (f_start_seq[17:0] == 18'h001)
+			cover(r_state == LLSDSPI_START);
+	end endgenerate
+
 	always @(*)
 	case(f_start_seq[17:0])
 	18'h001: begin
@@ -674,6 +683,7 @@ module	llsdspi #(
 		assert(r_byte == fv_byte[7:0] );
 		assert(r_state == LLSDSPI_START);
 		// assert(o_mosi == fv_byte[7]);
+		assert(!OPT_CONTINUOUS_CLOCK);
 		assert(!o_cs_n);
 		assert(!r_idle);
 		end
@@ -1037,11 +1047,11 @@ module	llsdspi #(
 		assume(i_miso == f_rxdata[7]);
 		end
 	18'h004: begin
-		assume(i_miso == f_rxdata[7]);
+		// assume(i_miso == f_rxdata[7]);
 		assert(r_ireg[0] == f_rxdata[7]);
 		end
 	18'h008: begin
-		assume(i_miso == f_rxdata[6]);
+		// assume(i_miso == f_rxdata[6]);
 		assert(r_ireg[0] == f_rxdata[7]);
 		end
 	18'h010: begin

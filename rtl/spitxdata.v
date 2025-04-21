@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	spitxdata.v
+// Filename:	rtl/spitxdata.v
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SD-Card controller
 //
 // Purpose:	To handle all of the processing associated with sending data
 //		from a memory to our lower-level SPI processor.
@@ -12,10 +12,10 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2022, Gisselquist Technology, LLC
+// Copyright (C) 2016-2025, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
-// modify it under the terms of  the GNU General Public License as published
+// modify it under the terms of the GNU General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or (at
 // your option) any later version.
 //
@@ -25,7 +25,7 @@
 // for more details.
 //
 // You should have received a copy of the GNU General Public License along
-// with this program.  (It's in the $(ROOT)/doc directory, run make with no
+// with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
 // }}}
@@ -35,12 +35,13 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-//
-`default_nettype none
+`timescale 1ns/1ps
+`default_nettype	none
 // }}}
 module spitxdata #(
 		// {{{
 		parameter	DW = 32, AW = 8, RDDELAY = 2,
+		parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,
 		localparam	CRC_POLYNOMIAL = 16'h1021
 		// }}}
 	) (
@@ -170,24 +171,41 @@ module spitxdata #(
 	begin
 		if (!o_ll_stb && rdvalid[RDDELAY-1])
 		begin
-			gearbox <= { 8'hfe, i_data };
+			if (OPT_LITTLE_ENDIAN)
+				gearbox <= { i_data, 8'hfe };
+			else
+				gearbox <= { 8'hfe, i_data };
 			fill <= 5'h1f;
 		end else if (rdvalid[RDDELAY-1])
 		begin
-			gearbox <= { gearbox[DW+8-1:DW], i_data };
+			if (OPT_LITTLE_ENDIAN)
+				gearbox <= { i_data, gearbox[7:0] };
+			else
+				gearbox <= { gearbox[DW+8-1:DW], i_data };
 			fill <= 5'h1f;
 		end else if (crc_stb)
 		begin
-			gearbox <= { gearbox[DW+8-1:DW], crc_data, 16'hff };
+			if (OPT_LITTLE_ENDIAN)
+				gearbox <= { 16'hff, crc_data[7:0], crc_data[15:8], gearbox[7:0] };
+			else
+				gearbox <= { gearbox[DW+8-1:DW], crc_data, 16'hff };
 			fill[3:0] <= 4'hc;
 		end else if (o_ll_stb && !i_ll_busy)
 		begin
-			gearbox <= { gearbox[DW-1:0], 8'hff };
+			if (OPT_LITTLE_ENDIAN)
+				gearbox <= { 8'hff, gearbox[DW+8-1:8] };
+			else
+				gearbox <= { gearbox[DW-1:0], 8'hff };
 			fill <= fill << 1;
 		end
 
 		if (!o_busy)
-			gearbox[39:32] <= 8'hfe;	// Start token
+		begin
+			if (OPT_LITTLE_ENDIAN)
+				gearbox[7:0] <= 8'hfe;	// Start token
+			else
+				gearbox[39:32] <= 8'hfe;	// Start token
+		end
 
 		if (i_reset)
 			fill <= 0;
@@ -196,7 +214,12 @@ module spitxdata #(
 	end
 	// }}}
 
-	assign	o_ll_byte = gearbox[39:32];
+	generate if (OPT_LITTLE_ENDIAN)
+	begin : GEN_LILEND
+		assign	o_ll_byte = gearbox[7:0];
+	end else begin : GEN_BIG_ENDIAN
+		assign	o_ll_byte = gearbox[39:32];
+	end endgenerate
 
 	// crc_stb, o_read
 	// {{{
@@ -321,8 +344,12 @@ module spitxdata #(
 	// {{{
 	always @(posedge i_clk)
 	if (!crc_active)
-		crc_gearbox <= i_data;
-	else
+	begin
+		if (OPT_LITTLE_ENDIAN)
+			crc_gearbox <= { i_data[7:0], i_data[15:8], i_data[23:16], i_data[31:24] };
+		else
+			crc_gearbox <= i_data;
+	end else
 		crc_gearbox <= { crc_gearbox[DW-3:0], 2'b00 };
 	// }}}
 
@@ -330,7 +357,7 @@ module spitxdata #(
 	// {{{
 	always @(*)
 	begin
-		next_crc_data = crc_data << 1;;
+		next_crc_data = crc_data << 1;
 
 		if (crc_data[15] ^ crc_gearbox[31])
 			next_crc_data = next_crc_data ^ CRC_POLYNOMIAL;
@@ -628,30 +655,45 @@ module spitxdata #(
 		assert(o_ll_stb);
 		assert(rdvalid == 0);
 		assert(fill == 5'h1f);
-		assert(gearbox[DW-1:0] == f_read_data);
+		if (OPT_LITTLE_ENDIAN)
+			assert(gearbox[DW+8-1:8] == f_read_data);
+		else
+			assert(gearbox[DW-1:0] == f_read_data);
 		end
 	6'h04: begin
 		assert(o_ll_stb);
 		assert(rdvalid == 0);
 		assert(fill == 5'h1e);
-		assert(gearbox[8+DW-1:8] == f_read_data);
+		if (OPT_LITTLE_ENDIAN)
+			assert(gearbox[DW-1:0] == f_read_data);
+		else
+			assert(gearbox[8+DW-1:8] == f_read_data);
 		end
 	6'h08: begin
 		assert(o_ll_stb);
 		assert(rdvalid == 0);
 		assert(fill == 5'h1c);
-		assert(gearbox[8+DW-1:16] == f_read_data[23:0]);
+		if (OPT_LITTLE_ENDIAN)
+			assert(gearbox[DW-8-1:0] == f_read_data[31:8]);
+		else
+			assert(gearbox[8+DW-1:16] == f_read_data[23:0]);
 		end
 	6'h10: begin
 		assert(o_ll_stb);
 		assert(rdvalid == 0);
 		assert(fill == 5'h18);
-		assert(gearbox[8+DW-1:24] == f_read_data[15:0]);
+		if (OPT_LITTLE_ENDIAN)
+			assert(gearbox[DW-16-1:0] == f_read_data[31:16]);
+		else
+			assert(gearbox[8+DW-1:24] == f_read_data[15:0]);
 		end
 	6'h20: begin
 		assert(o_ll_stb);
 		assert(fill[4]);
-		assert(gearbox[8+DW-1:DW] == f_read_data[7:0]);
+		if (OPT_LITTLE_ENDIAN)
+			assert(gearbox[DW-24-1:0] == f_read_data[31:24]);
+		else
+			assert(gearbox[8+DW-1:DW] == f_read_data[7:0]);
 		end
 	default:
 `ifdef	VERIFIC

@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	spirxdata.v
+// Filename:	rtl/spirxdata.v
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SD-Card controller
 //
 // Purpose:	To handle all of the processing associated with receiving data
 //		from an SD card via the lower-level SPI processor, and then
@@ -14,10 +14,10 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2019-2022, Gisselquist Technology, LLC
+// Copyright (C) 2016-2025, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
-// modify it under the terms of  the GNU General Public License as published
+// modify it under the terms of the GNU General Public License as published
 // by the Free Software Foundation, either version 3 of the License, or (at
 // your option) any later version.
 //
@@ -27,7 +27,7 @@
 // for more details.
 //
 // You should have received a copy of the GNU General Public License along
-// with this program.  (It's in the $(ROOT)/doc directory, run make with no
+// with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 // target there if the PDF file isn't present.)  If not, see
 // <http://www.gnu.org/licenses/> for a copy.
 // }}}
@@ -37,11 +37,13 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-`default_nettype none
+`timescale 1ns/1ps
+`default_nettype	none
 // }}}
 module spirxdata #(
 		// {{{
 		parameter	DW = 32, AW = 8,
+		parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,
 		localparam	CRC_POLYNOMIAL = 16'h1021
 		// }}}
 	) (
@@ -183,7 +185,12 @@ module spirxdata #(
 	initial	o_data = 0;
 	always @(posedge i_clk)
 	if (received_token && !all_mem_written)
-		o_data <= { gearbox, i_ll_byte };
+	begin
+		if (OPT_LITTLE_ENDIAN)
+			o_data <= { i_ll_byte, gearbox };
+		else
+			o_data <= { gearbox, i_ll_byte };
+	end
 	// }}}
 
 	// o_addr
@@ -201,7 +208,12 @@ module spirxdata #(
 	always @(posedge i_clk)
 	begin
 		if (i_ll_stb)
-			gearbox <= { gearbox[15:0], i_ll_byte };
+		begin
+			if (OPT_LITTLE_ENDIAN)
+				gearbox <= { i_ll_byte, gearbox[23:8] };
+			else
+				gearbox <= { gearbox[15:0], i_ll_byte };
+		end
 
 		if (!o_busy || !received_token)
 			fill <= 0;
@@ -316,7 +328,7 @@ module spirxdata #(
 	// {{{
 	always @(*)
 	begin
-		first_crc_data = crc_data << 1;;
+		first_crc_data = crc_data << 1;
 
 		if (crc_data[15] ^ crc_gearbox[7])
 			first_crc_data = first_crc_data ^ CRC_POLYNOMIAL;

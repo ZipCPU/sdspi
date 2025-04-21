@@ -1,8 +1,8 @@
 ################################################################################
 ##
-## Filename: 	Makefile
+## Filename:	Makefile
 ## {{{
-## Project:	SD-Card controller, using a shared SPI interface
+## Project:	SD-Card controller
 ##
 ## Purpose:	Coordinate building the specification for this core, the
 ##		Verilator Verilog check, and any bench software.
@@ -12,10 +12,10 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2016-2022, Gisselquist Technology, LLC
+## Copyright (C) 2016-2025, Gisselquist Technology, LLC
 ## {{{
 ## This program is free software (firmware): you can redistribute it and/or
-## modify it under the terms of  the GNU General Public License as published
+## modify it under the terms of the GNU General Public License as published
 ## by the Free Software Foundation, either version 3 of the License, or (at
 ## your option) any later version.
 ##
@@ -25,7 +25,7 @@
 ## for more details.
 ##
 ## You should have received a copy of the GNU General Public License along
-## with this program.  (It's in the $(ROOT)/doc directory, run make with no
+## with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 ## target there if the PDF file isn't present.)  If not, see
 ## <http://www.gnu.org/licenses/> for a copy.
 ## }}}
@@ -58,8 +58,9 @@ archive:
 	tar --transform s,^,$(YYMMDD)-sdspi/, -chjf $(YYMMDD)-sdspi.tjz $(BENCH) $(SW) $(RTL) $(NOTES)
 ## }}}
 
-.PHONY: verilated
+.PHONY: verilated rtl
 ## {{{
+rtl: verilated
 verilated:
 	$(SUBMAKE) rtl
 ## }}}
@@ -78,18 +79,19 @@ doc:
 .PHONY: formal
 ## {{{
 formal:
-	$(SUBMAKE) bench/formal
+	+$(SUBMAKE) bench/formal
 ## }}}
 
 .PHONY: bench
 ## {{{
-bench:
+bench: rtl
 	$(SUBMAKE) bench/cpp
 ## }}}
 
 .PHONY: test
 ## {{{
-test: formal
+test: formal rtl
+	$(SUBMAKE) bench/verilog test
 	$(SUBMAKE) bench/cpp test
 ## }}}
 #.PHONY: sw

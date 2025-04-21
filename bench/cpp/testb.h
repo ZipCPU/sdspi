@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	testb.h
+// Filename:	bench/cpp/testb.h
 // {{{
-// Project:	SD-Card controller, using a shared SPI interface
+// Project:	SD-Card controller
 //
 // Purpose:	A wrapper for a common interface to a clocked FPGA core
 //		begin exercised in Verilator.
@@ -12,7 +12,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2022, Gisselquist Technology, LLC
+// Copyright (C) 2016-2025, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published

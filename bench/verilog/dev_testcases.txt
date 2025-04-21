@@ -1,0 +1,89 @@
+################################################################################
+##
+## Filename:	bench/verilog/dev_testcases.txt
+## {{{
+## Project:	SD-Card controller
+##
+## Purpose:	Defines a set of tests to be applied to the SDIO (not the eMMC)
+##		controller and simulation model.
+##
+## Creator:	Dan Gisselquist, Ph.D.
+##		Gisselquist Technology, LLC
+##
+################################################################################
+## }}}
+## Copyright (C) 2016-2025, Gisselquist Technology, LLC
+## {{{
+## This program is free software (firmware): you can redistribute it and/or
+## modify it under the terms of the GNU General Public License as published
+## by the Free Software Foundation, either version 3 of the License, or (at
+## your option) any later version.
+##
+## This program is distributed in the hope that it will be useful, but WITHOUT
+## ANY WARRANTY; without even the implied warranty of MERCHANTIBILITY or
+## FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+## for more details.
+##
+## You should have received a copy of the GNU General Public License along
+## with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
+## target there if the PDF file isn't present.)  If not, see
+## <http://www.gnu.org/licenses/> for a copy.
+## }}}
+## License:	GPL, v3, as defined and found on www.gnu.org,
+## {{{
+##		http://www.gnu.org/licenses/gpl.html
+##
+################################################################################
+## }}}
+## Format:
+##  Test name | Test configuration | Test script (or S/W load) | (PARAM=X)*
+## {{{
+##
+## Test configurations are one of:
+##	WB	Uses tb_wb.v as the top level.
+##		This is an all-Verilog TB.  The test script is a Verilog file
+##		containing instructions for the Wishbone bus-functional model
+##		(BFM).
+##	AXI	Uses tb_axi.v as the top level.
+##		Also an all-Verilog TB, with a Verilog test script just like
+##		the SDIO configuration.
+##	CPU	(Note yet built ...) Would use tb_cpu.v as the top level.  This
+##		top level (will eventually) contain a ZipCPU, and it's test
+##		script would be a hex file specifying the software load for
+##		the test.
+## }}}
+sdioio		WB  sdiostart	OPT_SERDES=0 OPT_DDR=0
+sdioddr		WB  sdiostart	OPT_SERDES=0 OPT_DDR=1
+sdio8x		WB  sdiostart	OPT_SERDES=1 OPT_DDR=1
+sddmachk	WB  sddmachk	OPT_SERDES=1 OPT_DDR=1 OPT_DMA=1
+sdstream	WB  sdstream	OPT_SERDES=1 OPT_DDR=1 OPT_DMA=1 OPT_STREAM=1
+axsdioio	AXI sdiostart	OPT_SERDES=0 OPT_DDR=0
+axsdioddr	AXI sdiostart	OPT_SERDES=0 OPT_DDR=1
+axsdio8x	AXI sdiostart	OPT_SERDES=1 OPT_DDR=1
+axsdstream	AXI sdstream	OPT_SERDES=1 OPT_DDR=1 OPT_DMA=1 OPT_STREAM=1
+axdmachk	AXI sddmachk	OPT_SERDES=1 OPT_DDR=1 OPT_DMA=1
+emmcio		WB  emmcstart	OPT_SERDES=0 OPT_DDR=0
+emmcddr		WB  emmcstart	OPT_SERDES=0 OPT_DDR=1
+emmc8x		WB  emmcstart	OPT_SERDES=1 OPT_DDR=1
+axemmcio	AXI emmcstart	OPT_SERDES=0 OPT_DDR=0
+axemmcddr	AXI emmcstart	OPT_SERDES=0 OPT_DDR=1
+axemmc8x	AXI emmcstart	OPT_SERDES=1 OPT_DDR=1
+#
+# The SDSPI tests aren't yet fully implemented in all Verilog yet
+#	They currently exist as part of an integrated C++/Verilog test bench,
+#	run from the bench/cpp directory under Verilator.
+#
+# The CPU tests aren't yet fully implemented ...
+# cpusdio	WBCPU sdcheck.hex	OPT_SERDES=0 OPT_DDR=0
+# cpusdddr	WBCPU sdcheck.hex	OPT_SERDES=0 OPT_DDR=1
+# cpusd8x	WBCPU sdcheck.hex	OPT_SERDES=1 OPT_DDR=1
+# cpuemio	WBCPU emcheck.hex	OPT_SERDES=0 OPT_DDR=0
+# cpuemddr	WBCPU emcheck.hex	OPT_SERDES=0 OPT_DDR=1
+# cpuem8x	WBCPU emcheck.hex	OPT_SERDES=1 OPT_DDR=1
+#
+# caxsdio	AXCPU sdcheck.hex	OPT_SERDES=0 OPT_DDR=0
+# caxsdddr	AXCPU sdcheck.hex	OPT_SERDES=0 OPT_DDR=1
+# caxsd8x	AXCPU sdcheck.hex	OPT_SERDES=1 OPT_DDR=1
+# caxemio	AXCPU emcheck.hex	OPT_SERDES=0 OPT_DDR=0
+# caxemddr	AXCPU emcheck.hex	OPT_SERDES=0 OPT_DDR=1
+# caxem8x	AXCPU emcheck.hex	OPT_SERDES=1 OPT_DDR=1

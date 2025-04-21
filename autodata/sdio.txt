@@ -1,0 +1,229 @@
+################################################################################
+##
+## Filename:	autodata/sdio.txt
+## {{{
+## Project:	SD-Card controller
+##
+## Purpose:	Describes how to connect an SDIO peripheral to a wishbone
+##		bus, as used by autofpga.
+##
+## Creator:	Dan Gisselquist, Ph.D.
+##		Gisselquist Technology, LLC
+##
+################################################################################
+## }}}
+## Copyright (C) 2016-2025, Gisselquist Technology, LLC
+## {{{
+## This program is free software (firmware): you can redistribute it and/or
+## modify it under the terms of the GNU General Public License as published
+## by the Free Software Foundation, either version 3 of the License, or (at
+## your option) any later version.
+##
+## This program is distributed in the hope that it will be useful, but WITHOUT
+## ANY WARRANTY; without even the implied warranty of MERCHANTIBILITY or
+## FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+## for more details.
+##
+## You should have received a copy of the GNU General Public License along
+## with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
+## target there if the PDF file isn't present.)  If not, see
+## <http://www.gnu.org/licenses/> for a copy.
+## }}}
+## License:	GPL, v3, as defined and found on www.gnu.org,
+## {{{
+##		http://www.gnu.org/licenses/gpl.html
+##
+################################################################################
+##
+## }}}
+@PREFIX=sdcard
+@DEVID=SDIO
+@NAME=SDIO SD Card
+@NADDR=8
+@CRCTOKEN=1
+@$NUMIO=4
+@ACCESS=SDIO_ACCESS
+@SLAVE.TYPE=OTHER
+@SLAVE.BUS=wb
+@MASTER.TYPE=DMA
+@MASTER.BUS=wbwide
+@MASTER.ANSPREFIX=dma_
+## @SCOPE.TRIGGER=@$(PREFIX)_debug[31]
+## @SCOPE.DATA=@$(PREFIX)_debug
+@INT.SDCARD.WIRE= @$(PREFIX)_int
+@INT.SDCARD.PIC= syspic
+@CARD_DETECT=1'b1
+@OPT_SERDES=1'b0
+@OPT_DDR=1'b1
+@OPT_EMMC=1'b0
+@OPT_DMA=1'b1
+@OPT_HWRESET=@$(OPT_EMMC)
+@TOP.PORTLIST=
+		// @$(NAME)
+		o_@$(PREFIX)_clk, io_@$(PREFIX)_cmd, io_@$(PREFIX)_dat, i_@$(PREFIX)_cd_n
+@TOP.IODECL=
+	// @$(NAME)
+	// {{{
+	output	wire		o_@$(PREFIX)_clk;
+	inout	wire		io_@$(PREFIX)_cmd;
+	inout	wire	[@$(NUMIO)-1:0]	io_@$(PREFIX)_dat;
+	input	wire		i_@$(PREFIX)_cd_n;
+	// }}}
+@TOP.DEFNS=
+	// @$(NAME) definitions
+	// {{{
+	wire	i_@$(PREFIX)_ds;
+	// }}}
+@TOP.MAIN=
+		// @$(NAME)
+		o_@$(PREFIX)_clk, i_@$(PREFIX)_ds,
+		io_@$(PREFIX)_cmd, io_@$(PREFIX)_dat,
+		!i_@$(PREFIX)_cd_n
+@TOP.INSERT=
+	assign	i_@$(PREFIX)_ds = 1'b0;
+@MAIN.PORTLIST=
+		// @$(NAME)
+		o_@$(PREFIX)_clk, i_@$(PREFIX)_ds,
+`ifdef	VERILATOR
+		io_@$(PREFIX)_cmd_tristate,
+		o_@$(PREFIX)_cmd, i_@$(PREFIX)_cmd,
+		io_@$(PREFIX)_dat_tristate,
+		o_@$(PREFIX)_dat, i_@$(PREFIX)_dat,
+`else
+		io_@$(PREFIX)_cmd, io_@$(PREFIX)_dat,
+`endif
+		i_@$(PREFIX)_detect
+@MAIN.IODECL=
+	// @$(NAME) declarations
+	// {{{
+	output	wire		o_@$(PREFIX)_clk;
+	input	wire		i_@$(PREFIX)_ds;
+`ifdef	VERILATOR
+	output	wire		io_@$(PREFIX)_cmd_tristate;
+	output	wire		o_@$(PREFIX)_cmd;
+	input	wire		i_@$(PREFIX)_cmd;
+	output	wire	[@$(NUMIO)-1:0]	io_@$(PREFIX)_dat_tristate;
+	output	wire	[@$(NUMIO)-1:0]	o_@$(PREFIX)_dat;
+	input	wire	[@$(NUMIO)-1:0]	i_@$(PREFIX)_dat;
+`else
+	inout	wire		io_@$(PREFIX)_cmd;
+	inout	wire	[@$(NUMIO)-1:0]	io_@$(PREFIX)_dat;
+`endif
+	input	wire		i_@$(PREFIX)_detect;
+	// }}}
+@MAIN.DEFNS=
+	// @$(NAME) definitions
+	// Verilator lint_off UNUSED
+	wire		w_@$(PREFIX)_1p8v, s_@$(PREFIX)_ready,
+			m_@$(PREFIX)_valid, m_@$(PREFIX)_last;
+	wire	[31:0]	@$(PREFIX)_debug, m_@$(PREFIX)_data;
+	// Verilator lint_on  UNUSED
+@MAIN.INSERT=
+	////////////////////////////////////////////////////////////////////////
+	//
+	// @$(NAME) handling
+	// {{{
+	////////////////////////////////////////////////////////////////////////
+	//
+	//
+
+	sdio_top #(
+		// {{{
+		.LGFIFO(10), .NUMIO(@$(NUMIO)),
+		.MW(@$(SLAVE.BUS.WIDTH)),
+		.ADDRESS_WIDTH(@$(MASTER.BUS.AWID)+$clog2(@$(MASTER.BUS.WIDTH)/8)),
+		.DMA_DW(@$(MASTER.BUS.WIDTH)),
+		.OPT_SERDES(@$(OPT_SERDES)),
+		.OPT_EMMC(@$(OPT_EMMC)),
+		.OPT_DMA(@$(OPT_DMA)),
+		.OPT_DDR(@$(OPT_DDR)),
+		.OPT_HWRESET(@$(OPT_HWRESET)),
+		.OPT_CARD_DETECT(@$(CARD_DETECT)),
+		.OPT_CRCTOKEN(@$(CRCTOKEN)),
+		.LGTIMEOUT(26),
+		.OPT_ISTREAM(1'b0),
+		.OPT_OSTREAM(1'b0)
+		// }}}
+	) u_@$(PREFIX)(
+		// {{{
+		.i_clk(@$(SLAVE.BUS.CLOCK.WIRE)),
+		.i_reset(@$(SLAVE.BUS.CLOCK.RESET)),
+		.i_hsclk(1'b0),
+		@$(SLAVE.ANSIPORTLIST),
+		@$(MASTER.ANSIPORTLIST),
+		.o_ck(o_@$(PREFIX)_clk),
+		.i_ds(i_@$(PREFIX)_ds),
+		// (Unused) DMA Stream assignments
+		// {{{
+		.s_valid(1'b0),
+		.s_ready(s_@$(PREFIX)_ready),
+		.s_data(32'h0),
+		//
+		.m_valid(m_@$(PREFIX)_valid),
+		.m_ready(1'b1),
+		.m_data(m_@$(PREFIX)_data),
+		.m_last(m_@$(PREFIX)_last),
+		// }}}
+`ifdef	VERILATOR
+		.io_cmd_tristate(io_@$(PREFIX)_cmd_tristate),
+		.o_cmd(o_@$(PREFIX)_cmd),
+		.i_cmd(i_@$(PREFIX)_cmd),
+		.io_dat_tristate(io_@$(PREFIX)_dat_tristate),
+		.o_dat(o_@$(PREFIX)_dat),
+		.i_dat(i_@$(PREFIX)_dat),
+`else
+		.io_cmd(io_@$(PREFIX)_cmd),
+		.io_dat(io_@$(PREFIX)_dat),
+`endif
+		.i_card_detect(i_@$(PREFIX)_detect),
+		.o_1p8v(w_@$(PREFIX)_1p8v),
+		.o_int(@$(PREFIX)_int),
+		.o_debug(@$(PREFIX)_debug)
+		// }}}
+	);
+
+	// }}}
+@MAIN.ALT=
+	assign	o_@$(PREFIX)_clk = 1'b1;
+`ifdef	VERILATOR
+	assign	io_@$(PREFIX)_cmd_tristate = 1'b1;
+	assign	o_@$(PREFIX)_cmd = 1'b1;
+	assign	io_@$(PREFIX)_data_tristate  = -1;
+	assign	o_@$(PREFIX)_data = -1;
+`else	// VERILATOR
+	assign	io_@$(PREFIX)_cmd  = 1'b1;
+	assign	io_@$(PREFIX)_dat  = -1;
+`endif	// VERILATOR
+@REGS.N=5
+@REGS.NOTE= // @$(NAME) addresses
+@REGS.0= 0 R_@$(DEVID)_CTRL  	SDCARD
+@REGS.1= 1 R_@$(DEVID)_DATA 	SDDATA
+@REGS.2= 2 R_@$(DEVID)_FIFOA	SDFIFOA, SDFIF0, SDFIFA
+@REGS.3= 3 R_@$(DEVID)_FIFOB	SDFIFOB, SDFIF1, SDFIFB
+@REGS.4= 4 R_@$(DEVID)_PHY	SDPHY
+@BDEF.DEFN=
+////////////////////////////////////////////////////////////////////////////////
+//
+// @$(NAME) constants
+// {{{
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+
+// These will be defined in sdiodrv.h for the SDIO controller
+struct @$(DEVID)_S;
+// }}}
+@BDEF.IONAME=_@$(PREFIX)
+@BDEF.IOTYPE=struct @$(DEVID)_S
+@BDEF.OSDEF=_BOARD_HAS_@$(DEVID)
+@BDEF.OSVAL=static volatile @$(BDEF.IOTYPE) *const @$(BDEF.IONAME) = ((@$(BDEF.IOTYPE) *)@$[0x%08x](REGBASE));
+@SIM.CLOCK=clk
+@SIM.INCLUDE=
+// #include "sdiosim.h"
+@RTL.MAKE.GROUP= SDIO
+@RTL.MAKE.SUBD=sdspi
+@RTL.MAKE.FILES= sdio_top.v sdio.v sdfrontend.v sdckgen.v sdwb.v sdtxframe.v sdrxframe.v sdcmd.v sddma.v sddma_mm2s.v sddma_rxgears.v sdfifo.v sddma_txgears.v sddma_s2mm.v xsdddr.v xsdserdes8x.v
+@XDC.SERDES=
+set_max_delay -datapath_only -from [get_cells -hier -filter {NAME=~ thedesign/u_@$(PREFIX)/u_sdcmd/cmd_tristate*}] -to [get_cells -hier -filter {NAME=~ u_@$(PREFIX)_frontend/GEN_WIDE_IO.cmd_serdes/u_oserdes*}] 4.0
+set_max_delay -datapath_only -from [get_cells -hier -filter {NAME=~ thedesign/u_@$(PREFIX)/u_txframe/r_tristate*}] -to [get_cells -hier -filter {NAME=~ u_@$(PREFIX)_frontend/GEN_WIDE_IO.GEN_WIDE_DATIO*.io_serdes/u_oserdes*}] 4.0
+

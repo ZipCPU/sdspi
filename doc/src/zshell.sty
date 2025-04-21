@@ -1,0 +1,74 @@
+\ProvidesFile{zshell.sty}
+    [2018/01/25 0.9 SVA+Verilog language file]
+%%
+\usepackage{lstlang1}
+\usepackage{lstlang2}
+% \usepackage{lstlang1.sty}
+%
+\lst@definelanguage{Constraint}%
+  {morekeywords={NET,set_io,IOSTANDARD,LOC,set_property,-dict,get_ports},%
+   morecomment=[l]\#,%
+   morestring=[b]"
+   }[keywords,comments]%
+%
+\definecolor{bcomment}{rgb}{0.7,0.7,0.7}	% Comments
+\definecolor{brword}{rgb}{0.0,0.2,0.2}		% Reserved words
+\newcommand\blist{[language=bash]}
+\newcommand\bset{\lstset{language=bash,%
+	basicstyle={\ttfamily\small},%
+	keywordstyle={\ttfamily\bf \color{brword}},%
+	commentstyle=\em\color{bcomment},%
+	tabsize=8,%
+	mathescape=false,
+	numberstyle={\tiny \color{black}},%
+	identifierstyle=\ttfamily\color{black}}}
+\newcommand\binline{\bset\lstinline}
+\lstnewenvironment{zbash}{%
+	\bset\lstset{frame=tRBl,% escapeinside=`',
+	backgroundcolor=\color{gray!05}}}{}
+%
+\lstnewenvironment{zconstraint}{%
+	\lstset{language=sh,frame=tRBl,% escapeinside=`,
+	basicstyle={\ttfamily\small},%
+	mathescape=false,
+	backgroundcolor=\color{blue!05}}}{}
+%
+\lstnewenvironment{zVCD}{%
+	\bset\lstset{frame=tRBl,% escapeinside=`',
+	backgroundcolor=\color{gray!05}}}{}
+%
+\newcommand\cplist{[language=C++]}
+\definecolor{cpcomment}{rgb}{0.4,0.4,0.4}	% Comments
+\definecolor{cprword}{rgb}{0.0,0.2,0.2}		% Reserved words
+\newcommand\cpset{\lstset{language=C++,%
+	basicstyle={\ttfamily\small},%
+	keywordstyle={\ttfamily\bf \color{cprword}},%
+	commentstyle=\em\color{cpcomment},%
+	tabsize=8,%
+	mathescape=false,
+	numberstyle={\tiny \color{black}},%
+	identifierstyle=\ttfamily\small\bf\color{black}}}
+\lstnewenvironment{zCpp}{%
+	\cpset\lstset{frame=tRBl,% escapeinside=`',
+	backgroundcolor=\color{red!10}}}{}
+\newcommand\cppinline{\cpset\lstinline}
+%
+\newcommand\gmklist{[language=make]}
+\definecolor{gmkbackground}{rgb}{0.95,1.0,0.95}	% Background
+\definecolor{gmkcomment}{rgb}{0.4,0.4,0.4}	% Comments
+\definecolor{gmkword}{rgb}{0.0,0.2,0.2}		% Reserved words
+\newcommand\gmkset{\lstset{language=make,%
+	basicstyle={\ttfamily\small},%
+	keywordstyle={\ttfamily\bf \color{gmkword}},%
+	commentstyle=\em\color{gmkcomment},%
+	tabsize=8,%
+	mathescape=false,
+	numberstyle={\tiny \color{black}},%
+	identifierstyle=\ttfamily\small\bf\color{black}}}
+\lstnewenvironment{zmake}{%
+	\gmkset\lstset{frame=tRBl,% escapeinside=`',
+	backgroundcolor=\color{gmkbackground}}}{}
+\newcommand\gmkinline{\gmkset\lstinline}
+%
+\endinput
+%%

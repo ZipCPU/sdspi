@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdspisim.h
+// Filename:	bench/cpp/sdspisim.h
 // {{{
-// Project:	Wishbone Controlled SD-Card Controller over SPI port
+// Project:	SD-Card controller
 //
 // Purpose:	This library simulates the operation of a SPI commanded SD-Card,
 //		such as might be found on a XuLA2-LX25 board made by xess.com.
@@ -15,7 +15,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2015-2022, Gisselquist Technology, LLC
+// Copyright (C) 2015-2025, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published

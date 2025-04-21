@@ -1,0 +1,140 @@
+[*]
+[*] GTKWave Analyzer v3.3.104 (w)1999-2020 BSI
+[*] Mon Feb 19 15:27:43 2024
+[*]
+[dumpfile_mtime] "Mon Feb 19 15:25:52 2024"
+[dumpfile_size] 223025
+[timestart] 3
+[size] 1918 600
+[pos] -1 -1
+*-4.641469 180 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] sdwb.
+[sst_width] 270
+[signals_width] 203
+[sst_expanded] 1
+[sst_vpaned_height] 143
+@28
+sdwb.i_clk
+sdwb.i_reset
+@c00200
+-REQUEST
+@28
+sdwb.new_cmd_request
+sdwb.new_data_request
+sdwb.new_dma_request
+sdwb.new_r2_request
+sdwb.new_tx_request
+@1401200
+-REQUEST
+@c00200
+>25
+-BUS
+@28
+>0
+sdwb.bus_write
+sdwb.bus_wraddr[2:0]
+@22
+sdwb.bus_wdata[31:0]
+sdwb.bus_wstrb[3:0]
+@28
+sdwb.dma_write
+@1401200
+>25
+-BUS
+@28
+>0
+sdwb.r_mem_busy
+@22
+sdwb.fif_rdaddr[12:0]
+sdwb.fif_wraddr[12:0]
+@23
+sdwb.GEN_DMA_COMMANDS.f_dma_rdaddr[12:0]
+@28
+sdwb.r_fifo
+@c00200
+-DMA
+@28
+sdwb.dma_zero_len
+sdwb.dma_busy
+sdwb.GEN_DMA_COMMANDS.dma_stopped
+sdwb.GEN_DMA_COMMANDS.r_tx
+@22
+sdwb.GEN_DMA_COMMANDS.f_rx_blocks[31:0]
+sdwb.GEN_DMA_COMMANDS.f_tx_blocks[31:0]
+sdwb.GEN_DMA_COMMANDS.r_block_count[31:0]
+@28
+sdwb.GEN_DMA_COMMANDS.r_dma_loaded[1:0]
+sdwb.i_dma_busy
+[color] 1
+sdwb.i_dma_err
+sdwb.dma_error
+sdwb.o_dma_abort
+@200
+-
+@28
+sdwb.o_dma_s2sd
+sdwb.i_s2sd_valid
+sdwb.o_s2sd_ready
+@22
+sdwb.i_s2sd_data[31:0]
+@200
+-
+@28
+sdwb.o_dma_sd2s
+sdwb.o_sd2s_valid
+sdwb.i_sd2s_ready
+sdwb.GEN_DMA_COMMANDS.pre_dma_valid
+@22
+sdwb.o_sd2s_data[31:0]
+@28
+sdwb.o_sd2s_last
+@200
+-
+@22
+sdwb.dma_addr_return[63:0]
+@28
+sdwb.dma_fifo
+sdwb.dma_last
+@22
+sdwb.dma_len_return[31:0]
+@28
+sdwb.dma_read_fifo
+sdwb.dma_write
+@22
+sdwb.o_dma_addr[29:0]
+sdwb.o_dma_len[15:0]
+@1401200
+-DMA
+@28
+sdwb.cmd_busy
+@c00200
+-TX
+@28
+sdwb.r_tx_request
+sdwb.o_tx_en
+sdwb.o_tx_mem_valid
+sdwb.i_tx_mem_ready
+@22
+sdwb.o_tx_mem_data[31:0]
+@28
+sdwb.o_tx_mem_last
+@1401200
+-TX
+@c00200
+-RX
+@28
+sdwb.r_rx_request
+sdwb.o_rx_en
+sdwb.i_rx_done
+sdwb.i_rx_mem_valid
+@22
+sdwb.i_rx_mem_strb[3:0]
+sdwb.i_rx_mem_addr[12:0]
+sdwb.i_rx_mem_data[31:0]
+@28
+sdwb.r_rx_ecode
+sdwb.r_rx_err
+@1401200
+-RX
+[pattern_trace] 1
+[pattern_trace] 0

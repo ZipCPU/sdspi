@@ -1,0 +1,32 @@
+[tasks]
+prf
+prfd prf ddr
+prf8 prf serdes
+cvr
+cvrd cvr ddr
+cvr8 cvr serdes
+
+[options]
+prf: mode prove
+prf: depth 5
+cvr: mode cover
+cvr: depth 54
+
+[engines]
+smtbmc
+
+[script]
+read -define CKGEN
+read -formal sdckgen.v
+read -formal fclk.v
+--pycode-begin--
+cmd = "hierarchy -top sdckgen"
+cmd += " -chparam OPT_SERDES %d" % (1 if "serdes" in tags else 0)
+cmd += " -chparam OPT_DDR %d"    % (1 if "ddr"    in tags else 0)
+output(cmd)
+--pycode-end--
+prep -top sdckgen
+
+[files]
+../../rtl/sdckgen.v
+fclk.v

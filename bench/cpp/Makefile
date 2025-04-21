@@ -1,8 +1,8 @@
 ################################################################################
 ##
-## Filename: 	Makefile
+## Filename:	bench/cpp/Makefile
 ## {{{
-## Project:	SD-Card controller, using a shared SPI interface
+## Project:	SD-Card controller
 ##
 ## Purpose:	Nothing currently.  Eventually, if I create a proper bench
 ##		test, rather than just running this on real hardware as part of
@@ -14,10 +14,10 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2019-2022, Gisselquist Technology, LLC
+## Copyright (C) 2016-2025, Gisselquist Technology, LLC
 ## {{{
 ## This program is free software (firmware): you can redistribute it and/or
-## modify it under the terms of  the GNU General Public License as published
+## modify it under the terms of the GNU General Public License as published
 ## by the Free Software Foundation, either version 3 of the License, or (at
 ## your option) any later version.
 ##
@@ -27,14 +27,13 @@
 ## for more details.
 ##
 ## You should have received a copy of the GNU General Public License along
-## with this program.  (It's in the $(ROOT)/doc directory, run make with no
+## with this program.  (It's in the $(ROOT)/doc directory.  Run make with no
 ## target there if the PDF file isn't present.)  If not, see
 ## <http://www.gnu.org/licenses/> for a copy.
 ## }}}
 ## License:	GPL, v3, as defined and found on www.gnu.org,
 ## {{{
 ##		http://www.gnu.org/licenses/gpl.html
-##
 ##
 ################################################################################
 ##
@@ -55,13 +54,13 @@ VROOT := $(VERILATOR_ROOT)
 VINCD := $(VERILATOR_ROOT)/include
 INCS   := -I $(VINCD) -I $(VINCD)/vlstd -I $(RTLD)/obj_dir
 CFLAGS  := -O3
-PROGRAMS := autotest_tb
+PROGRAMS := tb_sdspi
 all: $(PROGRAMS)
 
-SOURCES := autotest_tb.cpp sdspisim.cpp
+SOURCES := tb_sdspi.cpp sdspisim.cpp
 HEADERS := sdspisim.h wb_tb.h testb.h
 OBJECTS := $(addprefix $(OBJDIR)/,$(subst .cpp,.o,$(SOURCES)))
-VLSRCS  := verilated.cpp verilated_vcd_c.cpp
+VLSRCS  := verilated.cpp verilated_vcd_c.cpp verilated_threads.cpp
 VLOBJS  := $(addprefix $(OBJDIR)/,$(subst .cpp,.o,$(VLSRCS)))
 VLIBS   := $(RTLD)/obj_dir/Vsdspi__ALL.a
 
@@ -76,18 +75,20 @@ $(OBJDIR)/%.o: $(VROOT)/include/%.cpp
 	$(CXX) $(CFLAGS) $(INCS) -c $< -o $@
 ## }}}
 
-## autotest_tb
+## tb_sdspi
 ## {{{
-autotest_tb: $(OBJECTS) $(VLIBS) $(VLOBJS)
-	$(CXX) $(CFLAGS) $(OBJECTS) $(VLIBS) $(VLOBJS) -o $@
+tb_sdspi: $(OBJECTS) $(VLIBS) $(VLOBJS)
+	$(CXX) $(CFLAGS) $(OBJECTS) $(VLIBS) $(VLOBJS) -lpthread -o $@
 ## }}}
+
+sdcard.img:
+	dd if=/dev/zero of=sdcard.img bs=512 count=131072
+	mkfs.fat -F 16 sdcard.img
 
 ## test
 ## {{{
-test: autotest_tb
-	dd if=/dev/zero of=sdcard.img bs=512 count=131072
-	mkfs.fat -F 16 sdcard.img
-	./autotest_tb
+test: tb_sdspi sdcard.img
+	./tb_sdspi
 ## }}}
 
 define	mk-objdir

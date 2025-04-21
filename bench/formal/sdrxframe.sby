@@ -1,0 +1,26 @@
+[tasks]
+prf      opt_ds
+prfs prf
+cvr      opt_ds
+
+[options]
+prf: mode prove
+depth 8
+cvr: mode cover
+cvr: depth 30
+
+[engines]
+smtbmc
+
+[script]
+read -formal sdrxframe.v
+--pycode-begin--
+cmd = "hierarchy -top sdrxframe"
+cmd += " -chparam OPT_DS %d" % (1 if "opt_ds" in tags else 0)
+output(cmd)
+--pycode-end--
+proc -norom
+prep -top sdrxframe
+
+[files]
+../../rtl/sdrxframe.v

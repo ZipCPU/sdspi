@@ -7,8 +7,13 @@ obj-zip
 *.o
 *.a
 *.vcd
+*.fst
+*.log
 .*.swp
 .*.swo
+*.autosave
+.swp
+.swo
 svn-commit*
 *_tb
 *_tb.dbl
@@ -16,3 +21,5 @@ svn-commit*
 *dump.txt
 tags
 cpudefs.h
+/*.pdf
+/refs/

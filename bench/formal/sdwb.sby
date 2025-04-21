@@ -1,0 +1,37 @@
+[tasks]
+prf
+prfds prf opt_serdes opt_emmc opt_dma
+prfdr prf opt_ddr opt_dma
+prfdma prf opt_dma
+cvr opt_serdes opt_dma
+
+[options]
+prf: mode prove
+cvr: mode cover
+prf: depth 10
+cvr: depth 45	# Actually takes 42 steps, and about 4hrs
+
+[engines]
+smtbmc
+
+[script]
+read -formal sdwb.v
+read -formal fwb_slave.v
+read -formal fwb_register.v
+--pycode-begin--
+cmd = "hierarchy -top sdwb"
+cmd += " -chparam OPT_SERDES   %d" % (1 if "opt_serdes" in tags else 0)
+cmd += " -chparam OPT_DDR      %d" % (1 if "opt_ddr"  in tags else 0)
+cmd += " -chparam OPT_DMA      %d" % (1 if "opt_dma"  in tags else 0)
+cmd += " -chparam OPT_EMMC     %d" % (1 if "opt_emmc" in tags else 0)
+cmd += " -chparam OPT_CRCTOKEN 1"
+cmd += " -chparam NUMIO        %d" % (8 if "opt_emmc" in tags else 4)
+output(cmd)
+--pycode-end--
+proc -norom
+prep -top sdwb
+
+[files]
+../../rtl/sdwb.v
+fwb_slave.v
+fwb_register.v

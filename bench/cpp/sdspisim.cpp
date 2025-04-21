@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdspisim.cpp
+// Filename:	bench/cpp/sdspisim.cpp
 // {{{
-// Project:	Wishbone Controlled SD-Card Controller over SPI port
+// Project:	SD-Card controller
 //
 // Purpose:	This library simulates the operation of a SPI commanded SD-Card,
 //		such as might be found on a XuLA2-LX25 board made by xess.com.
@@ -15,7 +15,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2015-2022, Gisselquist Technology, LLC
+// Copyright (C) 2015-2025, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -38,13 +38,13 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-// }}}
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
 #include <stdlib.h>
 
 #include "sdspisim.h"
+// }}}
 
 static	const unsigned
 	MICROSECONDS = 80, // Clocks in a microsecond
@@ -113,9 +113,9 @@ unsigned	SDSPISIM::OCR(void) {
 	unsigned	ocr = 0x00ff80;
 
 	if (CCS)
-		ocr |= 0x400000;
+		ocr |= 0x40000000;
 	if (m_powerup_busy)
-		ocr |= 0x800000;
+		ocr |= 0x80000000;
 
 	return ocr;
 }
@@ -317,7 +317,7 @@ int	SDSPISIM::operator()(const int csn, const int sck, const int mosi) {
 						}
 					} else {
 						m_dat_out = 0x0b;
-						printf("RXCRC Err!  %04x != %04x\n", rxcrc, crc);
+						printf("SDSPISIM: RXCRC Err!  %04x != %04x\n", rxcrc, crc);
 						assert(rxcrc == crc);
 					}
 				}
@@ -488,7 +488,7 @@ int	SDSPISIM::operator()(const int csn, const int sck, const int mosi) {
 						if (m_block_address) {
 							assert(arg < m_devblocks);
 							fseek(m_dev, arg<<LGSECTOR_SIZE, SEEK_SET);
-fprintf(stderr, "READ: Seek to sector %d\n", arg);
+// fprintf(stderr, "READ: Seek to sector %d\n", arg);
 						} else {
 							assert(arg < m_devblocks<<9);
 							fseek(m_dev, arg, SEEK_SET);
@@ -510,7 +510,7 @@ fprintf(stderr, "READ: Seek to sector %d\n", arg);
 						if (m_debug) printf("Going to write to block %08x of %08lx\n", arg, m_devblocks);
 						if (m_block_address) {
 							assert(arg < m_devblocks);
-fprintf(stderr, "WRITE: Seek to sector %d\n", arg);
+// fprintf(stderr, "WRITE: Seek to sector %d\n", arg);
 							fseek(m_dev, arg<<LGSECTOR_SIZE, SEEK_SET);
 						} else {
 							assert(arg < m_devblocks<<9);
@@ -541,6 +541,7 @@ fprintf(stderr, "WRITE: Seek to sector %d\n", arg);
 					// m_rspbuf[3] = 0x80;
 					// m_rspbuf[4] = 0; // No low-voltage supt
 					m_rspdly = 4;
+
 					if (m_reset_state == SDSPI_RESET_COMPLETE)
 						m_reset_state = SDSPI_IN_OPERATION;
 					}

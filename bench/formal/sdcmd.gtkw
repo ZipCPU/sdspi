@@ -1,0 +1,80 @@
+[*]
+[*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
+[*] Fri Jul  7 18:46:12 2023
+[*]
+[dumpfile] "(null)"
+[timestart] 0
+[size] 1454 600
+[pos] -1 -1
+*-6.348147 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 362
+[signals_width] 182
+[sst_expanded] 1
+[sst_vpaned_height] 156
+@28
+sdcmd.i_clk
+sdcmd.i_reset
+sdcmd.i_cfg_dbl
+sdcmd.i_cfg_ds
+sdcmd.i_ckstb
+@200
+-
+@800200
+-CMD
+@28
+sdcmd.i_cmd_request
+sdcmd.o_busy
+@22
+sdcmd.i_cmd[5:0]
+@28
+sdcmd.i_cmd_type[1:0]
+@22
+sdcmd.i_arg[31:0]
+@1000200
+-CMD
+@c00200
+-REPLY
+@28
+sdcmd.o_cmd_response
+@22
+sdcmd.o_resp[5:0]
+sdcmd.o_arg[31:0]
+@28
+sdcmd.o_err
+sdcmd.o_ercode[1:0]
+@1401200
+-REPLY
+@c00200
+-MEM
+@28
+sdcmd.o_mem_valid
+@22
+sdcmd.o_mem_addr[8:0]
+sdcmd.o_mem_data[31:0]
+sdcmd.o_mem_strb[3:0]
+@1401200
+-MEM
+@c00200
+-IO
+@28
+sdcmd.o_cmd_en
+sdcmd.o_cmd_data[1:0]
+sdcmd.i_cmd_data[1:0]
+sdcmd.i_cmd_strb[1:0]
+@1401200
+-IO
+@28
+sdcmd.r_busy
+sdcmd.o_done
+@200
+-
+@28
+sdcmd.waiting_on_response
+sdcmd.active
+@22
+sdcmd.srcount[5:0]
+@28
+sdcmd.w_no_response
+sdcmd.rx_timeout
+[pattern_trace] 1
+[pattern_trace] 0

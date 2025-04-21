@@ -604,7 +604,13 @@ module	mdl_sdio #(
 	// It is illegal to ever change from 1.8V back to 3.3V while the card
 	// is inserted.
 	always @(negedge i_1p8v)
-		assert(!set_1p8v) else $display("NEGEDGE ASSERTION FAIL at %t", $time);
+	begin
+		// assert(!set_1p8v) else $display("NEGEDGE ASSERTION FAIL at %t", $time);
+		if (!set_1p8v) begin end else begin
+			$display("NEGEDGE ASSERTION FAIL at %t", $time);
+			assert(!set_1p8v);
+		end
+	end
 
 	// Following a request to switch to 1p8v, we *must* switch to 1p8v.
 	always @(posedge sd_clk)

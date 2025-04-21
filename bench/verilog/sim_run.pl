@@ -8,6 +8,9 @@
 ## Purpose:	Runs one or more of the test cases described in
 ##		dev_testcases.txt.
 ##
+##	This module is now multi-tasked.  Multiple simulations may run
+##	concurrently, up to (the internal value) $maxtasks.
+##
 ## Creator:	Dan Gisselquist, Ph.D.
 ##		Gisselquist Technology, LLC
 ##
@@ -51,6 +54,8 @@ $axtoplvl = "tb_axi";
 $cputop   = "tb_cpu";
 $testd    = "test/";
 $vivado   = 0;
+$ntasks   = 0;
+$maxtasks = 16;
 
 ## Usage: perl sim_sim.pl all
 ##   or
@@ -170,6 +175,7 @@ sub simline($) {
 		## {{{
 		## Remove any prior build products, so we can detect a failed
 		## build.
+		$exefile = $testd . $tstname;
 		if (-e $exefile) {
 			unlink $exefile;
 		}
@@ -256,6 +262,11 @@ sub simline($) {
 			## Run the simulation
 			## {{{
 			$tstamp = timestamp();
+			$pid = fork;
+			if ($pid ne 0) {
+				return;
+			}
+
 			system "echo \"$tstamp -- Starting simulation\" | tee -a $sim_log";
 			system "$exefile >> $sim_log";
 
@@ -285,28 +296,30 @@ sub simline($) {
 			system "grep -iq \'TEST PASS\' $sim_log";
 			$errS = $?;
 
-			open (SUM,">> $report");
 			if ($errE == 0 or $errA == 0 or $errF == 0) {
 				## ERRORs found, either assertion or other fail
-				print SUM "ERRORS    $msg\n";
-				print     "ERRORS    $msg\n";
+				$msg = sprintf("ERRORS    %s\n", $msg);
 				push @failed,$tstname;
 			} elsif ($errT == 0) {
 				# Timing violations present
-				print SUM "TIMING-ER $msg\n";
-				print     "TIMING-ER $msg\n";
+				$msg = sprintf("TIMING-ER %s\n", $msg);
 				push @failed,$tstname;
 			} elsif ($errS != 0) {
 				# No success (TEST_PASS) message present
-				print SUM "FAIL      $msg\n";
-				print     "FAIL      $msg\n";
+				$msg = sprintf("FAIL      %s\n", $msg);
 				push @failed,$tstname;
 			} else {
-				print SUM "Pass      $msg\n";
-				print     "Pass      $msg\n";
+				$msg = sprintf("Pass      %s\n", $msg);
 				push @passed,$tstname;
-			} close SUM;
+			}
+
+			open (SUM,">> $report");
+			print SUM $msg;
+			close SUM;
+			print     $msg;
 			## }}}
+
+			exit 0;
 			## }}}
 		} else {
 			## Report that the simulation failed to build
@@ -360,7 +373,21 @@ if ($run_all) {
 	open(TL, $testlist);
 	while($line = <TL>) {
 		next if ($line =~ /^\s*#/);
+
+		if ($ntasks >= $maxtasks) {
+			if (waitpid(-1,0) eq 0) {
+				$ntasks = 0;
+			} else {
+				$ntasks = $ntasks - 1;
+			}
+		}
+
 		simline($line);
+		$ntasks = $ntasks + 1;
+	}
+
+	while(waitpid(-1,0) gt 0) {
+		;
 	}
 
 	open(SUM,">> $report");
@@ -371,6 +398,10 @@ if ($run_all) {
 		$line = gettest($akey);
 		next if ($line =~ /FAIL/);
 		simline($line);
+
+		while(waitpid(-1,0) gt 0) {
+			;
+		}
 	}
 }
 ## }}}

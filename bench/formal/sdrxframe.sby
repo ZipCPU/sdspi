@@ -1,6 +1,8 @@
 [tasks]
-prf      opt_ds
-prfs prf
+prf       opt_ds
+prf4  prf opt_ds
+prfs  prf
+prfs4 prf prf4
 cvr      opt_ds
 
 [options]
@@ -17,6 +19,7 @@ read -formal sdrxframe.v
 --pycode-begin--
 cmd = "hierarchy -top sdrxframe"
 cmd += " -chparam OPT_DS %d" % (1 if "opt_ds" in tags else 0)
+cmd += " -chparam NUMIO %d" % (4 if "prf4" in tags else 8)
 output(cmd)
 --pycode-end--
 proc -norom

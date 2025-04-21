@@ -583,7 +583,8 @@ module	sdio #(
 	sdtxframe #(
 		// {{{
 		.OPT_SERDES(OPT_SERDES || OPT_DDR),
-		.OPT_CRCTOKEN(OPT_CRCTOKEN)
+		.OPT_CRCTOKEN(OPT_CRCTOKEN),
+		.NUMIO(NUMIO)
 		// .MW(MW)
 		// }}}
 	) u_txframe (

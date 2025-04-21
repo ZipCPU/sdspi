@@ -178,27 +178,39 @@ $(SDCK)_cvr8/PASS: $(SDCK).sby fclk.v $(RTL)/$(SDCK).v
 	sby -f $(SDCK).sby cvr8
 ## }}}
 
-.PHONY: $(SDTX)
+.PHONY: $(SDTX) txframe
 ## {{{
+txframe: $(SDTX)
 $(SDTX): $(SDTX)_prf/PASS  $(SDTX)_cvr/PASS
 $(SDTX): $(SDTX)_prfs/PASS $(SDTX)_cvrs/PASS
+$(SDTX): $(SDTX)_prf4/PASS $(SDTX)_prfs4/PASS
 $(SDTX)_prf/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
 	sby -f $(SDTX).sby prf
+$(SDTX)_prf4/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
+	sby -f $(SDTX).sby prf4
 $(SDTX)_prfs/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
 	sby -f $(SDTX).sby prfs
+$(SDTX)_prfs4/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
+	sby -f $(SDTX).sby prfs4
 $(SDTX)_cvr/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
 	sby -f $(SDTX).sby cvr
 $(SDTX)_cvrs/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
 	sby -f $(SDTX).sby cvrs
 ## }}}
 
-.PHONY: $(SDRX)
+.PHONY: $(SDRX) rxframe
 ## {{{
-$(SDRX): $(SDRX)_prf/PASS $(SDRX)_prfs/PASS $(SDRX)_cvr/PASS
+rxframe: $(SDRX)
+$(SDRX): $(SDRX)_prf/PASS  $(SDRX)_prfs/PASS $(SDRX)_cvr/PASS
+$(SDRX): $(SDRX)_prf4/PASS $(SDRX)_prfs4/PASS
 $(SDRX)_prf/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
 	sby -f $(SDRX).sby prf
+$(SDRX)_prf4/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
+	sby -f $(SDRX).sby prf4
 $(SDRX)_prfs/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
 	sby -f $(SDRX).sby prfs
+$(SDRX)_prfs4/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
+	sby -f $(SDRX).sby prfs4
 $(SDRX)_cvr/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
 	sby -f $(SDRX).sby cvr
 ## }}}

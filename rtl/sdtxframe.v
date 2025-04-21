@@ -52,7 +52,8 @@ module	sdtxframe #(
 		// cycle.  This is in an attempt to match Xilinx's 8x SERDES.
 		parameter [0:0]		OPT_SERDES = 1'b0,
 		parameter [0:0]		OPT_CRCTOKEN = 1'b0,
-		parameter [NCRC-1:0]	CRC_POLYNOMIAL  = 16'h1021
+		parameter [NCRC-1:0]	CRC_POLYNOMIAL  = 16'h1021,
+		parameter		NUMIO = 8
 		// }}}
 	) (
 		// {{{
@@ -156,10 +157,14 @@ module	sdtxframe #(
 	end
 
 	always @(posedge i_clk)
-	if (i_reset)
+	if (i_reset || NUMIO < 4)
 		cfg_width <= WIDTH_1W;
 	else if (pstate == P_IDLE)
+	begin
 		cfg_width <= i_cfg_width;
+		if (NUMIO < 8)
+			cfg_width[1] <= 1'b0;
+	end
 
 	always @(posedge i_clk)
 	if (i_reset)
@@ -198,9 +203,9 @@ module	sdtxframe #(
 		// pre_data <= (S_VALID) ? S_DATA : {(32){1'b1}};
 		if (!S_VALID)
 			pre_data <= {(32){1'b1}};
-		else if (!i_cfg_ddr || i_cfg_width == WIDTH_8W)
+		else if (!i_cfg_ddr || (NUMIO >= 8 && i_cfg_width == WIDTH_8W))
 			pre_data <= S_DATA;
-		else if (i_cfg_width == WIDTH_4W)
+		else if (i_cfg_width == WIDTH_4W && (NUMIO >= 4))
 			pre_data <= {
 				S_DATA[31:28], S_DATA[23:20],
 				S_DATA[27:24], S_DATA[19:16],
@@ -1253,8 +1258,8 @@ module	sdtxframe #(
 
 		case(f_cfg_width)
 		WIDTH_1W: begin end
-		WIDTH_4W: begin end
-		WIDTH_8W: begin end
+		WIDTH_4W: assume(NUMIO >= 4);
+		WIDTH_8W: assume(NUMIO >= 8);
 		default: assume(0);
 		endcase
 	end

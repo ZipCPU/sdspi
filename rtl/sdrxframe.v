@@ -177,17 +177,17 @@ module	sdrxframe #(
 	begin
 		case(i_cfg_width)
 		WIDTH_1W: if (i_rx_strb == 2'b11)
-			sync_sreg <= { sync_sreg[17:0], i_rx_data[8], i_rx_data[0] };
+			sync_sreg <= { sync_sreg[21:0], i_rx_data[8], i_rx_data[0] };
 			else if (i_rx_strb[1])
-				sync_sreg <= { sync_sreg[18:0], i_rx_data[8] };
+				sync_sreg <= { sync_sreg[22:0], i_rx_data[8] };
 			else
-				sync_sreg <= { sync_sreg[18:0], i_rx_data[0] };
+				sync_sreg <= { sync_sreg[22:0], i_rx_data[0] };
 		WIDTH_4W: if (i_rx_strb == 2'b11)
-			sync_sreg <= { sync_sreg[11:0], i_rx_data[11:8], i_rx_data[3:0] };
+			sync_sreg <= { sync_sreg[15:0], i_rx_data[11:8], i_rx_data[3:0] };
 			else if (i_rx_strb[1])
-				sync_sreg <= { sync_sreg[15:0], i_rx_data[11:8] };
+				sync_sreg <= { sync_sreg[19:0], i_rx_data[11:8] };
 			else
-				sync_sreg <= { sync_sreg[15:0], i_rx_data[3:0] };
+				sync_sreg <= { sync_sreg[19:0], i_rx_data[3:0] };
 		default: if (i_rx_strb == 2'b11)
 			sync_sreg <= { sync_sreg[7:0], i_rx_data[15:8], i_rx_data[7:0] };
 			else if (i_rx_strb[1])

@@ -337,10 +337,10 @@ module	sdwb #(
 	end else if (bus_write && bus_wraddr == ADDR_CMD)
 	begin
 		o_soft_reset <= 1'b0;
-		if (OPT_HWRESET && bus_wstrb[3])
+		if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8])
 			o_soft_reset <= bus_wdata[HWRESET_BIT];
 		if (&bus_wstrb[3:0] && bus_wdata == 32'h5200_0000)
-			o_soft_reset <= (bus_wdata == 32'h5200_0000);
+			o_soft_reset <= 1'b1;
 	end else
 		o_soft_reset <= 1'b0;
 	// }}}
@@ -406,7 +406,7 @@ module	sdwb #(
 					&& bus_wdata[5:0] == 6'h0)); // GO_IDLE
 
 		if (OPT_HWRESET && (!o_hwreset_n
-					|| (bus_wstrb[3] && bus_wdata[HWRESET_BIT])))
+					|| (bus_wstrb[HWRESET_BIT/8] && bus_wdata[HWRESET_BIT])))
 			w_selfreply_request = 1'b0;
 		if (i_reset || o_soft_reset || !OPT_EMMC)
 			w_selfreply_request = 1'b0;
@@ -430,7 +430,7 @@ module	sdwb #(
 			new_dma_request  = 1'b0;
 			new_r2_request   = 1'b0;
 			// }}}
-		end else if (OPT_HWRESET && bus_wstrb[3] && bus_wdata[HWRESET_BIT])
+		end else if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8] && bus_wdata[HWRESET_BIT])
 		begin // Hardware reset request -- overrides everything else
 			// {{{
 			new_cmd_request  = 1'b0;
@@ -1099,7 +1099,7 @@ module	sdwb #(
 		wire	bus_write_reset;
 
 		assign	bus_write_reset = bus_write && bus_wraddr == ADDR_CMD
-				&& bus_wstrb[3];
+				&& bus_wstrb[HWRESET_BIT/8];
 
 		initial	r_hwreset_req = 1'b0;
 		always @(posedge i_clk)

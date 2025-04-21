@@ -427,10 +427,10 @@ module	sdaxil #(
 	end else if (bus_write && bus_wraddr == ADDR_CMD)
 	begin
 		o_soft_reset <= 1'b0;
-		if (OPT_HWRESET && bus_wstrb[3])
+		if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8])
 			o_soft_reset <= bus_wdata[HWRESET_BIT];
 		if (&bus_wstrb[3:0] && bus_wdata == 32'h5200_0000)
-			o_soft_reset <= (bus_wdata == 32'h5200_0000);
+			o_soft_reset <= 1'b1;
 	end else
 		o_soft_reset <= 1'b0;
 	// }}}
@@ -496,7 +496,7 @@ module	sdaxil #(
 					&& bus_wdata[5:0] == 6'h0)); // GO_IDLE
 
 		if (OPT_HWRESET && (!o_hwreset_n
-					|| (bus_wstrb[3] && bus_wdata[HWRESET_BIT])))
+					|| (bus_wstrb[HWRESET_BIT/8] && bus_wdata[HWRESET_BIT])))
 			w_selfreply_request = 1'b0;
 		if (i_reset || o_soft_reset || !OPT_EMMC)
 			w_selfreply_request = 1'b0;
@@ -520,7 +520,7 @@ module	sdaxil #(
 			new_dma_request  = 1'b0;
 			new_r2_request   = 1'b0;
 			// }}}
-		end else if (OPT_HWRESET && bus_wstrb[3] && bus_wdata[HWRESET_BIT])
+		end else if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8] && bus_wdata[HWRESET_BIT])
 		begin // Hardware reset request -- overrides everything else
 			// {{{
 			new_cmd_request  = 1'b0;
@@ -1189,7 +1189,7 @@ module	sdaxil #(
 		wire	bus_write_reset;
 
 		assign	bus_write_reset = bus_write && bus_wraddr == ADDR_CMD
-				&& bus_wstrb[3];
+				&& bus_wstrb[HWRESET_BIT/8];
 
 		initial	r_hwreset_req = 1'b0;
 		always @(posedge i_clk)
@@ -3128,7 +3128,7 @@ module	sdaxil #(
 	// }}}
 
 	/*
-	assign	o_debug = { w_cmd_word[15], w_card_busy,		// 1b
+	assign	o_debug = { w_cmd_word[ERR_BIT], w_card_busy,		// 1b
 		// Command:
 		o_cmd_request, cmd_busy || (i_cmd_busy && o_cmd_request),
 					i_cmd_done,			// 7b
@@ -3138,7 +3138,7 @@ module	sdaxil #(
 		o_dma_sd2s, o_sd2s_valid, i_sd2s_ready, o_sd2s_last,	// 4b
 		o_dma_s2sd, i_s2sd_valid, o_s2sd_ready,			// 3b
 		// TX:
-		o_tx_mem_valid, i_tx_mem_ready, o_tx_mem_last,		// 7b
+		o_tx_mem_valid, o_tx_mem_valid && i_tx_mem_ready, o_tx_mem_last,		// 7b
 				o_tx_en, r_tx_request, i_tx_done, i_tx_err,
 		// RX:
 		i_rx_mem_valid, i_rx_done, i_rx_err,			// 6b

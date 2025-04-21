@@ -1103,10 +1103,20 @@ module	sdrxframe #(
 		assert({ mem_full, o_mem_addr, subaddr } == fmem_count);
 
 	always @(posedge i_clk)
-	if (!i_reset && !i_rx_en)
+	if (i_reset)
+	begin
+	end else if (!i_rx_en)
+	begin
 		assert(!o_mem_valid);
-	else if (!i_reset && o_mem_valid)
+	end else if (o_mem_valid)
 		assert(o_mem_strb != 0);
+
+	always @(posedge i_clk)
+	if (!i_reset && o_mem_valid && $past(o_mem_valid))
+	begin
+		if (!$changed(o_mem_addr))
+			assert(0 == (o_mem_strb & $past(o_mem_strb)));
+	end
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////

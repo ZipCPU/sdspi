@@ -453,10 +453,12 @@ module	sddma #(
 
 	generate if (USE_FIFO)
 	begin : GEN_FIFO
+		localparam	LGFLEN = LGFIFO-$clog2(DW/8);
+		reg	flushing;
 
 		sdfifo #(
 			// {{{
-			.LGFLEN(LGFIFO-$clog2(DW/8)),
+			.LGFLEN(LGFLEN),
 			.BW(2+$clog2(DW/8)+DW),
 			.OPT_ASYNC_READ(1'b0),
 			.OPT_WRITE_ON_FULL(1'b0),
@@ -471,13 +473,26 @@ module	sddma #(
 			.o_full(fifo_full),
 			.o_fill(ign_fifo_fill),
 			//
-			.i_rd(fifo_ready),
+			.i_rd(fifo_ready && flushing),
 			.o_data({ fifo_last, fifo_bytes, fifo_data }),
 			.o_empty(fifo_empty)
 			// }}}
 		);
 
-		assign	fifo_valid = !fifo_empty;
+		always @(posedge i_clk)
+		if (i_reset)
+			flushing <= 0;
+		else if (i_dma_s2sd || mm2s_busy
+			|| (i_dma_sd2s && OPT_OSTREAM && i_dma_addr[ADDR_MSB]))
+			flushing <= 1;
+		else if (wide_valid && wide_last)
+			flushing <= 1;
+		else if (ign_fifo_fill[LGFLEN:LGFLEN-1] != 0)
+			flushing <= 1;
+		else if (fifo_empty)
+			flushing <= 0;
+
+		assign	fifo_valid = !fifo_empty && flushing;
 		assign	wide_ready = !fifo_full;
 
 	end else begin : NO_FIFO

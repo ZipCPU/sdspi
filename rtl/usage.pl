@@ -3,8 +3,10 @@
 ## Configuration definitions
 ## {{{
 my $sdspi  = "";
-my $sdio_nodma  = " -chparam OPT_DMA 1\'b0";
-my $sdio_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_ISTREAM 1\'b1 -chparam OPT_OSTREAM 1\'b1 -chparam DMA_DW 64";
+my $sdio_nodma  = " -chparam OPT_DMA 1\'b0 -chparam NUMIO 4 -chparam OPT_EMMC 1\'b0";
+my $emmc_nodma  = " -chparam OPT_DMA 1\'b0 -chparam NUMIO 8 -chparam OPT_EMMC 1\'b1";
+my $sdio_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_EMMC 1\'b0 -chparam NUMIO 4 -chparam OPT_ISTREAM 1\'b1 -chparam OPT_OSTREAM 1\'b1 -chparam DMA_DW 64";
+my $emmc_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_EMMC 1\'b1 -chparam NUMIO 8 -chparam OPT_ISTREAM 1\'b1 -chparam OPT_OSTREAM 1\'b1 -chparam DMA_DW 64";
 ## }}}
 
 ## Files
@@ -88,15 +90,35 @@ sub	topusage() {
 		calcusage($xilinxsynth,"sdio", "wb", $sdio_nodma,""),
 		calcusage($asicsynth,  "sdio", "wb", $sdio_nodma,$asicpost));
 
+	$result = $result . sprintf("EMMC(AXIL):  %5d %5d %7d\n",
+		calcusage($ice40synth, "sdio", "axil", $emmc_nodma,""),
+		calcusage($xilinxsynth,"sdio", "axil", $emmc_nodma,""),
+		calcusage($asicsynth,  "sdio", "axil", $emmc_nodma,$asicpost));
+
+	$result = $result . sprintf("EMMC(WB):    %5d %5d %7d\n",
+		calcusage($ice40synth, "sdio", "wb", $emmc_nodma,""),
+		calcusage($xilinxsynth,"sdio", "wb", $emmc_nodma,""),
+		calcusage($asicsynth,  "sdio", "wb", $emmc_nodma,$asicpost));
+
 	$result = $result . sprintf("SDIO w/DMA:  %5d %5d %7d\n",
 		calcusage($ice40synth, "sdio", "wb", $sdio_dma,""),
 		calcusage($xilinxsynth,"sdio", "wb", $sdio_dma,""),
 		calcusage($asicsynth,  "sdio", "wb", $sdio_dma,$asicpost));
 
+	$result = $result . sprintf("EMMC w/DMA:  %5d %5d %7d\n",
+		calcusage($ice40synth, "sdio", "wb", $emmc_dma,""),
+		calcusage($xilinxsynth,"sdio", "wb", $emmc_dma,""),
+		calcusage($asicsynth,  "sdio", "wb", $emmc_dma,$asicpost));
+
 	$result = $result . sprintf("SDAXI w/DMA: %5d %5d %7d\n",
 		calcusage($ice40synth, "sdio", "axil", $sdio_dma,""),
 		calcusage($xilinxsynth,"sdio", "axil", $sdio_dma,""),
 		calcusage($asicsynth,  "sdio", "axil", $sdio_dma,$asicpost));
+
+	$result = $result . sprintf("EMAXI w/DMA: %5d %5d %7d\n",
+		calcusage($ice40synth, "sdio", "axil", $emmc_dma,""),
+		calcusage($xilinxsynth,"sdio", "axil", $emmc_dma,""),
+		calcusage($asicsynth,  "sdio", "axil", $emmc_dma,$asicpost));
 
 	$result = $result . sprintf("SDSPI:       %5d %5d %7d\n",
 		calcusage($ice40synth, "sdspi", "wb", "",""),

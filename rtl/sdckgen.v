@@ -114,7 +114,8 @@ module	sdckgen #(
 			else begin
 				nxt_counter[NCTR-1:NCTR-2] = 0;
 				nxt_counter[NCTR-3:0] = new_ckspd-3;
-			end end
+			end
+		end
 	end
 
 	always @(posedge i_clk)

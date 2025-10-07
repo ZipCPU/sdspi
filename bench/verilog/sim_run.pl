@@ -92,7 +92,7 @@ if ($ARGV[0] eq "") {
 	$run_all = 0;
 	$vivado  = 1;
 	@array = @ARGV;
-	# Remove the "Icarus" flag
+	# Remove the "Vivado" flag
 	splice(@array, 0, 1);
 } else {
 	@array = @ARGV;

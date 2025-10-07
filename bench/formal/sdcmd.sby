@@ -24,4 +24,4 @@ proc -norom
 prep -top sdcmd
 
 [files]
-../../rtl/sdcmd.v
+../../rtl/sdio/sdcmd.v

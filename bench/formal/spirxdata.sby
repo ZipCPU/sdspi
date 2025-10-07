@@ -23,4 +23,4 @@ proc -norom
 prep
 
 [files]
-../../rtl/spirxdata.v
+../../rtl/spi/spirxdata.v

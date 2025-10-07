@@ -57,74 +57,76 @@ SDRX  := sdrxframe
 ## {{{
 $(LLSDSPI): $(LLSDSPI)_prf/PASS  $(LLSDSPI)_cvr/PASS $(LLSDSPI)_prfc/PASS
 $(LLSDSPI): $(LLSDSPI)_prfa/PASS $(LLSDSPI)_cvra/PASS
-$(LLSDSPI)_prf/PASS: $(RTL)/$(LLSDSPI).v $(LLSDSPI).sby
+$(LLSDSPI)_prf/PASS: $(RTL)/spi/$(LLSDSPI).v $(LLSDSPI).sby
 	sby -f $(LLSDSPI).sby prf
-$(LLSDSPI)_prfa/PASS: $(RTL)/$(LLSDSPI).v $(LLSDSPI).sby
+$(LLSDSPI)_prfa/PASS: $(RTL)/spi/$(LLSDSPI).v $(LLSDSPI).sby
 	sby -f $(LLSDSPI).sby prfa
-$(LLSDSPI)_prfc/PASS: $(RTL)/$(LLSDSPI).v $(LLSDSPI).sby
+$(LLSDSPI)_prfc/PASS: $(RTL)/spi/$(LLSDSPI).v $(LLSDSPI).sby
 	sby -f $(LLSDSPI).sby prfc
-$(LLSDSPI)_cvr/PASS: $(RTL)/$(LLSDSPI).v $(LLSDSPI).sby
+$(LLSDSPI)_cvr/PASS: $(RTL)/spi/$(LLSDSPI).v $(LLSDSPI).sby
 	sby -f $(LLSDSPI).sby cvr
-$(LLSDSPI)_cvra/PASS: $(RTL)/$(LLSDSPI).v $(LLSDSPI).sby
+$(LLSDSPI)_cvra/PASS: $(RTL)/spi/$(LLSDSPI).v $(LLSDSPI).sby
 	sby -f $(LLSDSPI).sby cvra
 ## }}}
 
 .PHONY: $(SDSPI)
 ## {{{
-SDSPIDEP := $(LLSDSPI)_prf/PASS $(SPICMD)_prf/PASS	\
+SDSPIDEP := $(RTL)/spi/spirxdata.v $(RTL)/spi/llsdspi.v $(RTL)/spi/spicmd.v \
+	$(RTL)/spi/spitxdata.v
+$(SDSPI): $(LLSDSPI)_prf/PASS $(SPICMD)_prf/PASS	\
 	$(SDSPITX)_prf/PASS $(SDSPIRX)_prf/PASS		\
 	$(SDSPITX)_prfle/PASS $(SDSPIRX)_prfle/PASS
 $(SDSPI): $(SDSPI)_prf/PASS $(SDSPIDEP) #  $(SDSPI)_cvr/PASS
-$(SDSPI)_prf/PASS: $(RTL)/$(SDSPI).v $(SDSPI).sby $(SDSPIDEP)
+$(SDSPI)_prf/PASS: $(RTL)/spi/$(SDSPI).v $(SDSPI).sby $(SDSPIDEP)
 	sby -f $(SDSPI).sby prf
 #
 # sdspi_cvr/PASS is a hard target to reach, since the SPI port will take
 # a minimum of 32 clocks per transaction byte.  Hence, a 6-byte command
 # followed by a 16-byte word will be a minimum of 704 clocks before any
 # internal delays are factored in.
-$(SDSPI)_cvr/PASS: $(RTL)/$(SDSPI).v $(SDSPI).sby $(SDSPIDEP)
+$(SDSPI)_cvr/PASS: $(RTL)/spi/$(SDSPI).v $(SDSPI).sby $(SDSPIDEP)
 	sby -f $(SDSPI).sby cvr
 ## }}}
 
 .PHONY: $(SPICMD)
 ## {{{
 $(SPICMD): $(SPICMD)_prf/PASS $(SPICMD)_cvr/PASS
-$(SPICMD)_prf/PASS: $(RTL)/$(SPICMD).v $(SPICMD).sby
+$(SPICMD)_prf/PASS: $(RTL)/spi/$(SPICMD).v $(SPICMD).sby
 	sby -f $(SPICMD).sby prf
-$(SPICMD)_cvr/PASS: $(RTL)/$(SPICMD).v $(SPICMD).sby
+$(SPICMD)_cvr/PASS: $(RTL)/spi/$(SPICMD).v $(SPICMD).sby
 	sby -f $(SPICMD).sby cvr
 ## }}}
 
 .PHONY: $(SDSPITX)
 ## {{{
 $(SDSPITX): $(SDSPITX)_prf/PASS $(SDSPITX)_cvr/PASS
-$(SDSPITX)_prf/PASS: $(RTL)/$(SDSPITX).v $(SDSPITX).sby
+$(SDSPITX)_prf/PASS: $(RTL)/spi/$(SDSPITX).v $(SDSPITX).sby
 	sby -f $(SDSPITX).sby prf
-$(SDSPITX)_prfle/PASS: $(RTL)/$(SDSPITX).v $(SDSPITX).sby
+$(SDSPITX)_prfle/PASS: $(RTL)/spi/$(SDSPITX).v $(SDSPITX).sby
 	sby -f $(SDSPITX).sby prfle
-$(SDSPITX)_cvr/PASS: $(RTL)/$(SDSPITX).v $(SDSPITX).sby
+$(SDSPITX)_cvr/PASS: $(RTL)/spi/$(SDSPITX).v $(SDSPITX).sby
 	sby -f $(SDSPITX).sby cvr
 ## }}}
 
 .PHONY: $(SDSPIRX)
 ## {{{
 $(SDSPIRX): $(SDSPIRX)_prf/PASS $(SDSPIRX)_cvr/PASS
-$(SDSPIRX)_prf/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
+$(SDSPIRX)_prf/PASS: $(RTL)/spi/$(SDSPIRX).v $(SDSPIRX).sby
 	sby -f $(SDSPIRX).sby prf
-$(SDSPIRX)_prfle/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
+$(SDSPIRX)_prfle/PASS: $(RTL)/spi/$(SDSPIRX).v $(SDSPIRX).sby
 	sby -f $(SDSPIRX).sby prfle
-$(SDSPIRX)_cvr/PASS: $(RTL)/$(SDSPIRX).v $(SDSPIRX).sby
+$(SDSPIRX)_cvr/PASS: $(RTL)/spi/$(SDSPIRX).v $(SDSPIRX).sby
 	sby -f $(SDSPIRX).sby cvr
 ## }}}
 
 .PHONY: $(SDCMD)
 ## {{{
 $(SDCMD): $(SDCMD)_prf/PASS $(SDCMD)_prfds/PASS $(SDCMD)_cvr/PASS
-$(SDCMD)_prf/PASS: $(RTL)/$(SDCMD).v $(SDCMD).sby
+$(SDCMD)_prf/PASS: $(RTL)/sdio/$(SDCMD).v $(SDCMD).sby
 	sby -f $(SDCMD).sby prf
-$(SDCMD)_prfds/PASS: $(RTL)/$(SDCMD).v $(SDCMD).sby
+$(SDCMD)_prfds/PASS: $(RTL)/sdio/$(SDCMD).v $(SDCMD).sby
 	sby -f $(SDCMD).sby prfds
-$(SDCMD)_cvr/PASS: $(RTL)/$(SDCMD).v $(SDCMD).sby
+$(SDCMD)_cvr/PASS: $(RTL)/sdio/$(SDCMD).v $(SDCMD).sby
 	sby -f $(SDCMD).sby cvr
 ## }}}
 
@@ -132,15 +134,15 @@ $(SDCMD)_cvr/PASS: $(RTL)/$(SDCMD).v $(SDCMD).sby
 ## {{{
 $(SDWB): $(SDWB)_prf/PASS $(SDWB)_cvr/PASS
 $(SDWB): $(SDWB)_prfds/PASS $(SDWB)_prfdr/PASS $(SDWB)_prfdma/PASS
-$(SDWB)_prf/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
+$(SDWB)_prf/PASS: $(SDWB).sby $(RTL)/sdio/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prf
-$(SDWB)_prfdma/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
+$(SDWB)_prfdma/PASS: $(SDWB).sby $(RTL)/sdio/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prfdma
-$(SDWB)_prfds/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
+$(SDWB)_prfds/PASS: $(SDWB).sby $(RTL)/sdio/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prfds
-$(SDWB)_prfdr/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
+$(SDWB)_prfdr/PASS: $(SDWB).sby $(RTL)/sdio/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prfdr
-$(SDWB)_cvr/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
+$(SDWB)_cvr/PASS: $(SDWB).sby $(RTL)/sdio/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby cvr
 ## }}}
 
@@ -148,15 +150,15 @@ $(SDWB)_cvr/PASS: $(SDWB).sby $(RTL)/$(SDWB).v fwb_slave.v fwb_register.v
 ## {{{
 $(SDAXIL): $(SDAXIL)_prf/PASS $(SDAXIL)_cvr/PASS
 $(SDAXIL): $(SDAXIL)_prfds/PASS $(SDAXIL)_prfdr/PASS $(SDAXIL)_prfdma/PASS
-$(SDAXIL)_prf/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
+$(SDAXIL)_prf/PASS: $(SDAXIL).sby $(RTL)/sdio/$(SDAXIL).v faxil_slave.v faxil_register.v
 	sby -f $(SDAXIL).sby prf
-$(SDAXIL)_prfdma/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
+$(SDAXIL)_prfdma/PASS: $(SDAXIL).sby $(RTL)/sdio/$(SDAXIL).v faxil_slave.v faxil_register.v
 	sby -f $(SDAXIL).sby prfdma
-$(SDAXIL)_prfds/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
+$(SDAXIL)_prfds/PASS: $(SDAXIL).sby $(RTL)/sdio/$(SDAXIL).v faxil_slave.v faxil_register.v
 	sby -f $(SDAXIL).sby prfds
-$(SDAXIL)_prfdr/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
+$(SDAXIL)_prfdr/PASS: $(SDAXIL).sby $(RTL)/sdio/$(SDAXIL).v faxil_slave.v faxil_register.v
 	sby -f $(SDAXIL).sby prfdr
-$(SDAXIL)_cvr/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_register.v
+$(SDAXIL)_cvr/PASS: $(SDAXIL).sby $(RTL)/sdio/$(SDAXIL).v faxil_slave.v faxil_register.v
 	sby -f $(SDAXIL).sby cvr
 ## }}}
 
@@ -164,17 +166,17 @@ $(SDAXIL)_cvr/PASS: $(SDAXIL).sby $(RTL)/$(SDAXIL).v faxil_slave.v faxil_registe
 ## {{{
 $(SDCK): $(SDCK)_prf/PASS $(SDCK)_prfd/PASS $(SDCK)_prf8/PASS
 $(SDCK): $(SDCK)_cvr/PASS $(SDCK)_cvrd/PASS $(SDCK)_cvr8/PASS
-$(SDCK)_prf/PASS: $(SDCK).sby fclk.v $(RTL)/$(SDCK).v
+$(SDCK)_prf/PASS: $(SDCK).sby fclk.v $(RTL)/sdio/$(SDCK).v
 	sby -f $(SDCK).sby prf
-$(SDCK)_prfd/PASS: $(SDCK).sby fclk.v $(RTL)/$(SDCK).v
+$(SDCK)_prfd/PASS: $(SDCK).sby fclk.v $(RTL)/sdio/$(SDCK).v
 	sby -f $(SDCK).sby prfd
-$(SDCK)_prf8/PASS: $(SDCK).sby fclk.v $(RTL)/$(SDCK).v
+$(SDCK)_prf8/PASS: $(SDCK).sby fclk.v $(RTL)/sdio/$(SDCK).v
 	sby -f $(SDCK).sby prf8
-$(SDCK)_cvr/PASS: $(SDCK).sby fclk.v $(RTL)/$(SDCK).v
+$(SDCK)_cvr/PASS: $(SDCK).sby fclk.v $(RTL)/sdio/$(SDCK).v
 	sby -f $(SDCK).sby cvr
-$(SDCK)_cvrd/PASS: $(SDCK).sby fclk.v $(RTL)/$(SDCK).v
+$(SDCK)_cvrd/PASS: $(SDCK).sby fclk.v $(RTL)/sdio/$(SDCK).v
 	sby -f $(SDCK).sby cvrd
-$(SDCK)_cvr8/PASS: $(SDCK).sby fclk.v $(RTL)/$(SDCK).v
+$(SDCK)_cvr8/PASS: $(SDCK).sby fclk.v $(RTL)/sdio/$(SDCK).v
 	sby -f $(SDCK).sby cvr8
 ## }}}
 
@@ -184,17 +186,17 @@ txframe: $(SDTX)
 $(SDTX): $(SDTX)_prf/PASS  $(SDTX)_cvr/PASS
 $(SDTX): $(SDTX)_prfs/PASS $(SDTX)_cvrs/PASS
 $(SDTX): $(SDTX)_prf4/PASS $(SDTX)_prfs4/PASS
-$(SDTX)_prf/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
+$(SDTX)_prf/PASS: $(RTL)/sdio/$(SDTX).v fclk.v $(SDTX).sby
 	sby -f $(SDTX).sby prf
-$(SDTX)_prf4/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
+$(SDTX)_prf4/PASS: $(RTL)/sdio/$(SDTX).v fclk.v $(SDTX).sby
 	sby -f $(SDTX).sby prf4
-$(SDTX)_prfs/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
+$(SDTX)_prfs/PASS: $(RTL)/sdio/$(SDTX).v fclk.v $(SDTX).sby
 	sby -f $(SDTX).sby prfs
-$(SDTX)_prfs4/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
+$(SDTX)_prfs4/PASS: $(RTL)/sdio/$(SDTX).v fclk.v $(SDTX).sby
 	sby -f $(SDTX).sby prfs4
-$(SDTX)_cvr/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
+$(SDTX)_cvr/PASS: $(RTL)/sdio/$(SDTX).v fclk.v $(SDTX).sby
 	sby -f $(SDTX).sby cvr
-$(SDTX)_cvrs/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
+$(SDTX)_cvrs/PASS: $(RTL)/sdio/$(SDTX).v fclk.v $(SDTX).sby
 	sby -f $(SDTX).sby cvrs
 ## }}}
 
@@ -203,15 +205,15 @@ $(SDTX)_cvrs/PASS: $(RTL)/$(SDTX).v fclk.v $(SDTX).sby
 rxframe: $(SDRX)
 $(SDRX): $(SDRX)_prf/PASS  $(SDRX)_prfs/PASS $(SDRX)_cvr/PASS
 $(SDRX): $(SDRX)_prf4/PASS $(SDRX)_prfs4/PASS
-$(SDRX)_prf/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
+$(SDRX)_prf/PASS: $(RTL)/sdio/$(SDRX).v $(SDRX).sby
 	sby -f $(SDRX).sby prf
-$(SDRX)_prf4/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
+$(SDRX)_prf4/PASS: $(RTL)/sdio/$(SDRX).v $(SDRX).sby
 	sby -f $(SDRX).sby prf4
-$(SDRX)_prfs/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
+$(SDRX)_prfs/PASS: $(RTL)/sdio/$(SDRX).v $(SDRX).sby
 	sby -f $(SDRX).sby prfs
-$(SDRX)_prfs4/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
+$(SDRX)_prfs4/PASS: $(RTL)/sdio/$(SDRX).v $(SDRX).sby
 	sby -f $(SDRX).sby prfs4
-$(SDRX)_cvr/PASS: $(RTL)/$(SDRX).v $(SDRX).sby
+$(SDRX)_cvr/PASS: $(RTL)/sdio/$(SDRX).v $(SDRX).sby
 	sby -f $(SDRX).sby cvr
 ## }}}
 

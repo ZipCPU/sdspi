@@ -23,4 +23,4 @@ proc -norom
 prep
 
 [files]
-../../rtl/spitxdata.v
+../../rtl/spi/spitxdata.v

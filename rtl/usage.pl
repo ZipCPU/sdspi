@@ -12,12 +12,12 @@ my $emmc_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_EMMC 1\'b1 -chparam NUMIO 
 ## Files
 ## {{{
 my @files = (
-	"sdio.v", "sdwb.v", "sdckgen.v",
-		"sdaxil.v", "sdskid.v",
-		"sdcmd.v", "sdrxframe.v", "sdtxframe.v",
-	"sdspi.v", "spicmd.v", "spirxdata.v", "spitxdata.v",
-		"llsdspi.v",
-	"sddma.v", "sdfifo.v",
+	"sdio/sdio.v", "sdio/sdwb.v", "sdio/sdckgen.v",
+		"sdio/sdaxil.v", "sdskid.v",
+		"sdio/sdcmd.v", "sdio/sdrxframe.v", "sdio/sdtxframe.v",
+	"spi/sdspi.v", "spi/spicmd.v", "spi/spirxdata.v", "spi/spitxdata.v",
+		"spi/llsdspi.v",
+	"sdio/sddma.v", "sdfifo.v",
 		"sddma_mm2s.v", "sddma_s2mm.v",
 		"sdax_mm2s.v",  "sdax_s2mm.v",
 		"sddma_rxgears.v", "sddma_txgears.v",
@@ -124,6 +124,11 @@ sub	topusage() {
 		calcusage($ice40synth, "sdspi", "wb", "",""),
 		calcusage($xilinxsynth,"sdspi", "wb", "",""),
 		calcusage($asicsynth,  "sdspi", "wb", "",$asicpost));
+
+	# $result = $result . sprintf("SDSPI:       %5d %5d %7d\n",
+	#	calcusage($ice40synth, "sdslave", "wb", "",""),
+	#	calcusage($xilinxsynth,"sdslave", "wb", "",""),
+	#	calcusage($asicsynth,  "sdslave", "wb", "",$asicpost));
 
 	$result
 }

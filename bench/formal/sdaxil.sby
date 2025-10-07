@@ -32,7 +32,7 @@ proc -norom
 prep -top sdaxil
 
 [files]
-../../rtl/sdaxil.v
+../../rtl/sdio/sdaxil.v
 ../../rtl/sdskid.v
 faxil_slave.v
 faxil_register.v

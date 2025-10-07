@@ -67,6 +67,8 @@ module	sdstxframe #(
 		// }}}
 	);
 
+	// Local declarations
+	// {{{
 	localparam	NCRC = 16;
 	localparam	[NCRC-1:0]	CRC_POLY = 16'h1021;
 
@@ -86,6 +88,7 @@ module	sdstxframe #(
 	reg	[7:0]	iotri;
 	wire		cfg_ddr;
 	wire	[1:0]	cfg_width;
+	// }}}
 
 	assign	cfg_ddr = OPT_DDR && i_cfg_ddr;
 	assign	cfg_width = (NUMIO >= 8) ? i_cfg_width

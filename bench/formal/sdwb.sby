@@ -32,6 +32,6 @@ proc -norom
 prep -top sdwb
 
 [files]
-../../rtl/sdwb.v
+../../rtl/sdio/sdwb.v
 fwb_slave.v
 fwb_register.v

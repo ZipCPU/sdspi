@@ -28,5 +28,5 @@ proc -norom
 prep -top sdtxframe
 
 [files]
-../../rtl/sdtxframe.v
+../../rtl/sdio/sdtxframe.v
 fclk.v

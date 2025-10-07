@@ -5,7 +5,7 @@ description = SD-Card controller, using a shared SPI interface
 simulators = verilator
 
 [fileset rtl]
-files = rtl/llsdspi.v rtl/sdspi.v
+files = rtl/spi/llsdspi.v rtl/spi/sdspi.v
 file_type = verilogSource
 
 [verilator]

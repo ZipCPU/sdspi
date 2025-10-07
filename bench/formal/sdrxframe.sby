@@ -26,4 +26,4 @@ proc -norom
 prep -top sdrxframe
 
 [files]
-../../rtl/sdrxframe.v
+../../rtl/sdio/sdrxframe.v

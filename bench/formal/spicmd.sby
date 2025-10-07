@@ -16,4 +16,4 @@ read -formal -D SPICMD spicmd.v
 prep -top spicmd
 
 [files]
-../../rtl/spicmd.v
+../../rtl/spi/spicmd.v

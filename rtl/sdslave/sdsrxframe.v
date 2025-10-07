@@ -59,6 +59,8 @@ module	sdsrxframe #(
 		// }}}
 	);
 
+	// Local declarations
+	// {{{
 	localparam	NCRC = 16;
 	localparam	[NCRC-1:0]	CRC_POLY = 16'h1021;
 
@@ -71,18 +73,24 @@ module	sdsrxframe #(
 	reg	[19:0]	count;
 	reg	[31:0]	sreg;
 	reg	[NCRC-1:0]	crc_fill	[2*NUMIO-1:0];
+	// }}}
 
 	always @(posedge i_clk)
 	if (i_reset || !i_cfg_en)
 	begin
+		// {{{
+		// We'll be here if our card is not selected, or any time we
+		// aren't expecting to receive anything.
 		started <= 0;
 		crc_active <= 0;
 		count <= 0;
 		last <= 0;
+		// }}}
 	end else if (i_valid)
 	begin
 		if (!started)
 		begin
+			// {{{
 			crc_active <= 0;
 			last <= 0;
 			case(i_cfg_width)
@@ -103,6 +111,7 @@ module	sdsrxframe #(
 				count <= ((i_cfg_ddr ? 4 : 8)<<i_cfg_lgblksz) + 16;
 				end
 			endcase
+			// }}}
 		end else begin
 			count <= count - 1;
 			last <= (count <= 1);
@@ -118,15 +127,24 @@ module	sdsrxframe #(
 	begin
 		sreg <= 0;
 		write <= 0;
-	end else if (i_valid)
+	end else if (i_valid)	// Might even be always true ...
 	begin
 		write <= 0;
 		if (OPT_DDR && i_cfg_ddr)
 		begin
+			// {{{
 			case(i_cfg_width)
 			WIDTH_4W: begin
-				sreg <= { sreg[23:0], i_data[11:8],
+				if (count[0])
+				begin
+					sreg <= { sreg[31:12], i_data[11:8],
+							sreg[7:4],
 								i_data[3:0] };
+				end else begin
+					sreg <= { sreg[15:0],
+						i_data[11:8], 4'h0,
+						i_data[ 3:0], 4'h0 };
+				end
 				write <= (count[1:0] == 2'h1);
 				end
 			WIDTH_8W: begin
@@ -142,7 +160,9 @@ module	sdsrxframe #(
 
 			if (crc_active || last)
 				write <= 0;
+			// }}}
 		end else begin
+			// {{{
 			case(i_cfg_width)
 			WIDTH_4W: begin
 				sreg <= { sreg[27:0], i_data[11:8] };
@@ -161,6 +181,7 @@ module	sdsrxframe #(
 
 			if (crc_active || last)
 				write <= 0;
+			// }}}
 		end
 	end else
 		write <= 0;
@@ -168,14 +189,16 @@ module	sdsrxframe #(
 	assign	o_valid = write;
 	assign	o_data  = sreg;
 
+	// CRC Fill, for both positive and negative edges
+	// {{{
 	always @(posedge i_clk)
 	if (i_reset)
 	begin
-		for(ik=0; ik<NUMIO; ik=ik+1)
+		for(ik=0; ik<2*NUMIO; ik=ik+1)
 			crc_fill[ik] <= 0;
 	end else if (!started || last || !i_cfg_en)
 	begin
-		for(ik=0; ik<NUMIO; ik=ik+1)
+		for(ik=0; ik<2*NUMIO; ik=ik+1)
 			crc_fill[ik] <= 0;
 	end else if (i_valid)
 	begin
@@ -206,6 +229,18 @@ module	sdsrxframe #(
 			endcase
 		end // for(ik ...)
 	end
+	// }}}
+
+	// CRC Checking
+	// {{{
+	// Can we do most of the zero calculation on the clock prior?  Such
+	// as checking all but the last bit?
+	//	pre_zero = crc_fill[NCRC-1:0] == 0
+	//
+	// always @(*)
+	// for(zk=0; zk<2*NUMIO; zk=zk+1)
+		// crc_zero[zk] = { pre_zero[zk][1],
+		//			pre_zero[zk][0] == i_data[zk] };
 
 	always @(*)
 	begin
@@ -230,7 +265,10 @@ module	sdsrxframe #(
 		default if (i_data[8] != 1'b1) w_valid_crc = 0;
 		endcase
 	end
+	// }}}
 
+	// Results
+	// {{{
 	always @(posedge i_clk)
 	if (i_reset)
 	begin
@@ -247,6 +285,7 @@ module	sdsrxframe #(
 
 	assign	o_err  = crc_fail;
 	assign	o_good = crc_good;
+	// }}}
 
 	function automatic [NCRC-1:0]	ADVANCE_CRC(input[NCRC-1:0] prior,
 						input i_crc_data);

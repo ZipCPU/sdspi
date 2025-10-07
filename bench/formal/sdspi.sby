@@ -25,8 +25,8 @@ prep -top sdspi
 
 [files]
 fwb_slave.v
-../../rtl/llsdspi.v
-../../rtl/spicmd.v
-../../rtl/spirxdata.v
-../../rtl/spitxdata.v
-../../rtl/sdspi.v
+../../rtl/spi/llsdspi.v
+../../rtl/spi/spicmd.v
+../../rtl/spi/spirxdata.v
+../../rtl/spi/spitxdata.v
+../../rtl/spi/sdspi.v

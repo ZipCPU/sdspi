@@ -28,5 +28,5 @@ output(cmd)
 prep -top sdckgen
 
 [files]
-../../rtl/sdckgen.v
+../../rtl/sdio/sdckgen.v
 fclk.v

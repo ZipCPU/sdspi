@@ -4,7 +4,11 @@
 // {{{
 // Project:	SD-Card controller
 //
-// Purpose:
+// Purpose:	Command wire interface controller.  Listens for 48b commands
+//		from the host, decodes them, and checks their CRCs.  Commands
+//	are then forwarded to the FSM controller.  Replies, received from the
+//	FSM controller, are then sent to the PHY for transmission over the
+//	same command wire.  CRCs are inserted.  Collisions are checked.
 //
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
@@ -57,50 +61,57 @@ module	sdscmd #(
 		input	wire		i_valid,
 		input	wire	[5:0]	i_resp,
 		input	wire	[31:0]	i_arg,
-		// input wire		i_typ,
-		// input wire	[95:0]	i_extended,
+		input wire		i_typ, i_nocrc,
+		input wire	[95:0]	i_extended,
 		// }}}
 		// Interface to the front end
 		// {{{
 		input	wire		i_cmdio,
 		output	wire		o_cmdio,
-		output	reg		o_cmden
+		output	wire		o_cmden,
+		input	wire		i_collision
 		// }}}
 		// }}}
 	);
 
+	// Local declarations
+	// {{{
 	localparam	[1:0]	CMD_IDLE = 2'b00,
 				CMD_RX = 2'b01,
 				CMD_TX = 2'b10;
 
+	reg			long_message, r_cmden;
 	reg	[1:0]		state;
-	reg	[47:0]		sreg;
+	reg	[143:0]		sreg;
 	reg	[6:0]		cmdcrc;
-	reg	[5:0]		count;
+	reg	[7:0]		count;
+	// }}}
 
 	always @(posedge i_clk)
 	if (i_reset)
 	begin
 		// {{{
 		state <= CMD_IDLE;
-		sreg  <= 48'h0;
+		sreg  <= {(144){1'b1}};
 		count <= 0;
 		cmdcrc <= 0;
+		long_message <= 1;
 		o_valid <= 1'b0;
 		o_err   <= 1'b0;
-		o_cmden <= 1'b0;
+		r_cmden <= 1'b0;
 		o_cmd   <= 0;
 		o_arg   <= 0;
 		// }}}
 	end else case(state)
 	CMD_IDLE: begin
 		// {{{
-		sreg  <= 48'h0;
+		sreg  <= {(144){1'b1}};
 		count <= 0;
 		cmdcrc <= 0;
+		long_message <= 1'b0;
 		o_valid <= 1'b0;
 		o_err   <= 1'b0;
-		o_cmden <= 1'b0;
+		r_cmden <= 1'b0;
 		if (!i_cmdio)
 		begin
 			state <= CMD_RX;
@@ -109,51 +120,65 @@ module	sdscmd #(
 		begin
 			state <= CMD_TX;
 			count <= 1;
-			o_cmden <= 1'b1;
-			sreg[47:0] <= { 2'b00, i_resp, i_arg, 8'hff };
+			r_cmden <= 1'b1;
+			long_message <= i_typ;
+			sreg[143:104] <= { 2'b00, i_resp, i_arg };
+			if (i_typ)
+				sreg[103:0] <= { i_extended, 8'hff };
 		end end
 		// }}}
 	CMD_RX: begin
 		// {{{
-		sreg <= { sreg[46:0], i_cmdio };
+		sreg <= { sreg[46:0], i_cmdio, {(96){1'b1}} };
 		cmdcrc <= STEPCRC(cmdcrc, i_cmdio);
 		count <= count + 1;
+		long_message <= 1'b0;
 		o_valid <= 1'b0;
 		o_err   <= 1'b0;
 		if (count == 47)
 		begin
 			o_valid <= (cmdcrc == 0) &&  i_cmdio && sreg[45];
 			o_err   <= (cmdcrc != 0) || !i_cmdio ||!sreg[45];
-			o_cmd   <= sreg[44:39];
-			o_arg   <= sreg[38: 7];
-			sreg <= 48'hffff_ffff_ffff;
+			o_cmd   <= sreg[140:135];
+			o_arg   <= sreg[134:103];
+			sreg <= {(144){1'b1}};
 			state   <= CMD_IDLE;
 		end end
 		// }}}
 	CMD_TX: begin
-		sreg <= { sreg[46:0], 1'b1 };
-		o_cmden <= !sreg[46] || i_cfg_pp;
-		cmdcrc <= STEPCRC(cmdcrc, sreg[47]);
+		// {{{
+		sreg <= { sreg[142:0], 1'b1 };
+		r_cmden <= !sreg[142] || i_cfg_pp;
+		if (i_nocrc)
+			cmdcrc <= -1;
+		else
+			cmdcrc <= STEPCRC(cmdcrc, sreg[143]);
 		count <= count + 1;
-		if (count == 39)
+		if ((!long_message && count == 39) || (count == 144-9))
 		begin
-			sreg <= { cmdcrc, 41'h1ff_ffff_ffff };
-			o_cmden <= !cmdcrc[6] || i_cfg_pp;
-		end if (count >= 48)
+			sreg[143:144-7] <= cmdcrc;
+			r_cmden <= !cmdcrc[6] || i_cfg_pp;
+		end if ((!long_message && count >= 48) || (count >= 144)
+				|| i_collision)
 		begin
 			state <= CMD_IDLE;
-			o_cmden <= 1'b0;
+			r_cmden <= 1'b0;
 		end end
+		// }}}
 	default: begin
-		sreg  <= 48'h0;
+		// {{{
+		sreg  <= {(144){1'b1}};
 		count <= 0;
 		cmdcrc <= 0;
+		long_message <= 1'b0;
 		o_valid <= 1'b0;
 		o_err   <= 1'b0;
 		end
+		// }}}
 	endcase
 
-	assign	o_cmdio = sreg[47];
+	assign	o_cmdio = sreg[143];
+	assign	o_cmden = r_cmden && !i_collision;
 
 	localparam [6:0]	CRC_POLY = 7'h09;
 

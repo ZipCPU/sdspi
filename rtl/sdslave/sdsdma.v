@@ -104,11 +104,12 @@ module	sdsdma #(
 	) (
 		// {{{
 		input	wire	i_wb_clk, i_wb_reset,
-		input	wire	i_sd_clk, i_sd_reset,
+		input	wire	i_sd_clk, i_sd_reset, i_sd_softreset,
 		// CFG interface
 		// {{{
 		input	wire		i_cfg_valid,
 		output	wire		o_cfg_ready,
+		// Command interface
 		input	wire		i_sd_request, i_sd_dir, i_sd_abort,
 		input	wire	[3:0]	i_sd_lglen,
 		input	wire	[ADDRESS_WIDTH-1:0]	i_sd_addr,

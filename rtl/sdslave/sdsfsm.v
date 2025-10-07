@@ -203,7 +203,7 @@ module	sdsfsm #(
 	//
 	//
 
-	assign	next_rca = RCA + 1;
+	assign	next_rca = (&RCA) ? 16'h1 : (RCA + 16'h1);
 	assign	transfer_complete = (o_tx_en && i_tx_done);
 	assign	operation_complete = (o_tx_en && i_tx_done) || o_dma_reset;
 
@@ -1104,13 +1104,13 @@ module	sdsfsm #(
 			assert(r_multiblock);
 			assert(!o_dma_req);
 			assert(!mm2s_busy);
-			assert(!s2mm_busy);
+			assert(o_dma_dir == D_DEV2HOST || o_tx_busy);
 		end
 
 		if (o_dma_request)
 		begin
 			assert(s2mm_busy || mm2s_busy);
-			assert(s2mm_busy == o_dma_dir == D_HOST2DEV);
+			assert(s2mm_busy == (o_dma_dir == D_HOST2DEV));
 		end
 
 		if (bufcount > 0 && o_dma_dir == D_DEV2HOST)
@@ -1136,6 +1136,18 @@ module	sdsfsm #(
 				|| $past((i_cmd != 6'h0) &&(i_cmd != 6'd12)))
 			begin
 				assert(o_tx_en);
+			end
+		end
+
+		if ($past(o_rx_en))
+		begin
+			if ($past(i_rx_good || i_rx_err))
+			begin
+				assert(!o_rx_en);
+			end else if (!$past(i_cmd_valid)
+				|| $past((i_cmd != 6'h0) &&(i_cmd != 6'd12)))
+			begin
+				assert(o_rx_en);
 			end
 		end
 

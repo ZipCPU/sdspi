@@ -106,7 +106,9 @@ adjust this optimization for lowpower at the (potential) expense of area.
 The SDIO slave remans a work in progress at this time.  Components include:
 
 - (SDSLAVE-TOP)--not yet written.  Once built, this will have two submodules,
-  the SDSLAVE logic module, and a device-dependent physical IO module.
+  the [SDSLAVE](sdslave/sdslave.v) logic module, and a device-dependent
+  physical IO module.
+
 - [SDSLAVE](sdslave/sdslave.v)
 
   - [SDSFSM](sdslave/sdsfsm.v) - This is the guts of the slave, containing the

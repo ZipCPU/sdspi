@@ -1,0 +1,24 @@
+[tasks]
+prf
+cvr
+
+[options]
+prf: mode prove
+prf: depth 8		## Takes less than 1min
+# prf: depth 40		## Debug only, not really necessary
+cvr: mode cover
+cvr: depth 54		## Takes about 6min
+
+[engines]
+smtbmc
+
+[script]
+read -formal sdsfsm.v
+--pycode-begin--
+cmd = "hierarchy -top sdsfsm"
+output(cmd)
+--pycode-end--
+prep -top sdsfsm
+
+[files]
+../../rtl/sdslave/sdsfsm.v

@@ -54,7 +54,9 @@ $dir = ".";
 	"sdcmd",
 	"sdckgen",
 	"sdtxframe",
-	"sdrxframe"
+	"sdrxframe",
+	##
+	"sdsfsm"
 	);
 
 %desc = (
@@ -70,7 +72,9 @@ $dir = ".";
 	"sdcmd"		=> "SDIO CMD wire controller",
 	"sdckgen"	=> "SDIO Divided clock generator",
 	"sdtxframe"	=> "SDIO transmit data controller",
-	"sdrxframe"	=> "SDIO receive data handler"
+	"sdrxframe"	=> "SDIO receive data handler",
+	##
+	"sdsfsm"	=> "SDIO Slave FSM control driver"
 	);
 ## }}}
 

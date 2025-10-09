@@ -1,13 +1,16 @@
+## SDSPI
 llsdcmd*/
 llsdspi*/
 spitxdata*/
 spirxdata*/
 spicmd*/
 sdspi*/
-#
+## SDIO
 sdaxil*/
 sdwb*/
 sdckgen*/
 sdcmd*/
 sdrxframe*/
 sdtxframe*/
+## SDIO Slave
+sdsfsm*/

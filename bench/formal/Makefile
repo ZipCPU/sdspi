@@ -36,7 +36,7 @@
 ##
 ## }}}
 .PHONY: all
-all:	sdspi llsdspi spicmd spitxdata spirxdata sdcmd sdwb sdaxil sdckgen sdtxframe sdrxframe report
+all:	sdspi llsdspi spicmd spitxdata spirxdata sdcmd sdwb sdaxil sdckgen sdtxframe sdrxframe sdsfsm report
 
 RTL := ../../rtl
 ## SDSPI components
@@ -52,7 +52,12 @@ SDAXIL:= sdaxil
 SDCK  := sdckgen
 SDTX  := sdtxframe
 SDRX  := sdrxframe
+SDSFSM:= sdsfsm
 
+########################################
+##
+## SPI
+## {{{
 .PHONY: $(LLSDSPI)
 ## {{{
 $(LLSDSPI): $(LLSDSPI)_prf/PASS  $(LLSDSPI)_cvr/PASS $(LLSDSPI)_prfc/PASS
@@ -118,7 +123,11 @@ $(SDSPIRX)_prfle/PASS: $(RTL)/spi/$(SDSPIRX).v $(SDSPIRX).sby
 $(SDSPIRX)_cvr/PASS: $(RTL)/spi/$(SDSPIRX).v $(SDSPIRX).sby
 	sby -f $(SDSPIRX).sby cvr
 ## }}}
-
+## }}}
+########################################
+##
+## SDIO master
+## {{{
 .PHONY: $(SDCMD)
 ## {{{
 $(SDCMD): $(SDCMD)_prf/PASS $(SDCMD)_prfds/PASS $(SDCMD)_cvr/PASS
@@ -216,7 +225,21 @@ $(SDRX)_prfs4/PASS: $(RTL)/sdio/$(SDRX).v $(SDRX).sby
 $(SDRX)_cvr/PASS: $(RTL)/sdio/$(SDRX).v $(SDRX).sby
 	sby -f $(SDRX).sby cvr
 ## }}}
+## }}}
+########################################
+##
+## SDIO Slave
+## {{{
+.PHONY: $(SDSFSM)
+## {{{
+$(SDSFSM): $(SDSFSM)_prf/PASS $(SDSFSM)_cvr/PASS
+$(SDSFSM)_prf/PASS: $(RTL)/sdslave/$(SDSFSM).v $(SDSFSM).sby
+	sby -f $(SDSFSM).sby prf
+$(SDSFSM)_cvr/PASS: $(RTL)/sdslave/$(SDSFSM).v $(SDSFSM).sby
+	sby -f $(SDSFSM).sby cvr
+## }}}
 
+## }}}
 
 .PHONY: report
 ## {{{

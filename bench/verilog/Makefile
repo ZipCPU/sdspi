@@ -38,10 +38,10 @@
 RTL := ../../rtl
 CPU := $(HOME)/work/rnd/zipcpu/trunk
 
-tb_sdckgen: $(RTL)/sdckgen.v tb_sdckgen.v
+tb_sdckgen: $(RTL)/sdio/sdckgen.v tb_sdckgen.v
 	iverilog -g2012 $^ -o $@
 
-tb_txframe: $(RTL)/sdckgen.v $(RTL)/sdtxframe.v tb_txframe.v
+tb_txframe: $(RTL)/sdio/sdckgen.v $(RTL)/sdio/sdtxframe.v tb_txframe.v
 	iverilog -g2012 $^ -o $@
 
 obj_dir/Vtb_cpu.h:

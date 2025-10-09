@@ -37,8 +37,7 @@
 `default_nettype none
 `timescale 1ns / 1ps
 // }}}
-module	tb_wb
-	#(
+module	tb_wb #(
 		// Local declarations
 		// {{{
 		parameter	[0:0]	OPT_SERDES = 1'b1,
@@ -47,6 +46,7 @@ module	tb_wb
 		parameter	[0:0]	OPT_VCD = 1'b0,
 		parameter	[0:0]	OPT_CPU = 1'b0,
 		parameter	[0:0]	OPT_STREAM = 1'b0,
+		parameter	[0:0]	OPT_SDSLAVE = 1'b0,
 		parameter	[0:0]	OPT_1P8V = OPT_SERDES,
 		parameter		DW = 512,
 		parameter		SW = 32,
@@ -192,6 +192,15 @@ module	tb_wb
 	wire	[AW-1:0]	sdio_dma_addr;
 	wire	[DW-1:0]	sdio_dma_data, sdio_dma_idata;
 	wire	[DW/8-1:0]	sdio_dma_sel;
+	// }}}
+
+	// sds_dma_*
+	// {{{
+	wire			sds_dma_cyc, sds_dma_stb, sds_dma_we,
+				sds_dma_stall, sds_dma_ack, sds_dma_err;
+	wire	[AW-1:0]	sds_dma_addr;
+	wire	[DW-1:0]	sds_dma_data, sds_dma_idata;
+	wire	[DW/8-1:0]	sds_dma_sel;
 	// }}}
 
 	// sdio_*
@@ -345,8 +354,7 @@ module	tb_wb
 
 	wbxbar #(
 		// {{{
-		.NM(4), .NS(6),
-		.AW(AW), .DW(DW),
+		.NM(4), .NS(6), .AW(AW), .DW(DW),
 		.SLAVE_ADDR({
 			MEM_ADDR[AW+WBLSB-1:WBLSB],
 			SCK_ADDR[AW+WBLSB-1:WBLSB],
@@ -366,16 +374,16 @@ module	tb_wb
 		// {{{
 		.i_clk(clk), .i_reset(reset),
 		//
-		.i_mcyc({   cpu_cyc,   emmc_dma_cyc,   sdio_dma_cyc,   bfmw_cyc   }),
-		.i_mstb({   cpu_stb,   emmc_dma_stb,   sdio_dma_stb,   bfmw_stb   }),
-		.i_mwe({    cpu_we,    emmc_dma_we,    sdio_dma_we,    bfmw_we    }),
-		.i_maddr({  cpu_addr,  emmc_dma_addr,  sdio_dma_addr,  bfmw_addr  }),
-		.i_mdata({  cpu_data,  emmc_dma_data,  sdio_dma_data,  bfmw_data  }),
-		.i_msel({   cpu_sel,   emmc_dma_sel,   sdio_dma_sel,   bfmw_sel   }),
-		.o_mstall({ cpu_stall, emmc_dma_stall, sdio_dma_stall, bfmw_stall }),
-		.o_mack({   cpu_ack,   emmc_dma_ack,   sdio_dma_ack,   bfmw_ack   }),
-		.o_mdata({  cpu_idata, emmc_dma_idata, sdio_dma_idata, bfmw_idata }),
-		.o_merr({   cpu_err,   emmc_dma_err,   sdio_dma_err,   bfmw_err   }),
+		.i_mcyc({   cpu_cyc,   emmc_dma_cyc,   sdio_dma_cyc,   sds_dma_cyc,   bfmw_cyc   }),
+		.i_mstb({   cpu_stb,   emmc_dma_stb,   sdio_dma_stb,   sds_dma_stb,   bfmw_stb   }),
+		.i_mwe({    cpu_we,    emmc_dma_we,    sdio_dma_we,    sds_dma_we,    bfmw_we    }),
+		.i_maddr({  cpu_addr,  emmc_dma_addr,  sdio_dma_addr,  sds_dma_addr,  bfmw_addr  }),
+		.i_mdata({  cpu_data,  emmc_dma_data,  sdio_dma_data,  sds_dma_data,  bfmw_data  }),
+		.i_msel({   cpu_sel,   emmc_dma_sel,   sdio_dma_sel,   sds_dma_sel,   bfmw_sel   }),
+		.o_mstall({ cpu_stall, emmc_dma_stall, sdio_dma_stall, sds_dma_stall, bfmw_stall }),
+		.o_mack({   cpu_ack,   emmc_dma_ack,   sdio_dma_ack,   sds_dma_ack,   bfmw_ack   }),
+		.o_mdata({  cpu_idata, emmc_dma_idata, sdio_dma_idata, sds_dma_idata, bfmw_idata }),
+		.o_merr({   cpu_err,   emmc_dma_err,   sdio_dma_err,   sds_dma_err,   bfmw_err   }),
 		//
 		.o_scyc({   mem_cyc,   sckw_cyc,   con_cyc,   gpio_cyc,   emmcw_cyc,   sdiow_cyc   }),
 		.o_sstb({   mem_stb,   sckw_stb,   con_stb,   gpio_stb,   emmcw_stb,   sdiow_stb   }),
@@ -608,7 +616,7 @@ module	tb_wb
 	////////////////////////////////////////////////////////////////////////
 	//
 	// eMMC Device model
-`ifndef	VERILATOR
+`ifndef	VERILATOR	// The Verilator model is managed externally
 	// {{{
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -629,19 +637,198 @@ module	tb_wb
 	////////////////////////////////////////////////////////////////////////
 	//
 	// SDIO Device model
-`ifndef	VERILATOR
+`ifndef	VERILATOR	// The Verilator model is managed externally
 	// {{{
+	generate if (OPT_SDSLAVE)
+	begin : GEN_SDSLAVE
+		// {{{
+		// Local declarations
+		// {{{
+		reg			slv_reset, slv_reset_pipe;
+		wire			slv_clk;
 
-	mdl_sdio #(
-		.LGMEMSZ(16),
-		.OPT_HIGH_CAPACITY(1'b1),
-		.OPT_DUAL_VOLTAGE(OPT_1P8V)
-	) u_sdcard (
-		// .rst_n(1'b1),
-		.sd_clk(sd_ck), .sd_cmd(sd_cmd), .sd_dat(sd_dat),
-		.i_1p8v(sdio_1p8v)
-	);
+		// Local Wishbone
+		wire			slv_cyc, slv_stb, slv_we,
+					slv_stall, slv_ack, slv_err;
+		wire	[AW-1:0]	slv_addr;
+		wire	[DW-1:0]	slv_data, slv_idata;
+		wire	[DW/8-1:0]	slv_sel;
 
+		// SD IO buffer controls
+		reg			i_sd_cmd;
+		wire			o_sd_cmd, w_sd_cmd_tristate;
+
+		reg	[3:0]		i_sd_cmd;
+		wire	[7:0]		o_sd_cmd, w_sd_cmd_tristate;
+
+		wire			o_sd_ds, w_sd_ds_tristate;
+		// }}}
+
+		// Bus clock and reset
+		// {{{
+		localparam	realtime SLVCLK_PERIOD = 11.0;	// 90.9 MHz
+
+		initial	begin
+			slv_clk = 1'b0;
+			forever
+				#(SLVCLK_PERIOD/2) slv_clk = (slv_clk === 1'b0);
+		end
+
+		initial	{ slv_reset, slv_reset_pipe } <= 2'b11;
+		always @(posedge slv_clk or posedge reset)
+		if (reset)
+			{ slv_reset, slv_reset_pipe } <= 2'b11;
+		else
+			{ slv_reset, slv_reset_pipe } <= { slv_reset_pipe, 1'b1 };
+		// }}}
+
+		sdslave #(
+			.AW(AW), .DW(DW), .OPT_DDR(1'b1), .NUMIO(4)
+			// .OPT_EMMC(1'b0)
+		) u_slave (
+			// {{{
+			.i_clk(slv_clk), .i_reset(slv_reset),
+			// Wishbone master (DMA) interface
+			// {{{
+			.o_wb_cyc(slv_cyc),
+			.o_wb_stb(slv_stb),
+			.o_wb_we(slv_we),
+			.o_wb_addr(slv_addr),
+			.o_wb_data(slv_data),
+			.o_wb_sel(slv_sel),
+			//
+			.i_wb_stall(slv_stall),
+			.i_wb_ack(  slv_ack),
+			.i_wb_data( slv_idata),
+			.i_wb_err(  slv_err),
+			// }}}
+			// SD slave front-end interface
+			// {{{
+			.i_sd_clk(sd_ck),
+			//
+			.i_sd_cmd(i_sd_cmd),
+			.o_sd_cmd(o_sd_cmd),
+			.o_sd_cmd_tristate(w_sd_cmd_tristate),
+			//
+			.i_sd_dat({ 4'hf, i_sd_dat, 4'hf, sd_dat[3:0] }),
+			.o_sd_dat(o_sd_dat),
+			.o_sd_dat_tristate(w_sd_dat_tristate),
+			//
+			.o_sd_ds(o_sd_ds),
+			.o_sd_ds_tristate(w_sd_ds_tristate)
+			// }}}
+			// }}}
+		);
+
+		// IO buffers -- CMD
+		// {{{
+		always @(posedge sd_clk or posedge slv_reset)
+		if (slv_reset)
+			i_sd_cmd <= 4'hf;
+		else
+			i_sd_cmd <= sd_cmd;
+
+		assign	sd_cmd = (w_sd_cmd_tristate) ? 1'bz : o_sd_cmd;
+		// }}}
+
+		// IO buffers -- DAT[3:0] (7:4 unused)
+		// {{{
+		always @(posedge sd_clk or posedge slv_reset)
+		if (slv_reset)
+			i_sd_dat = 4'hf;
+		else
+			i_sd_dat = sd_dat;
+
+		for(gk=0; gk<4; gk=gk+1)
+		begin : IOBUF
+			assign	sd_dat[gk] = (w_sd_dat_tristate[gk]) ? 1'bz : o_(sd_clk ? sd_dat[gk+8] : sd_dat[gk]);
+		end
+		// }}}
+
+		// IO buffers -- DS (Unused in SDIO mode)
+		assign	sd_ds = (w_sd_ds_tristate) ? 1'bz : (sd_clk ? o_sd_ds[1] : o_sd_ds[0]);
+
+		// Move WB request across clock domains
+		// {{{
+		// This is so we can share RAMs, as well as so we can get some
+		// exercise with stalls.
+		wbxclk #(
+			.AW(AW), .DW(DW)
+		) wb_xclk (
+			// {{{
+			// Incoming WB request(s)
+			// {{{
+			.i_wb_clk(slv_clk), .i_reset(slv_reset),
+			//
+			.i_wb_cyc(slv_cyc), .i_wb_stb(slv_stb),
+				.i_wb_we(slv_we),
+			.i_wb_addr(slv_addr), .i_wb_data(slv_data),
+				.i_wb_sel(slv_sel),
+			//
+			.o_wb_stall(slv_stall),
+			.o_wb_ack(slv_ack), .o_wb_data(slv_idata),
+			.o_wb_err(slv_err),
+			// }}}
+			// Outgoing/downstream WB request(s)
+			// {{{
+			.i_xclk_clk(clk),
+			//
+			.o_xclk_cyc(sds_dma_cyc), .o_xclk_stb(sds_dma_stb),
+				.i_xclk_we(sds_dma_we),
+			.o_xclk_addr(sds_dma_addr), .o_xclk_data(sds_dma_data),
+				.o_xclk_sel(sds_dma_sel),
+			//
+			.i_xclk_stall(sds_dma_stall),
+			.i_xclk_ack(sds_dma_ack), .i_xclk_data(sds_dma_idata),
+			.i_xclk_err(sds_dma_err),
+			// }}}
+			// }}}
+		);
+		// }}}
+
+		// Keep Verilator happy
+		// {{{
+		// Verilator lint_off UNUSED
+		wire	unused_io;
+		assign	unused_io = &{ 1'b0, o_sd_dat[15:12], o_sd_dat[7:4],
+					w_sd_dat_tristatet[15:12],
+					w_sd_dat_tristatet[7:4] };
+		// Verilator lint_on  UNUSED
+		// }}}
+		// }}}
+	end else begin : GEN_SDIO_MODEL
+		// {{{
+
+		mdl_sdio #(
+			.LGMEMSZ(16),
+			.OPT_HIGH_CAPACITY(1'b1),
+			.OPT_DUAL_VOLTAGE(OPT_1P8V)
+		) u_sdcard (
+			// .rst_n(1'b1),
+			.sd_clk(sd_ck), .sd_cmd(sd_cmd), .sd_dat(sd_dat),
+			.i_1p8v(sdio_1p8v)
+		);
+
+		// The *model* doesn't use the WB bus
+		// {{{
+		assign	sds_dma_cyc = 1'b0;
+		assign	sds_dma_stb = 1'b0;
+		assign	sds_dma_we  = 1'b0;
+		assign	sds_dma_addr = {(AW){1'b0}};
+		assign	sds_dma_data = {(DW){1'b0}};
+		assign	sds_dma_sel  = {(DW/8){1'b0}};
+		// }}}
+
+		// Keep Verilator happy
+		// {{{
+		// Verilator lint_off UNUSED
+		wire	unused_slave_dma;
+		assign	unused_slave_dma = &{ 1'b0, sds_dma_stall, sds_dma_ack,
+				sds_dma_idata, sds_dma_err };
+		// Verilator lint_on  UNUSED
+		// }}}
+		// }}}
+	end endgenerate
 	// }}}
 `endif
 	////////////////////////////////////////////////////////////////////////

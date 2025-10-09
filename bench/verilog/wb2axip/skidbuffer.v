@@ -80,7 +80,6 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-//
 `default_nettype none
 // }}}
 module skidbuffer #(
@@ -230,10 +229,12 @@ module skidbuffer #(
 
 	// Keep Verilator happy
 	// {{{
+	// verilator coverage_off
 	// Verilator lint_off UNUSED
 	wire	unused;
 	assign	unused = &{ 1'b0, w_data };
 	// Verilator lint_on  UNUSED
+	// verilator coverage_on
 	// }}}
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -405,6 +406,11 @@ module skidbuffer #(
 		// }}}
 	end endgenerate
 	// }}}
+
+	always @(posedge i_clk)
+	if (!OPT_PASSTHROUGH && !i_reset && !o_ready)
+		assert(o_valid);
+
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Cover checks

@@ -197,9 +197,9 @@ module wbupsz #(
 		end
 
 		if (OPT_LITTLE_ENDIAN)
-		begin : GEN_LILDATA
+		begin : GEN_LILEND_RTNDATA
 			assign	o_sdata = rtn_data[SMALL_DW-1:0];
-		end else begin : GEN_BIGDATA
+		end else begin : GEN_BIGEND_RTNDATA
 			assign	o_sdata = rtn_data[WIDE_DW-1:WIDE_DW-SMALL_DW];
 		end
 		// }}}

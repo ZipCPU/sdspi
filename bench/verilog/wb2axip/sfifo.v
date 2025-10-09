@@ -21,7 +21,6 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 //
-//
 `default_nettype	none
 // }}}
 module sfifo #(
@@ -65,8 +64,8 @@ module sfifo #(
 	// Register/net declarations
 	// {{{
 	localparam	FLEN=(1<<LGFLEN);
-	wire			r_full;
 	reg			r_empty;
+	wire			r_full;
 	reg	[(BW-1):0]	mem[0:(FLEN-1)];
 	reg	[LGFLEN:0]	wr_addr, rd_addr;
 

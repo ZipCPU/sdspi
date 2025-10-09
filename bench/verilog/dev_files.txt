@@ -26,6 +26,8 @@ wb2axip/wbdown.v
 wb2axip/wbgpio.v
 wb2axip/wbupsz.v
 wb2axip/wbxbar.v
+wb2axip/wbxclk.v
+##
 ../../rtl/afifo.v
 ../../rtl/xsdddr.v
 ../../rtl/xsdserdes8x.v
@@ -35,7 +37,7 @@ wb2axip/wbxbar.v
 ../../rtl/sddma_s2mm.v
 ../../rtl/sddma_txgears.v
 ../../rtl/sdfifo.v
-#
+##
 ../../rtl/sdio/sdio_top.v
 ../../rtl/sdio/sdfrontend.v
 ../../rtl/sdio/sdio.v
@@ -48,5 +50,13 @@ wb2axip/wbxbar.v
 ../../rtl/sdio/sdax_s2mm.v
 ../../rtl/sdio/sdtxframe.v
 ../../rtl/sdio/sdrxframe.v
-#
+##
+../../rtl/sdslave/sdslave.v
+../../rtl/sdslave/sdsfsm.v
+../../rtl/sdslave/sdscmd.v
+../../rtl/sdslave/sdsrxframe.v
+../../rtl/sdslave/sdstxframe.v
+../../rtl/sdslave/sdsdma.v
+../../rtl/sdslave/sdtfrvalue.v
+##
 ../formal/fclk.v

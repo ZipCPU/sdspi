@@ -111,7 +111,7 @@ module	axixbar #(
 		parameter integer C_AXI_ADDR_WIDTH = 32,
 		parameter integer C_AXI_ID_WIDTH = 2,
 		//
-		// NM is the number of masters driving the incoming slave chnls
+		// NM is the number of masters driving incoming slave channels
 		parameter	NM = 4,
 		//
 		// NS is the number of slaves connected to the crossbar, driven

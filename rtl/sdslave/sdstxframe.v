@@ -47,6 +47,7 @@ module	sdstxframe #(
 		//
 		input	wire		i_cfg_en,
 		// input wire	[3:0]	i_cfg_sz, // 4=16B, 9=512B, 15=32768B
+		input	wire		i_cfg_pp,
 		input	wire		i_cfg_ds,
 		input	wire		i_cfg_ddr,
 		input	wire	[1:0]	i_cfg_width,	// 0=1b, 1=4b, 2=8b
@@ -308,48 +309,82 @@ module	sdstxframe #(
 	begin
 		// {{{
 		case(cfg_width)
-		WIDTH_4W: if (cfg_ddr)
+		WIDTH_4W: begin
+			if (cfg_ddr)
+			begin
 				iovec <= { 4'hf, i_data[31:28],
 							4'hf, i_data[23:20] };
-			else
+				iotri[3:0] <= i_data[31:28] & i_data[23:20];
+				iotri[7:4] <= 4'hf;
+			end else begin
 				iovec <= {(2){ 4'hf, i_data[31:28] } };
-		WIDTH_8W: if (cfg_ddr)
-				iovec <= i_data[31:16];
-			else
-				iovec <= {(2){i_data[31:24]}};
-		// WIDTH_1W:
-		default:
+				iotri <= { 4'hf, i_data[31:28] };
+			end
+			if (i_cfg_pp)
+				iotri <= 8'hf0;
+			end
+		WIDTH_8W: begin
 			if (cfg_ddr)
+			begin
+				iovec <= i_data[31:16];
+				iotri <= i_data[31:24] & i_data[23:16];
+			end else begin
+				iovec <= {(2){i_data[31:24]}};
+				iotri <= i_data[31:24];
+			end
+			if (i_cfg_pp)
+				iotri <= 8'h00;
+			end
+		// WIDTH_1W:
+		default: begin
+			if (cfg_ddr)
+			begin
 				iovec <= { 7'h7f, i_data[31],
 						7'h7f, i_data[23] };
-			else
+				iotri <= { 7'h7f, i_data[31] && i_data[23] };
+			end else begin
 				iovec <= {(2){ 7'h7f, i_data[31] }};
+				iotri <= { 7'h7f, i_data[31] };
+			end
+			if (i_cfg_pp)
+				iotri <= 8'hfe;
+			end
 		endcase
 		// }}}
 	end else if (crc_active)
 	begin
 		// {{{
 		iovec <= 16'hff_ff;
+		iotri <= 8'hff;
 		for(ik=0; ik<NUMIO; ik=ik+1)
 		begin
 			iovec[      ik] <= crc_fill[      ik][15];
 			iovec[NUMIO+ik] <= crc_fill[NUMIO+ik][15];
+			iotri[ik] <= crc_fill[ik][15] & crc_fill[NUMIO+ik][15];
 
 			if (!cfg_ddr)
+			begin
 				iovec[ik] <= crc_fill[NUMIO+ik][15];
+				iotri[ik] <= crc_fill[NUMIO+ik][15];
+			end
 
-			case(cfg_width)
-			WIDTH_4W: begin
-				iovec[15:12] <= 4'hf;
-				iovec[ 7: 4] <= 4'hf;
-				end
-			WIDTH_8W: begin end
-			default: begin
-				iovec[15: 9] <= 7'h7f;
-				iovec[ 7: 1] <= 7'h7f;
-				end
-			endcase
+			if (i_cfg_pp)
+				iotri[ik] <= 1'b0;
 		end
+
+		case(cfg_width)
+		WIDTH_4W: begin
+			iovec[15:12] <= 4'hf;
+			iovec[ 7: 4] <= 4'hf;
+			iotri[ 7: 4] <= 4'hf;
+			end
+		WIDTH_8W: begin end	// Already set properly by default
+		default: begin
+			iovec[15: 9] <= 7'h7f;
+			iovec[ 7: 1] <= 7'h7f;
+			iotri[ 7: 1] <= 7'hf;
+			end
+		endcase
 		// }}}
 	end else // if (!crc_active) ... but the shift register isn't empty
 	begin
@@ -442,7 +477,7 @@ module	sdstxframe #(
 		always @(posedge i_clk)
 		if (i_reset || !i_cfg_ds)
 			dsvec <= 2'b00;
-		else if (i_valid || crc_active || i_rxgood || i_txgood
+		else if (i_valid || crc_active || i_rxgood || i_rxfail
 				|| token_active)
 		begin
 			dsvec <= 2'b10;
@@ -452,6 +487,10 @@ module	sdstxframe #(
 		assign	o_ds = dsvec;
 	end else begin
 		assign	o_ds = 2'b00;
+
+		// Verilator lint_off UNUSED
+		wire	unused_ds;
+		assign	unused_ds = &{ 1'b0, i_cfg_ds };
 	end endgenerate
 	// }}}
 

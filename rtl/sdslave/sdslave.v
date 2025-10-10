@@ -38,7 +38,8 @@
 // }}}
 module	sdslave #(
 		// {{{
-		parameter [0:0]	OPT_DDR = 1'b1,
+		parameter [0:0]	OPT_DDR  = 1'b1,
+		parameter [0:0]	OPT_1P8V = 1'b0,	// No 1.8V support
 		parameter	NUMIO=4,
 		parameter	AW = 30, DW=32
 		// }}}
@@ -66,7 +67,7 @@ module	sdslave #(
 		//
 		input	wire	[15:0]	i_sd_dat,
 		output	wire	[15:0]	o_sd_dat,
-		output	wire	[7:0]	o_sd_dat_tristate
+		output	wire	[7:0]	o_sd_dat_tristate,
 		output	wire	[1:0]	o_sd_ds,
 		output	wire		o_sd_ds_tristate
 		// }}}
@@ -75,6 +76,9 @@ module	sdslave #(
 
 	// Local declarations
 	// {{{
+	localparam	ADDRESS_WIDTH = AW+$clog2(DW/8);
+	wire		sd_reset;
+
 	wire		cfg_ds, cfg_ddr, cfg_cmd_pp, cfg_dat_pp;
 	wire	[1:0]	cfg_width;
 	wire	[3:0]	cfg_lgblksz;
@@ -89,20 +93,85 @@ module	sdslave #(
 	wire	[31:0]	resp_arg;
 	wire	[95:0]	resp_extended;
 
-	wire		tx_en, tx_busy;
+	wire		tx_en, tx_busy, tx_done;
 	wire		tx_valid, tx_ready, tx_last;
+	wire	[1:0]	tx_src;
 	wire	[31:0]	tx_data;
 
-	wire		rx_valid, rx_good, rx_fail;
+	wire		rx_en, rx_valid, rx_good, rx_fail, rx_last;
 	wire	[31:0]	rx_data;
+
+	wire		dma_cfg_valid, dma_cfg_ready;
+	wire		dma_request, dma_reset, dma_dir, dma_abort,
+			s2mm_err, s2mm_done, mm2s_err, mm2s_done;
+	wire	[ADDRESS_WIDTH-1:0]	dma_addr;
+
+	wire		mem_valid, mem_ready, mem_last;
+	wire	[31:0]	mem_data;
+
 	// }}}
 
 	assign	sd_reset= i_reset;
+	assign	o_sd_ds_tristate = !cfg_ds;
 
 	////////////////////////////////////////////////////////////////////////
 	//
 	// SDS FSM
 	// {{{
+
+	sdsfsm #(
+		.ADDRESS_WIDTH(ADDRESS_WIDTH),
+		.OPT_HIGH_CAPACITY(1'b1),
+		.OPT_1P8V(OPT_1P8V),
+		// .OPT_UHSII(1'b0),
+		// .CID(...),
+		.OCR_VOLTAGE(16'hff_80)
+	) u_fsm (
+		.i_clk(i_sd_clk), .i_reset(sd_reset),
+		//
+		.o_cfg_cmd_pp(cfg_cmd_pp),
+		.o_cfg_dat_pp(cfg_dat_pp),
+		.o_cfg_ds(cfg_ds),
+		.o_cfg_ddr(cfg_ddr),
+		.o_cfg_lgblksz(cfg_lgblksz),
+		.o_cfg_width(cfg_width),
+		//
+		.i_cmd_valid(cmd_valid),
+		.i_cmd_err(cmd_err),
+		.i_cmd(cmd_cmd),
+		.i_arg(cmd_arg),
+		//
+		.o_resp_valid(resp_valid),
+		.o_resp(resp_cmd),
+		.o_resp_data(resp_arg),
+		.o_resp_typ(resp_typ),
+		.o_resp_nocrc(resp_nocrc),
+		.o_resp_extra(resp_extended),
+		.i_collision(1'b0),
+		//
+		.o_rx_en(rx_en),
+		.i_rx_good(rx_good),
+		.i_rx_err(rx_fail),
+		//
+		.o_tx_en(tx_en),
+		.o_tx_busy(tx_busy),
+		.o_tx_src(tx_src),
+		.i_tx_done(tx_done),
+		//
+		.o_cfg_valid(dma_cfg_valid),
+		.i_cfg_ready(dma_cfg_ready),
+		.o_dma_request(dma_request),
+		.o_dma_dir(dma_dir),
+		.o_dma_abort(dma_abort),
+		.o_dma_reset(dma_reset),
+		.o_dma_addr(dma_addr),
+		.i_s2mm_done(s2mm_done),
+		.i_s2mm_err(s2mm_err),
+		.i_mm2s_done(mm2s_done),
+		.i_mm2s_err(mm2s_err)
+		// }}}
+	);
+
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -129,12 +198,12 @@ module	sdslave #(
 		//
 		.i_cmdio(i_sd_cmd),
 		.o_cmdio(o_sd_cmd),
-		.o_cmden(w_cmden),
+		.o_cmden(w_cmd_en),
 		.i_collision(1'b0)
 		// }}}
 	);
 
-	assign	o_sd_cmd_tristate = !w_cmden;
+	assign	o_sd_cmd_tristate = !w_cmd_en;
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -193,6 +262,7 @@ module	sdslave #(
 		//
 		.o_valid(rx_valid), // .i_ready(rx_ready),
 			.o_data(rx_data),
+			.o_last(rx_last),
 			.o_good(rx_good), .o_err(rx_fail)
 		// }}}
 	);
@@ -205,25 +275,26 @@ module	sdslave #(
 	reg		lcl_valid, lcl_last;
 	reg	[3:0]	lcl_addr;
 	reg	[31:0]	lcl_ram	[0:31];
+	reg	[31:0]	lcl_data;
 
 	always @(posedge i_sd_clk)
-	if (!i_tx_en || tx_src == 2'b00)
+	if (!tx_en || tx_src == 2'b00)
 		lcl_valid <= 0;
-	else if (!lcl_valid || !tx_valid || tx_ready))
+	else if (!lcl_valid || !tx_valid || tx_ready)
 		lcl_valid <= !lcl_last;
 
 	always @(posedge i_sd_clk)
-	if (!i_tx_en || tx_src == 2'b00)
+	if (!tx_en || tx_src == 2'b00)
 		lcl_addr <= 0;
 	else if (!lcl_last && (!lcl_valid || !tx_valid || tx_ready))
 		lcl_addr <= lcl_addr + 1;
 
 	always @(posedge i_sd_clk)
-	if (!lcl_valid || !tx_valid || tx_ready))
+	if (!lcl_valid || !tx_valid || tx_ready)
 		lcl_data <= lcl_ram[{ tx_src[1], lcl_addr }];
 
 	always @(posedge i_sd_clk)
-	if (!i_tx_en || tx_src == 2'b00)
+	if (!tx_en || tx_src == 2'b00)
 		lcl_last <= 0;
 	else if (!lcl_last && (!lcl_valid || !tx_valid || tx_ready))
 	begin
@@ -246,7 +317,7 @@ module	sdslave #(
 	// SDS DMA Handler
 	// {{{
 	sdsdma #(
-		.BUS_WIDTH(DW), .ADDRESS_WIDTH(AW+$clog2(DW/8))
+		.BUS_WIDTH(DW), .ADDRESS_WIDTH(ADDRESS_WIDTH)
 	) u_dma (
 		// {{{
 		.i_wb_clk(i_clk), .i_wb_reset(i_reset),
@@ -264,8 +335,10 @@ module	sdslave #(
 		.i_sd_lglen(cfg_lgblksz),
 		.i_sd_addr(dma_addr),
 
-		.o_sd_busy(ign_dma_busy),
-		.o_sd_err(dma_err),
+		.o_s2mm_done(s2mm_done),
+		.o_s2mm_err(s2mm_err),
+		.o_mm2s_done(mm2s_done),
+		.o_mm2s_err(mm2s_err),
 		// }}}
 		// SD stream interface
 		// {{{
@@ -284,7 +357,7 @@ module	sdslave #(
 		//
 		.i_dma_stall(i_wb_stall),
 		.i_dma_ack(i_wb_ack), .i_dma_data(i_wb_data),
-		.i_dma_err(i_wb_err),
+		.i_dma_err(i_wb_err)
 		// }}}
 		// }}}
 	);

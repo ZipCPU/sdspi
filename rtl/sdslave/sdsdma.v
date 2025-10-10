@@ -114,7 +114,8 @@ module	sdsdma #(
 		input	wire	[3:0]	i_sd_lglen,
 		input	wire	[ADDRESS_WIDTH-1:0]	i_sd_addr,
 		//
-		output	wire		o_dma_busy, o_dma_err,
+		output	wire		o_s2mm_done, o_s2mm_err,
+		output	wire		o_mm2s_done, o_mm2s_err,
 		// }}}
 		// SD interface
 		// {{{
@@ -153,9 +154,11 @@ module	sdsdma #(
 	localparam	WBLSB = $clog2(DW/8);
 	localparam	LGFLEN = 1+LGMAXBLKSZ-WBLSB;
 
-	reg				r_rtn_valid, r_dma_err, r_dma_busy;
+	reg				r_rtn_valid, r_dma_err, r_dma_busy,
+					r_dma_done;
 	wire				sd_rtn_ready, sd_rtn_valid,
-					dma_busy, dma_err,
+					dma_done, dma_err,
+					wb_softreset,
 					wb_rtn_valid, wb_rtn_ready,
 					wb_cfg_valid, wb_cfg_ready;
 
@@ -196,13 +199,19 @@ module	sdsdma #(
 	wire			rd_cyc, wr_cyc, rd_stb, wr_stb,
 				rd_we, wr_we;
 	wire	[AW-1:0]	rd_addr, wr_addr;
-	wire	[WBLSB-1:0]	rd_sel, wr_sel;
+	wire	[DW/8-1:0]	rd_sel, wr_sel;
 
 	wire	[WBLSB:0]	sz_32b;
 	wire	[DW-1:0]	ign_rd_data;
+	reg	[DW-1:0]	wide_rx_data;
 
 	wire			s2mm_request, s2mm_busy, s2mm_err,
 				s2mm_ready;
+
+	reg	r_s2mm_busy, r_mm2s_busy, r_s2mm_done, r_mm2s_done;
+	reg	r_s2mm_err, r_mm2s_err;
+	wire	s2mm_done, mm2s_done;
+
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -218,19 +227,19 @@ module	sdsdma #(
 	// i_sd_abort   -> wb_abort
 
 	sdtfrvalue #(
-		.W(3+4+ADDRESS_WIDTH)
+		.W(4+4+ADDRESS_WIDTH)
 		// .DEFAULT({(7+ADDRESS_WIDTH){1'b0}})
 	) u_tfr2wb (
 		// {{{
 		.i_a_clk(i_sd_clk), .i_a_reset_n(!i_sd_reset),
 		.i_a_valid(i_cfg_valid), .o_a_ready(o_cfg_ready),
-		.i_a_data({ i_sd_request, i_sd_dir, i_sd_abort, i_sd_lglen,
-							i_sd_addr }),
+		.i_a_data({ i_sd_request, i_sd_dir, i_sd_abort, i_sd_softreset,
+					i_sd_lglen, i_sd_addr }),
 		//
 		.i_b_clk(i_wb_clk), .i_b_reset_n(!i_wb_reset),
 		.o_b_valid(wb_cfg_valid), .i_b_ready(wb_cfg_ready),
-		.o_b_data({ wb_request, wb_dir, wb_abort, wb_lglen,
-							wb_dma_addr })
+		.o_b_data({ wb_request, wb_dir, wb_abort, wb_softreset,
+						wb_lglen, wb_dma_addr })
 		// }}}
 	);
 
@@ -253,44 +262,74 @@ module	sdsdma #(
 		r_rtn_valid <= 1'b0;
 
 	assign	wb_rtn_valid = r_rtn_valid
-				|| (r_dma_err  != (mm2s_err  || s2mm_err))
-				|| (r_dma_busy != (mm2s_busy || s2mm_busy));
+				|| (r_mm2s_err  != mm2s_err)
+				|| (r_s2mm_err  != s2mm_err)
+				|| (r_mm2s_busy != mm2s_busy)
+				|| (r_s2mm_busy != s2mm_busy);
 
-	initial	r_dma_err = 1'b0;
+	initial	r_s2mm_err = 1'b0;
 	always @(posedge i_wb_clk)
 	if (i_wb_reset)
-		r_dma_err <= 1'b0;
-	else if ((mm2s_err || s2mm_err) && !wb_rtn_ready)
-		r_dma_err <= 1'b1;
+		r_s2mm_err <= 1'b0;
+	else if (s2mm_err && !wb_rtn_ready)
+		r_s2mm_err <= 1'b1;
 	else if (wb_rtn_ready)
-		r_dma_err <= 1'b0;
+		r_s2mm_err <= 1'b0;
 
-	/*
-	initial	r_dma_busy = 1'b0;
+	initial	r_mm2s_err = 1'b0;
 	always @(posedge i_wb_clk)
 	if (i_wb_reset)
-		r_dma_busy <= 1'b0;
-	else if ((mm2s_busy || s2mm_busy) && !wb_rtn_ready)
-		r_dma_busy <= 1'b1;
+		r_mm2s_err <= 1'b0;
+	else if (mm2s_err && !wb_rtn_ready)
+		r_mm2s_err <= 1'b1;
 	else if (wb_rtn_ready)
-		r_dma_busy <= 1'b0;
-	*/
+		r_mm2s_err <= 1'b0;
 
-	assign	dma_err  = mm2s_err  || s2mm_err  || r_dma_err;
-	assign	dma_busy = mm2s_busy || s2mm_busy; // || r_busy;
+	always @(posedge i_wb_clk)
+	if (i_wb_reset || wb_softreset || wb_abort)
+		r_s2mm_busy <= 1'b0;
+	else
+		r_s2mm_busy <= s2mm_busy;
+
+	always @(posedge i_wb_clk)
+	if (i_wb_reset || wb_softreset || wb_abort)
+		r_mm2s_busy <= 1'b0;
+	else
+		r_mm2s_busy <= mm2s_busy;
+
+	initial	r_s2mm_done = 1'b0;
+	always @(posedge i_wb_clk)
+	if (i_wb_reset || wb_softreset || wb_abort)
+		r_s2mm_done <= 1'b0;
+	else if (wb_rtn_ready)
+		r_s2mm_done <= 1'b0;
+	else if (r_s2mm_busy && !s2mm_busy)
+		r_s2mm_done <= 1'b1;
+
+	initial	r_mm2s_done = 1'b0;
+	always @(posedge i_wb_clk)
+	if (i_wb_reset || wb_softreset || wb_abort)
+		r_mm2s_done <= 1'b0;
+	else if (wb_rtn_ready)
+		r_mm2s_done <= 1'b0;
+	else if (r_mm2s_busy && !mm2s_busy)
+		r_mm2s_done <= 1'b1;
+
+	assign	s2mm_done = r_s2mm_done || (r_s2mm_busy && !s2mm_busy);
+	assign	mm2s_done = r_mm2s_done || (r_mm2s_busy && !mm2s_busy);
 
 	sdtfrvalue #(
-		.W(2)
+		.W(4)
 		// .DEFAULT({(2){1'b0}})
 	) u_tfr2sd (
 		// {{{
 		.i_a_clk(i_wb_clk), .i_a_reset_n(!i_wb_reset),
 		.i_a_valid(wb_rtn_valid), .o_a_ready(wb_rtn_ready),
-		.i_a_data({ dma_err, dma_busy }),
+		.i_a_data({ s2mm_done, r_s2mm_err || s2mm_err, mm2s_done, r_mm2s_err || mm2s_err }),
 		//
 		.i_b_clk(i_sd_clk), .i_b_reset_n(!i_sd_reset),
 		.o_b_valid(sd_rtn_valid), .i_b_ready(sd_rtn_ready),
-		.o_b_data({ o_dma_err, o_dma_busy })
+		.o_b_data({ o_s2mm_done, o_s2mm_err, o_mm2s_done, o_mm2s_err })
 		// }}}
 	);
 
@@ -309,19 +348,24 @@ module	sdsdma #(
 	// {{{
 
 	assign	sz_32b = 4;
+	always @(*)
+	begin
+		wide_rx_data = {(DW){1'b0}};
+		wide_rx_data[DW-1:DW-32] = i_rx_data;
+	end
 
-	rxgears #(
+	sddma_rxgears #(
 		.BUS_WIDTH(DW),
 		.OPT_LITTLE_ENDIAN(1'b0)
 	) u_rxgears (
 		// {{{
 		.i_clk(	i_sd_clk),
 		.i_reset(i_sd_reset),
-		.i_soft_reset(i_sd_abort),
+		.i_soft_reset(i_sd_softreset),
 		//
 		.S_VALID(i_rx_valid),
 		.S_READY(ign_rx_ready),
-		.S_DATA(i_rx_data),
+		.S_DATA(wide_rx_data),
 		.S_BYTES(sz_32b),	// All RXFrame outputs are 32b
 		.S_LAST(i_rx_last),
 		// i_rx_good, i_rx_err -- not used here
@@ -340,13 +384,13 @@ module	sdsdma #(
 	) u_rxafifo (
 		// {{{
 		.i_wclk(	i_sd_clk),
-		.i_wr_reset_n(	rx_dma_reset_n ),
+		.i_wr_reset_n(	!i_sd_softreset ),
 		.i_wr(	rx_gear_valid),
 		.i_wr_data({ rx_gear_last, rx_gear_bytes, rx_gear_data }),
 		.o_wr_full(ign_rx_afifo_full),
 		//
 		.i_rclk(i_wb_clk),
-		.i_rd_reset_n(!i_wb_reset && !wb_abort),
+		.i_rd_reset_n(!wb_softreset),
 		.i_rd(1'b1),
 		.o_rd_data({ rx_afifo_last, rx_afifo_bytes, rx_afifo_data }),
 		.o_rd_empty(rx_afifo_empty)
@@ -356,6 +400,14 @@ module	sdsdma #(
 
 	// WB ingest, MM2S (TODO)
 	// {{{
+	reg	[LGMAXBLKSZ:0]	wide_wb_len;
+
+	always @(*)
+	begin
+		wide_wb_len = 1;
+		wide_wb_len = wide_wb_len << wb_lglen;
+	end
+
 	sddma_mm2s #(
 		// {{{
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
@@ -373,7 +425,7 @@ module	sdsdma #(
 		.o_err(mm2s_err),
 		.i_inc(1'b1),
 		.i_size(SZ_BUS),
-		.i_transferlen(12'h1 << wb_lglen),
+		.i_transferlen(wide_wb_len),
 		.i_addr(wb_dma_addr),
 		// }}}
 		// Wishbone connections
@@ -407,7 +459,7 @@ module	sdsdma #(
 	// {{{
 
 	sdfifo #(
-		.BW(DW),
+		.BW(1+(WBLSB+1)+DW),
 		// Always have enough room for 2x blocks, to allow for ping-pong
 		.LGFLEN(LGFLEN)
 	) u_sfifo (
@@ -447,13 +499,13 @@ module	sdsdma #(
 		.WIDTH(2+WBLSB+DW),
 	) u_txafifo (
 		// {{{
-		.i_wclk(i_wb_clk), .i_wr_reset_n( rx_dma_reset_n ),
+		.i_wclk(i_wb_clk), .i_wr_reset_n( !wb_softreset ),
 		//
 		.i_wr(sfifo_rd),
 			.i_wr_data({ sfifo_last, sfifo_bytes, sfifo_data }),
 		.o_wr_full(tx_afifo_full),
 		//
-		.i_rclk(i_sd_clk), .i_rd_reset_n(!i_sd_reset),
+		.i_rclk(i_sd_clk), .i_rd_reset_n(!i_sd_softreset),
 			.i_rd(tx_gear_ready),
 		.o_rd_data({ tx_afifo_last, tx_afifo_bytes, tx_afifo_data }),
 		.o_rd_empty(tx_afifo_empty)
@@ -468,7 +520,7 @@ module	sdsdma #(
 		.i_clk(	i_sd_clk),
 		// In TxGears, there's no difference between reset and soft
 		//  reset.  Both control the same things
-		.i_reset( i_sd_reset || dma_reset || i_sd_abort
+		.i_reset( i_sd_reset || i_sd_softreset || i_sd_abort
 						|| i_sd_dir==D_HOST2DEV),
 		.i_soft_reset( i_sd_dir == D_HOST2DEV ),
 		.i_size(SZ_32B),	// SZ_32B = 2'b01
@@ -530,7 +582,7 @@ module	sdsdma #(
 		.o_wr_sel(  wr_sel),
 		.i_wr_stall(i_dma_stall),
 		.i_wr_ack(  i_dma_ack),
-		.i_wr_data( 32'h0),
+		.i_wr_data( {(DW){1'b0}}),
 		.i_wr_err(  i_dma_err)
 		// }}}
 		// }}}
@@ -547,6 +599,7 @@ module	sdsdma #(
 	assign	o_dma_stb = rd_stb || wr_stb;
 	assign	o_dma_we  = wr_cyc;
 	// assign	o_dma_data= wr_data;
+	assign	o_dma_addr= rd_cyc ? rd_addr : wr_addr;
 	assign	o_dma_sel = rd_cyc ? rd_sel : wr_sel;
 	// }}}
 
@@ -555,7 +608,8 @@ module	sdsdma #(
 	wire	unused;
 	assign	unused = &{ 1'b0, wb_cfg_valid, ign_rx_ready, ign_rx_afifo_full,
 				ign_fifo_full, ign_fifo_fill, ign_tx_bytes,
-				ign_rd_data
+				ign_rd_data, rd_we, wr_we, wide_tx_data,
+				sd_rtn_valid
 			 };
 	// }}}
 ////////////////////////////////////////////////////////////////////////////////

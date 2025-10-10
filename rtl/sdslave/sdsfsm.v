@@ -51,7 +51,8 @@ module	sdsfsm #(
 		input	wire		i_clk, i_reset,
 		// Configuration / PHY control
 		// {{{
-		output	reg		o_cfg_pp,
+		output	reg		o_cfg_cmd_pp,
+		output	reg		o_cfg_dat_pp,
 		output	wire		o_cfg_ds,
 		output	reg		o_cfg_ddr,
 		output	reg	[3:0]	o_cfg_lgblksz,
@@ -119,7 +120,8 @@ module	sdsfsm #(
 	// Possible transmit data sources
 	localparam	[1:0]	S_MEM = 2'b00,
 				S_SCR = 2'b01,
-				S_STATUS = 2'b10;
+				S_STATUS = 2'b10,
+				S_TUNING = 2'b11;
 
 	// Verilator lint_off UNUSED
 
@@ -180,6 +182,9 @@ module	sdsfsm #(
 	wire		transfer_complete, operation_complete;
 
 	wire	[127:0]	CSD;
+
+	reg		new_dma_request, new_tx_en, new_rx_en;
+	reg	[1:0]	new_bufcount;
 	// }}}
 
 	assign	R1 = { 19'h0, r_state, 3'h0, app_cmd, 5'h0 };
@@ -317,7 +322,8 @@ module	sdsfsm #(
 		r_width <= 1'b0;
 		o_resp_valid <= 1'b0;
 		o_resp_nocrc <= 1'b0;	// (Most) everything gets a CRC
-		o_cfg_pp <= 1'b0;
+		o_cfg_cmd_pp <= 1'b0;
+		o_cfg_dat_pp <= 1'b0;
 		o_cfg_ddr <= 1'b0;
 		o_cfg_lgblksz <= 4'h9;
 		r_width <= 1'b0;
@@ -449,7 +455,8 @@ module	sdsfsm #(
 				r_state <= ST_IDLE;
 				// No response to the GO_IDLE command
 				o_resp_valid <= 1'b0;
-				o_cfg_pp <= 1'b0;
+				o_cfg_cmd_pp <= 1'b0;
+				o_cfg_dat_pp <= 1'b0;
 				// o_cfg_ds <= 1'b0;
 				o_cfg_ddr <= 1'b0;
 				o_cfg_lgblksz <= 4'h9;
@@ -645,8 +652,23 @@ module	sdsfsm #(
 							| ILLEGAL_COMMAND;
 				end end
 				// }}}
-			// CMD19: SEND_TUNING_BLOCK
-			//	r_state <= ST_DATA;
+			{ 1'b0, 6'd19 }: begin // CMD19: SEND_TUNING_BLOCK
+				// {{{
+				if (r_state == ST_TRAN)
+				begin
+			 		r_state <= ST_DATA;
+					o_resp_valid <= 1'b1;
+					o_resp_data <= R1;
+					o_resp_data[12:9] <= ST_DATA;
+					// The SD Config Register is 8bytes
+					if (r_width)
+						// 128 clocks, 4b/clk => 64B
+						o_cfg_lgblksz <= 4'h6;
+					else
+						// 128 clocks, 1b/clk, = 16B
+						o_cfg_lgblksz <= 4'h4;
+				end end
+				// }}}
 			// CMD20: SPEED_CLASS_CONTROL
 			//	if (r_state == ST_TRAN)
 			//		r_state <= ST_DATA;
@@ -732,8 +754,6 @@ module	sdsfsm #(
 
 	assign	o_cfg_ds = 1'b0;
 
-	reg		new_dma_request, new_tx_en, new_rx_en;
-	reg	[1:0]	new_bufcount;
 	always @(*)
 	begin
 		new_bufcount = bufcount;
@@ -766,9 +786,9 @@ module	sdsfsm #(
 							&& r_state == ST_DATA)
 			// Once a page is loaded, send it, but first
 			// guarantee an empty cycle
-			new_tx_en <= 1'b1;
+			new_tx_en = 1'b1;
 		D_HOST2DEV: if (r_multiblock && !o_rx_en && bufcount < 2)
-			new_rx_en <= 1'b1;
+			new_rx_en = 1'b1;
 		endcase
 
 	end
@@ -1071,6 +1091,14 @@ module	sdsfsm #(
 						o_dma_addr <= i_arg[AW-1:0];
 				end end
 				// }}}
+			{ 1'b0, 6'd19 }: begin // CMD19: SEND_TUNING_BLOCK
+				// {{{
+				if (r_state == ST_TRAN && !o_tx_busy)
+				begin
+					o_tx_en  <= 1'b1;
+					o_tx_src <= S_TUNING;
+				end end
+				// }}}
 			{ 1'b0, 6'd24 }: begin // CMD24: WRITE_BLOCK
 				// {{{
 				if (r_state == ST_TRAN && !o_tx_busy)
@@ -1331,6 +1359,14 @@ cover($past(r_state) == ST_PRG);
 		S_MEM: begin end
 		S_SCR: assert(!mm2s_busy && o_cfg_lgblksz == 3);
 		S_STATUS: assert(!mm2s_busy && o_cfg_lgblksz == 6);
+		S_TUNING: begin
+			assert(!mm2s_busy)
+			if (r_width)
+			begin
+				assert(o_cfg_lgblksz == 6);
+			end else
+				assert(o_cfg_lgblksz == 4);
+			end
 		default: assert(0);
 		endcase end
 		// }}}

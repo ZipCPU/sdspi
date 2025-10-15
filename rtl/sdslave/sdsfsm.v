@@ -332,7 +332,7 @@ module	sdsfsm #(
 		// rca_assigned <= 1'b0;
 		my_cid <= 1'b0;
 		r_inactive <= 1'b0;
-		first_command <= 1'b0;
+		first_command <= 1'b1;
 		// }}}
 	end else begin
 		o_resp_valid <= 1'b0;
@@ -381,10 +381,12 @@ module	sdsfsm #(
 			{ 1'b1, 6'd41 }: begin // ACMD41
 				// {{{
 				if (r_state == ST_IDLE)
+				// if (r_state == ST_READY)
 				begin
 					if (0 != i_arg[23:0] && !i_arg[30])
 						hcs_support <= 1'b0;
-					r_state <= ST_READY;
+					if (0 != i_arg[23:0])
+						r_state <= ST_READY;
 					o_resp_valid <= 1'b1;
 					o_resp_data <= {
 						// 1'b0, 1'b0, 6'h3f,
@@ -463,7 +465,7 @@ module	sdsfsm #(
 				r_width <= 1'b0;
 				// rca_assigned <= 1'b0;
 				my_cid <= 1'b0;
-				first_command <= 1'b0;
+				first_command <= 1'b1;
 				end
 				// }}}
 			{ 1'b0, 6'd02 }: begin // CMD2: ALL_SEND_CID

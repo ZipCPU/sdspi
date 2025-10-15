@@ -77,7 +77,8 @@ module	sdslave #(
 	// Local declarations
 	// {{{
 	localparam	ADDRESS_WIDTH = AW+$clog2(DW/8);
-	wire		sd_reset;
+
+	reg		sd_reset, sd_reset_pipe;
 
 	wire		cfg_ds, cfg_ddr, cfg_cmd_pp, cfg_dat_pp;
 	wire	[1:0]	cfg_width;
@@ -108,10 +109,14 @@ module	sdslave #(
 
 	wire		mem_valid, mem_ready, mem_last;
 	wire	[31:0]	mem_data;
-
 	// }}}
 
-	assign	sd_reset= i_reset;
+	always @(posedge i_sd_clk or posedge i_reset)
+	if (i_reset)
+		{ sd_reset, sd_reset_pipe } <= 2'b11;
+	else
+		{ sd_reset, sd_reset_pipe } <= { sd_reset_pipe, 1'b0 };
+
 	assign	o_sd_ds_tristate = !cfg_ds;
 
 	////////////////////////////////////////////////////////////////////////

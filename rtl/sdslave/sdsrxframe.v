@@ -53,7 +53,7 @@ module	sdsrxframe #(
 		//
 		output	wire		o_valid,
 		output	wire	[31:0]	o_data,
-		// output wire		o_last,
+		output wire		o_last,
 		output	wire		o_good,	// Full block, valid CRCs
 					o_err	// CRC failure
 		// }}}
@@ -69,7 +69,7 @@ module	sdsrxframe #(
 			WIDTH_8W = 2'b10;
 	integer	ik, jk;
 	reg		started, crc_active, last, write, crc_good, crc_fail,
-			w_valid_crc;
+			w_valid_crc, wr_last;
 	reg	[19:0]	count;
 	reg	[31:0]	sreg;
 	reg	[NCRC-1:0]	crc_fill	[2*NUMIO-1:0];
@@ -127,9 +127,11 @@ module	sdsrxframe #(
 	begin
 		sreg <= 0;
 		write <= 0;
+		wr_last <= 0;
 	end else if (i_valid)	// Might even be always true ...
 	begin
 		write <= 0;
+		wr_last <= last;
 		if (OPT_DDR && i_cfg_ddr)
 		begin
 			// {{{
@@ -175,7 +177,11 @@ module	sdsrxframe #(
 			// WIDTH_1W:
 			default: begin
 				sreg <= { sreg[30:0], i_data[8] };
-				write <= (count[4:0] == 5'h1);
+				// Write after every 32 bits, save that our
+				// count is off by 16 to account for the 16
+				// CRC bits
+				wr_last <= (count <= 20'h11);
+				write <= (count[4:0] == 5'h11);
 				end
 			endcase
 
@@ -188,6 +194,7 @@ module	sdsrxframe #(
 
 	assign	o_valid = write;
 	assign	o_data  = sreg;
+	assign	o_last  = wr_last;
 
 	// CRC Fill, for both positive and negative edges
 	// {{{
@@ -206,7 +213,7 @@ module	sdsrxframe #(
 		begin
 			// Positive edge
 			crc_fill[NUMIO+ik] <= ADVANCE_CRC(crc_fill[NUMIO+ik],
-							i_data[NUMIO+ik]);
+							i_data[8+ik]);
 			// Negative edge
 			crc_fill[ik] <= ADVANCE_CRC(crc_fill[ik], i_data[ik]);
 
@@ -230,6 +237,11 @@ module	sdsrxframe #(
 		end // for(ik ...)
 	end
 	// }}}
+
+wire	[NCRC-1:0]	fill0p, fill0n;
+	assign	fill0n = crc_fill[0];
+	assign	fill0p = crc_fill[NUMIO];
+
 
 	// CRC Checking
 	// {{{

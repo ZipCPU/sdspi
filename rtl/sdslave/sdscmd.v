@@ -40,11 +40,11 @@
 //
 `default_nettype none
 // }}}
-module	sdscmd #(
+module	sdscmd // #(
 		// NUMIO ... unused
 		// OPT_DS ... eventually, to support enhanced commands
 		// OPT_DDDR ... unused, commands are always SDR
-	) (
+	(
 		// {{{
 		// i_clk is the SD clock, from the SDIO master
 		// i_reset is ... a power on reset?
@@ -82,17 +82,20 @@ module	sdscmd #(
 
 	reg			long_message, r_cmden;
 	reg	[1:0]		state;
-	reg	[143:0]		sreg;
+	reg	[136:0]		sreg;
 	reg	[6:0]		cmdcrc;
 	reg	[7:0]		count;
+	wire	[6:0]		stepped;
 	// }}}
+
+	assign	stepped = STEPCRC(cmdcrc, sreg[135]);
 
 	always @(posedge i_clk)
 	if (i_reset)
 	begin
 		// {{{
 		state <= CMD_IDLE;
-		sreg  <= {(144){1'b1}};
+		sreg  <= {(137){1'b1}};
 		count <= 0;
 		cmdcrc <= 0;
 		long_message <= 1;
@@ -105,7 +108,7 @@ module	sdscmd #(
 	end else case(state)
 	CMD_IDLE: begin
 		// {{{
-		sreg  <= {(144){1'b1}};
+		sreg  <= {(137){1'b1}};
 		count <= 0;
 		cmdcrc <= 0;
 		long_message <= 1'b0;
@@ -122,14 +125,15 @@ module	sdscmd #(
 			count <= 1;
 			r_cmden <= 1'b1;
 			long_message <= i_typ;
-			sreg[143:104] <= { 2'b00, i_resp, i_arg };
+			sreg[136:96] <= { 1'b0, 2'b00, i_resp, i_arg };
 			if (i_typ)
-				sreg[103:0] <= { i_extended, 8'hff };
+				sreg[95:0] <= { i_extended };
 		end end
 		// }}}
 	CMD_RX: begin
 		// {{{
-		sreg <= { sreg[46:0], i_cmdio, {(96){1'b1}} };
+		// sreg <= { sreg[142:96], i_cmdio, {(96){1'b1}} };
+		sreg <= { sreg[135:88], i_cmdio, {(88){1'b1}} };
 		cmdcrc <= STEPCRC(cmdcrc, i_cmdio);
 		count <= count + 1;
 		long_message <= 1'b0;
@@ -137,28 +141,28 @@ module	sdscmd #(
 		o_err   <= 1'b0;
 		if (count == 47)
 		begin
-			o_valid <= (cmdcrc == 0) &&  i_cmdio && sreg[45];
-			o_err   <= (cmdcrc != 0) || !i_cmdio ||!sreg[45];
-			o_cmd   <= sreg[140:135];
-			o_arg   <= sreg[134:103];
-			sreg <= {(144){1'b1}};
+			o_valid <= (cmdcrc == 0) &&  i_cmdio && sreg[133];
+			o_err   <= (cmdcrc != 0) || !i_cmdio ||!sreg[133];
+			o_cmd   <= sreg[132:127];
+			o_arg   <= sreg[126: 95];
+			sreg <= {(137){1'b1}};
 			state   <= CMD_IDLE;
 		end end
 		// }}}
 	CMD_TX: begin
 		// {{{
-		sreg <= { sreg[142:0], 1'b1 };
-		r_cmden <= !sreg[142] || i_cfg_pp;
+		sreg <= { sreg[135:0], 1'b1 };
+		r_cmden <= !sreg[134] || i_cfg_pp;
 		if (i_nocrc)
 			cmdcrc <= -1;
-		else
-			cmdcrc <= STEPCRC(cmdcrc, sreg[143]);
+		else if (!long_message || count > 8)
+			cmdcrc <= stepped;
 		count <= count + 1;
-		if ((!long_message && count == 39) || (count == 144-9))
+		if ((!long_message && count == 40) || (count == 136-8))
 		begin
-			sreg[143:144-7] <= cmdcrc;
-			r_cmden <= !cmdcrc[6] || i_cfg_pp;
-		end if ((!long_message && count >= 48) || (count >= 144)
+			sreg[135:136-7] <= stepped;
+			r_cmden <= !stepped[6] || i_cfg_pp;
+		end if ((!long_message && count >= 48) || (count >= 136)
 				|| i_collision)
 		begin
 			state <= CMD_IDLE;
@@ -167,7 +171,7 @@ module	sdscmd #(
 		// }}}
 	default: begin
 		// {{{
-		sreg  <= {(144){1'b1}};
+		sreg  <= {(137){1'b1}};
 		count <= 0;
 		cmdcrc <= 0;
 		long_message <= 1'b0;
@@ -177,7 +181,7 @@ module	sdscmd #(
 		// }}}
 	endcase
 
-	assign	o_cmdio = sreg[143];
+	assign	o_cmdio = sreg[135];
 	assign	o_cmden = r_cmden && !i_collision;
 
 	localparam [6:0]	CRC_POLY = 7'h09;

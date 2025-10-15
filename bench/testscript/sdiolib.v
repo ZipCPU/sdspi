@@ -518,12 +518,16 @@ begin
 	if (read_data[24])
 		$display("  S18A: Switching to 1.8V allowed");
 
-	if (read_data[30:0] !== u_sdcard.ocr[30:0])
+	if (!OPT_SDSLAVE)
 	begin
-		$display("ERROR: F"); error_flag = 1'b1;
+		if (read_data[30:0] !== u_sdcard.ocr[30:0])
+		begin
+			$display("ERROR: F"); error_flag = 1'b1;
+		end
+
+		assert(read_data[30:0] == u_sdcard.ocr[30:0]);
 	end
 
-	assert(read_data[30:0] == u_sdcard.ocr[30:0]);
 end endtask
 // }}}
 

@@ -380,7 +380,7 @@ module	sdsdma #(
 
 	afifo #(
 		.LGFIFO(3),
-		.WIDTH(2+WBLSB+DW),
+		.WIDTH(2+WBLSB+DW)
 	) u_rxafifo (
 		// {{{
 		.i_wclk(	i_sd_clk),
@@ -496,7 +496,7 @@ module	sdsdma #(
 
 	afifo #(
 		.LGFIFO(3),
-		.WIDTH(2+WBLSB+DW),
+		.WIDTH(2+WBLSB+DW)
 	) u_txafifo (
 		// {{{
 		.i_wclk(i_wb_clk), .i_wr_reset_n( !wb_softreset ),

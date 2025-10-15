@@ -354,7 +354,7 @@ module	tb_wb #(
 
 	wbxbar #(
 		// {{{
-		.NM(4), .NS(6), .AW(AW), .DW(DW),
+		.NM(5), .NS(6), .AW(AW), .DW(DW),
 		.SLAVE_ADDR({
 			MEM_ADDR[AW+WBLSB-1:WBLSB],
 			SCK_ADDR[AW+WBLSB-1:WBLSB],
@@ -644,8 +644,9 @@ module	tb_wb #(
 		// {{{
 		// Local declarations
 		// {{{
+		genvar			sk;
 		reg			slv_reset, slv_reset_pipe;
-		wire			slv_clk;
+		reg			slv_clk;
 
 		// Local Wishbone
 		wire			slv_cyc, slv_stb, slv_we,
@@ -658,10 +659,12 @@ module	tb_wb #(
 		reg			i_sd_cmd;
 		wire			o_sd_cmd, w_sd_cmd_tristate;
 
-		reg	[3:0]		i_sd_cmd;
-		wire	[7:0]		o_sd_cmd, w_sd_cmd_tristate;
+		reg	[3:0]		i_sd_dat;
+		wire	[15:0]		w_sd_dat;
+		wire	[7:0]		w_sd_dat_tristate;
 
-		wire			o_sd_ds, w_sd_ds_tristate;
+		wire	[1:0]		w_sd_ds;
+		wire			w_sd_ds_tristate;
 		// }}}
 
 		// Bus clock and reset
@@ -679,7 +682,7 @@ module	tb_wb #(
 		if (reset)
 			{ slv_reset, slv_reset_pipe } <= 2'b11;
 		else
-			{ slv_reset, slv_reset_pipe } <= { slv_reset_pipe, 1'b1 };
+			{ slv_reset, slv_reset_pipe } <= { slv_reset_pipe, 1'b0 };
 		// }}}
 
 		sdslave #(
@@ -711,10 +714,10 @@ module	tb_wb #(
 			.o_sd_cmd_tristate(w_sd_cmd_tristate),
 			//
 			.i_sd_dat({ 4'hf, i_sd_dat, 4'hf, sd_dat[3:0] }),
-			.o_sd_dat(o_sd_dat),
+			.o_sd_dat(w_sd_dat),
 			.o_sd_dat_tristate(w_sd_dat_tristate),
 			//
-			.o_sd_ds(o_sd_ds),
+			.o_sd_ds(w_sd_ds),
 			.o_sd_ds_tristate(w_sd_ds_tristate)
 			// }}}
 			// }}}
@@ -722,7 +725,7 @@ module	tb_wb #(
 
 		// IO buffers -- CMD
 		// {{{
-		always @(posedge sd_clk or posedge slv_reset)
+		always @(posedge sd_ck or posedge slv_reset)
 		if (slv_reset)
 			i_sd_cmd <= 4'hf;
 		else
@@ -733,20 +736,21 @@ module	tb_wb #(
 
 		// IO buffers -- DAT[3:0] (7:4 unused)
 		// {{{
-		always @(posedge sd_clk or posedge slv_reset)
+		always @(posedge sd_ck or posedge slv_reset)
 		if (slv_reset)
 			i_sd_dat = 4'hf;
 		else
 			i_sd_dat = sd_dat;
 
-		for(gk=0; gk<4; gk=gk+1)
+		for(sk=0; sk<4; sk=sk+1)
 		begin : IOBUF
-			assign	sd_dat[gk] = (w_sd_dat_tristate[gk]) ? 1'bz : o_(sd_clk ? sd_dat[gk+8] : sd_dat[gk]);
+			assign	sd_dat[sk] = (w_sd_dat_tristate[sk]) ? 1'bz
+				: (sd_ck ? w_sd_dat[sk+8] : w_sd_dat[sk]);
 		end
 		// }}}
 
 		// IO buffers -- DS (Unused in SDIO mode)
-		assign	sd_ds = (w_sd_ds_tristate) ? 1'bz : (sd_clk ? o_sd_ds[1] : o_sd_ds[0]);
+		// assign	sd_ds = (w_sd_ds_tristate) ? 1'bz : (sd_ck ? w_sd_ds[1] : w_sd_ds[0]);
 
 		// Move WB request across clock domains
 		// {{{
@@ -774,13 +778,13 @@ module	tb_wb #(
 			.i_xclk_clk(clk),
 			//
 			.o_xclk_cyc(sds_dma_cyc), .o_xclk_stb(sds_dma_stb),
-				.i_xclk_we(sds_dma_we),
+				.o_xclk_we(sds_dma_we),
 			.o_xclk_addr(sds_dma_addr), .o_xclk_data(sds_dma_data),
 				.o_xclk_sel(sds_dma_sel),
 			//
 			.i_xclk_stall(sds_dma_stall),
 			.i_xclk_ack(sds_dma_ack), .i_xclk_data(sds_dma_idata),
-			.i_xclk_err(sds_dma_err),
+			.i_xclk_err(sds_dma_err)
 			// }}}
 			// }}}
 		);
@@ -790,9 +794,10 @@ module	tb_wb #(
 		// {{{
 		// Verilator lint_off UNUSED
 		wire	unused_io;
-		assign	unused_io = &{ 1'b0, o_sd_dat[15:12], o_sd_dat[7:4],
-					w_sd_dat_tristatet[15:12],
-					w_sd_dat_tristatet[7:4] };
+		assign	unused_io = &{ 1'b0, w_sd_dat[15:12], w_sd_dat[7:4],
+					w_sd_dat_tristate[15:12],
+					w_sd_dat_tristate[ 7: 4],
+					w_sd_ds, w_sd_ds_tristate };
 		// Verilator lint_on  UNUSED
 		// }}}
 		// }}}

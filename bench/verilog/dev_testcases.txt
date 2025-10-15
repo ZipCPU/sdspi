@@ -69,6 +69,8 @@ axemmcio	AXI emmcstart	OPT_SERDES=0 OPT_DDR=0
 axemmcddr	AXI emmcstart	OPT_SERDES=0 OPT_DDR=1
 axemmc8x	AXI emmcstart	OPT_SERDES=1 OPT_DDR=1
 #
+sdslvio		WB  sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_SDSLAVE=1 OPT_VCD=1
+#
 # The SDSPI tests aren't yet fully implemented in all Verilog yet
 #	They currently exist as part of an integrated C++/Verilog test bench,
 #	run from the bench/cpp directory under Verilator.

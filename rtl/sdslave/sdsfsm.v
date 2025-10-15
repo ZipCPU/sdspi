@@ -1061,7 +1061,7 @@ module	sdsfsm #(
 					// o_tx_en   <= 1'b0;
 					// o_rx_en   <= 1'b0;
 					if (hcs_support)
-						o_dma_addr <= { i_arg[AW-9:0], 8'h0 };
+						o_dma_addr <= { i_arg[AW-9:0], 9'h0 };
 					else
 						o_dma_addr <= i_arg[AW-1:0];
 				end end
@@ -1088,7 +1088,7 @@ module	sdsfsm #(
 					// o_tx_en   <= 1'b0;
 					// o_rx_en   <= 1'b0;
 					if (hcs_support)
-						o_dma_addr <= { i_arg[AW-9:0], 8'h0 };
+						o_dma_addr <= { i_arg[AW-9:0], 9'h0 };
 					else
 						o_dma_addr <= i_arg[AW-1:0];
 				end end
@@ -1120,7 +1120,7 @@ module	sdsfsm #(
 					o_dma_dir <= D_HOST2DEV;
 					r_multiblock <= 1'b0;
 					if (hcs_support)
-						o_dma_addr <= { i_arg[AW-9:0], 8'h0 };
+						o_dma_addr <= { i_arg[AW-9:0], 9'h0 };
 					else
 						o_dma_addr <= i_arg[AW-1:0];
 				end end
@@ -1144,7 +1144,7 @@ module	sdsfsm #(
 					o_cfg_valid   <= 1'b1;
 					r_multiblock <= 1'b1;
 					if (hcs_support)
-						o_dma_addr <= { i_arg[AW-9:0], 8'h0 };
+						o_dma_addr <= { i_arg[AW-9:0], 9'h0 };
 					else
 						o_dma_addr <= i_arg[AW-1:0];
 				end end

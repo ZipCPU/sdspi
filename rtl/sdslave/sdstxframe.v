@@ -106,6 +106,7 @@ module	sdstxframe #(
 		count <= 0;
 		last <= 0;
 		s_last <= 0;
+		ready  <= 1'b0;
 	end else if (i_valid && (!started || o_ready))
 	begin	// Start bit and subsequent data beats
 		// {{{
@@ -167,7 +168,7 @@ module	sdstxframe #(
 	end
 
 	assign	o_ready = ready;
-	assign	o_done  = !started;
+	assign	o_done  = started && last && crc_active;
 	// }}}
 
 	always @(posedge i_clk)

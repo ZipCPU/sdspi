@@ -80,6 +80,15 @@ module	memdev #(
 
 		initial $readmemh(HEXFILE, mem);
 
+	end else begin : RANDOMIZE_MEMORY
+
+		reg	[AW-1:0]	r_addr;
+
+		initial begin
+			for(r_addr = 0; r_addr < (1<<AW)-1; r_addr = r_addr+1)
+				mem[r_addr] = $random;
+		end
+
 	end endgenerate
 	// }}}
 

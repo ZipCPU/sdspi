@@ -38,7 +38,8 @@
 // }}}
 
 task	testscript;
-	reg	[31:0]	read_data, ocr_reg, if_cond, op_cond, r6, sample_shift;
+	reg	[31:0]	read_data, ocr_reg, if_cond, op_cond, r6, sample_shift,
+			mem_offset;
 	reg	[15:0]	rca;
 	reg	[127:0]	CID;
 	integer		numio;
@@ -49,6 +50,9 @@ begin
 		@(posedge clk);
 	@(posedge clk);
 
+	mem_offset = 32'h0;
+	if (OPT_SDSLAVE)
+		mem_offset = (MEM_ADDR + (MEM_ADDR >> 1)) >> 9;
 	sdcard_discover;
 
 $display("Starting with CMD=0x%08x, PHY=0x%08x",
@@ -168,12 +172,12 @@ $display("Done waiting on initial clock change");
 	// CMD42	// LOCK_UNLOCK, sets/resets the password of the card
 
 	// ACMD6	SET_BUS_WIDTH, allowable data bus widths are in SCR reg
-	sdcard_send_random_block(32'h00);
-	sdcard_send_random_block(32'h03);
-	sdcard_send_random_block(32'h01);
-	sdcard_send_random_block(32'h02);
+	sdcard_send_random_block(mem_offset + 32'h00);
+	sdcard_send_random_block(mem_offset + 32'h03);
+	sdcard_send_random_block(mem_offset + 32'h01);
+	sdcard_send_random_block(mem_offset + 32'h02);
 
-	sdcard_read_block(32'h00);
+	sdcard_read_block(mem_offset + 32'h00);
 
 	sdcard_set_bus_width(2'b10);
 
@@ -187,10 +191,10 @@ $display("Done waiting on initial clock change");
 		// CMD19	// Tuning block to determine sampling point
 		// sdcard_read_ocr(ocr_reg);
 
-		sdcard_send_random_block(32'h04);
-		sdcard_send_random_block(32'h06);
-		sdcard_send_random_block(32'h05);
-		sdcard_send_random_block(32'h07);
+		sdcard_send_random_block(mem_offset + 32'h04);
+		sdcard_send_random_block(mem_offset + 32'h06);
+		sdcard_send_random_block(mem_offset + 32'h05);
+		sdcard_send_random_block(mem_offset + 32'h07);
 
 		sdcard_read_block(32'h05);
 	end
@@ -202,10 +206,10 @@ $display("Done waiting on initial clock change");
 	begin
 		u_bfm.write_f(ADDR_SDPHY, SECTOR_16B | SPEED_HSSDR | SDPHY_W4 | sample_shift);
 
-		sdcard_send_random_block(32'h0b);
-		sdcard_send_random_block(32'h09);
-		sdcard_send_random_block(32'h0a);
-		sdcard_send_random_block(32'h08);
+		sdcard_send_random_block(mem_offset + 32'h0b);
+		sdcard_send_random_block(mem_offset + 32'h09);
+		sdcard_send_random_block(mem_offset + 32'h0a);
+		sdcard_send_random_block(mem_offset + 32'h08);
 
 		sdcard_read_block(32'h0a);
 		sdcard_read_block(32'h0b);
@@ -221,10 +225,10 @@ $display("Done waiting on initial clock change");
 		if (OPT_1P8V && op_cond[24])
 			sdcard_send_tuning_block;
 
-		sdcard_send_random_block(32'h0c);
-		sdcard_send_random_block(32'h0d);
-		sdcard_send_random_block(32'h0e);
-		sdcard_send_random_block(32'h0f);
+		sdcard_send_random_block(mem_offset + 32'h0c);
+		sdcard_send_random_block(mem_offset + 32'h0d);
+		sdcard_send_random_block(mem_offset + 32'h0e);
+		sdcard_send_random_block(mem_offset + 32'h0f);
 
 		sdcard_read_block(32'h0d);
 		sdcard_read_block(32'h0c);
@@ -240,10 +244,10 @@ $display("Done waiting on initial clock change");
 		if (OPT_1P8V && op_cond[24])
 			sdcard_send_tuning_block;
 
-		sdcard_send_random_block(32'h10);
-		sdcard_send_random_block(32'h11);
-		sdcard_send_random_block(32'h12);
-		sdcard_send_random_block(32'h13);
+		sdcard_send_random_block(mem_offset + 32'h10);
+		sdcard_send_random_block(mem_offset + 32'h11);
+		sdcard_send_random_block(mem_offset + 32'h12);
+		sdcard_send_random_block(mem_offset + 32'h13);
 
 		sdcard_read_block(32'h10);
 		sdcard_read_block(32'h11);

@@ -212,6 +212,8 @@ module	sdsdma #(
 	reg	r_s2mm_err, r_mm2s_err;
 	wire	s2mm_done, mm2s_done;
 
+	wire	sd_s2mm_done, sd_s2mm_err, sd_mm2s_done, sd_mm2s_err;
+
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -269,7 +271,7 @@ module	sdsdma #(
 
 	initial	r_s2mm_err = 1'b0;
 	always @(posedge i_wb_clk)
-	if (i_wb_reset)
+	if (i_wb_reset || wb_softreset || wb_abort)
 		r_s2mm_err <= 1'b0;
 	else if (s2mm_err && !wb_rtn_ready)
 		r_s2mm_err <= 1'b1;
@@ -278,7 +280,7 @@ module	sdsdma #(
 
 	initial	r_mm2s_err = 1'b0;
 	always @(posedge i_wb_clk)
-	if (i_wb_reset)
+	if (i_wb_reset || wb_softreset || wb_abort)
 		r_mm2s_err <= 1'b0;
 	else if (mm2s_err && !wb_rtn_ready)
 		r_mm2s_err <= 1'b1;
@@ -329,11 +331,16 @@ module	sdsdma #(
 		//
 		.i_b_clk(i_sd_clk), .i_b_reset_n(!i_sd_reset),
 		.o_b_valid(sd_rtn_valid), .i_b_ready(sd_rtn_ready),
-		.o_b_data({ o_s2mm_done, o_s2mm_err, o_mm2s_done, o_mm2s_err })
+		.o_b_data({ sd_s2mm_done, sd_s2mm_err, sd_mm2s_done, sd_mm2s_err })
 		// }}}
 	);
 
 	assign	sd_rtn_ready = 1'b1;
+
+	assign	o_s2mm_done = sd_s2mm_done && sd_rtn_valid;
+	assign	o_s2mm_err  = sd_s2mm_err  && sd_rtn_valid;
+	assign	o_mm2s_done = sd_mm2s_done && sd_rtn_valid;
+	assign	o_mm2s_err  = sd_mm2s_err  && sd_rtn_valid;
 
 	// Externally handled
 	////////////////////
@@ -464,7 +471,7 @@ module	sdsdma #(
 		.LGFLEN(LGFLEN)
 	) u_sfifo (
 		.i_clk(i_wb_clk),
-		.i_reset(i_wb_reset),
+		.i_reset(i_wb_reset || wb_softreset),
 
 		.i_wr(mm2s_valid || !rx_afifo_empty),
 		.i_data(wb_dir == D_DEV2HOST
@@ -489,7 +496,7 @@ module	sdsdma #(
 	// Exfil: S2MM or sdstxframe
 	// {{{
 
-	assign	sfifo_rd = wb_dir == D_HOST2DEV ? !tx_afifo_full : s2mm_ready;
+	assign	sfifo_rd = (wb_dir == D_DEV2HOST) ? !tx_afifo_full : s2mm_ready;
 
 	// TX exfil: AFIFO -> TX Gears -> [TxFrame external]
 	// {{{
@@ -501,7 +508,7 @@ module	sdsdma #(
 		// {{{
 		.i_wclk(i_wb_clk), .i_wr_reset_n( !wb_softreset ),
 		//
-		.i_wr(sfifo_rd),
+		.i_wr(sfifo_rd && wb_dir == D_DEV2HOST),
 			.i_wr_data({ sfifo_last, sfifo_bytes, sfifo_data }),
 		.o_wr_full(tx_afifo_full),
 		//
@@ -556,7 +563,7 @@ module	sdsdma #(
 		//  }}}
 	) u_s2mm (
 		// {{{
-		.i_clk(i_wb_clk), .i_reset(i_wb_reset),
+		.i_clk(i_wb_clk), .i_reset(i_wb_reset || wb_softreset),
 		// Config
 		// {{{
 		.i_request(s2mm_request),
@@ -566,7 +573,7 @@ module	sdsdma #(
 		// }}}
 		// Stream
 		// {{{
-		.S_VALID(	!sfifo_empty ),
+		.S_VALID(	!sfifo_empty && wb_dir == D_HOST2DEV ),
 		.S_READY(	s2mm_ready ),
 		.S_DATA(	sfifo_data ),
 		.S_BYTES(	sfifo_bytes ),

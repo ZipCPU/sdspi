@@ -169,6 +169,7 @@ module	sdsrxframe #(
 			WIDTH_4W: begin
 				sreg <= { sreg[27:0], i_data[11:8] };
 				write <= (count[2:0] == 3'h1);
+				wr_last <= (count <= 20'h11);
 				end
 			WIDTH_8W: begin
 				sreg <= { sreg[23:0], i_data[15:8] };

@@ -508,7 +508,7 @@ module	sdsdma #(
 		// {{{
 		.i_wclk(i_wb_clk), .i_wr_reset_n( !wb_softreset ),
 		//
-		.i_wr(sfifo_rd && wb_dir == D_DEV2HOST),
+		.i_wr(sfifo_rd && wb_dir == D_DEV2HOST && !sfifo_empty),
 			.i_wr_data({ sfifo_last, sfifo_bytes, sfifo_data }),
 		.o_wr_full(tx_afifo_full),
 		//

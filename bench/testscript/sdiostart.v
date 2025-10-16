@@ -196,7 +196,7 @@ $display("Done waiting on initial clock change");
 		sdcard_send_random_block(mem_offset + 32'h05);
 		sdcard_send_random_block(mem_offset + 32'h07);
 
-		sdcard_read_block(32'h05);
+		sdcard_read_block(mem_offset+32'h05);
 	end
 	// }}}
 
@@ -211,8 +211,8 @@ $display("Done waiting on initial clock change");
 		sdcard_send_random_block(mem_offset + 32'h0a);
 		sdcard_send_random_block(mem_offset + 32'h08);
 
-		sdcard_read_block(32'h0a);
-		sdcard_read_block(32'h0b);
+		sdcard_read_block(mem_offset+32'h0a);
+		sdcard_read_block(mem_offset+32'h0b);
 	end
 	// }}}
 
@@ -230,8 +230,8 @@ $display("Done waiting on initial clock change");
 		sdcard_send_random_block(mem_offset + 32'h0e);
 		sdcard_send_random_block(mem_offset + 32'h0f);
 
-		sdcard_read_block(32'h0d);
-		sdcard_read_block(32'h0c);
+		sdcard_read_block(mem_offset+32'h0d);
+		sdcard_read_block(mem_offset+32'h0c);
 	end
 	// }}}
 
@@ -249,8 +249,8 @@ $display("Done waiting on initial clock change");
 		sdcard_send_random_block(mem_offset + 32'h12);
 		sdcard_send_random_block(mem_offset + 32'h13);
 
-		sdcard_read_block(32'h10);
-		sdcard_read_block(32'h11);
+		sdcard_read_block(mem_offset+32'h10);
+		sdcard_read_block(mem_offset+32'h11);
 	end
 	// }}}
 

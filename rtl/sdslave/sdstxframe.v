@@ -146,10 +146,13 @@ module	sdstxframe #(
 		if (count > 0)
 			count <= count - 1;
 		ready <= (count <= 1) && !s_last;
-		crc_active <= (count <= 1) && s_last;
-		if (!i_valid && o_ready)
+		crc_active <= 0;
+		if (s_last && count <= 1)
 		begin
-			count <= 15;
+			// CRC Active needs to become true one cycle before
+			// a CRC bit is output, so that the first CRC bit will
+			// be output the next cycle
+			count <= 16;
 			ready <= 0;
 			last <= 0;
 			crc_active <= 1;
@@ -168,9 +171,26 @@ module	sdstxframe #(
 	end
 
 	assign	o_ready = ready;
-	assign	o_done  = started && last && crc_active;
+	assign	o_done  = started && last && crc_active && count==0;
+`ifdef	FORMAL
+	always @(posedge i_clk)
+	if (!i_reset)
+	begin
+		if (crc_active)
+		begin
+			assert(started);
+			assert(count <= 16);
+			assert(s_last);
+			assert(!ready);
+			assert(last == (count == 0));
+		end else if (started && !s_last)
+			assert(ready == (count == 0));
+	end
+`endif
 	// }}}
 
+	// sreg
+	// {{{
 	always @(posedge i_clk)
 	if (i_reset || !i_cfg_en || !started)
 	begin
@@ -244,6 +264,7 @@ module	sdstxframe #(
 			// }}}
 		end
 	end
+	// }}}
 
 	// token_sreg, token_active, token_count
 	// {{{
@@ -252,7 +273,7 @@ module	sdstxframe #(
 	begin
 		token_sreg <= 3'b111;
 		token_active <= 0;
-		token_count <= 4;
+		token_count <= 0;
 	end else if (i_rxgood || i_rxfail)
 	begin
 		if (i_rxgood)	// 0-010-1
@@ -267,6 +288,22 @@ module	sdstxframe #(
 		token_count <= (token_active) ? (token_count - 1) : 0;
 		token_active <= (token_count > 1);
 	end
+`ifdef	FORMAL
+	always @(posedge i_clk)
+	if (!i_reset)
+	begin
+		assert(token_count <= 4);
+		assert(token_active == (token_count > 0));
+
+		case(token_count)
+		4: assert(token_sreg == 3'b010 || token_sreg == 3'b101);
+		3: assert(token_sreg == 3'b101 || token_sreg == 3'b011);
+		2: assert(token_sreg == 3'b011 || token_sreg == 3'b111);
+		default:
+			assert(token_sreg == 3'b111);
+		endcase
+	end
+`endif
 	// }}}
 
 	// iovec, iotri
@@ -294,6 +331,41 @@ module	sdstxframe #(
 			iovec[0] <= 1'b0;
 			iotri[0] <= 1'b0;
 		end
+		// }}}
+	end else if (crc_active)
+	begin
+		// {{{
+		iovec <= 16'hff_ff;
+		iotri <= 8'hff;
+		for(ik=0; ik<NUMIO; ik=ik+1)
+		begin
+			iovec[8+ik] <= crc_fill[NUMIO+ik][14];	// posedge
+			iovec[  ik] <= crc_fill[      ik][14];	// negedge
+			iotri[ik] <= crc_fill[ik][14] & crc_fill[NUMIO+ik][14];
+
+			if (!cfg_ddr)
+			begin
+				iovec[ik] <= crc_fill[NUMIO+ik][14];
+				iotri[ik] <= crc_fill[NUMIO+ik][14];
+			end
+
+			if (i_cfg_pp)
+				iotri[ik] <= 1'b0;
+		end
+
+		case(cfg_width)
+		WIDTH_4W: begin
+			iovec[15:12] <= 4'hf;
+			iovec[ 7: 4] <= 4'hf;
+			iotri[ 7: 4] <= 4'hf;
+			end
+		WIDTH_8W: begin end	// Already set properly by default
+		default: begin
+			iovec[15: 9] <= 7'h7f;
+			iovec[ 7: 1] <= 7'h7f;
+			iotri[ 7: 1] <= 7'h7f;
+			end
+		endcase
 		// }}}
 	end else if (i_valid && !started)
 	begin
@@ -352,65 +424,97 @@ module	sdstxframe #(
 			end
 		endcase
 		// }}}
-	end else if (crc_active)
-	begin
-		// {{{
-		iovec <= 16'hff_ff;
-		iotri <= 8'hff;
-		for(ik=0; ik<NUMIO; ik=ik+1)
-		begin
-			iovec[      ik] <= crc_fill[      ik][15];
-			iovec[NUMIO+ik] <= crc_fill[NUMIO+ik][15];
-			iotri[ik] <= crc_fill[ik][15] & crc_fill[NUMIO+ik][15];
-
-			if (!cfg_ddr)
-			begin
-				iovec[ik] <= crc_fill[NUMIO+ik][15];
-				iotri[ik] <= crc_fill[NUMIO+ik][15];
-			end
-
-			if (i_cfg_pp)
-				iotri[ik] <= 1'b0;
-		end
-
-		case(cfg_width)
-		WIDTH_4W: begin
-			iovec[15:12] <= 4'hf;
-			iovec[ 7: 4] <= 4'hf;
-			iotri[ 7: 4] <= 4'hf;
-			end
-		WIDTH_8W: begin end	// Already set properly by default
-		default: begin
-			iovec[15: 9] <= 7'h7f;
-			iovec[ 7: 1] <= 7'h7f;
-			iotri[ 7: 1] <= 7'hf;
-			end
-		endcase
-		// }}}
 	end else // if (!crc_active) ... but the shift register isn't empty
 	begin
 		// {{{
 		case(cfg_width)
-		WIDTH_4W: if (cfg_ddr)
+		WIDTH_4W: begin
+			if (cfg_ddr)
+			begin
 				iovec <= { 4'hf, sreg[31:28],
 							4'hf, sreg[27:24] };
-			else
+				iotri[3:0] <= sreg[31:28] & sreg[27:24];
+			end else begin
 				iovec <= {(2){ 4'hf, sreg[31:28] }};
-		WIDTH_8W: if (cfg_ddr)
+				iotri[3:0] <= sreg[31:28];
+			end
+
+			iotri[7:4] <= 4'hf;
+			if (i_cfg_pp)
+				iotri[3:0] <= 4'h0;
+			end
+		WIDTH_8W: begin
+			if (cfg_ddr)
+			begin
 				iovec <= sreg[31:16];
-			else
+				iotri <= sreg[31:24] & sreg[23:16];
+			end else begin
 				iovec <= {(2){ sreg[31:24] }};
+				iotri <= sreg[31:24];
+			end
+
+			if (i_cfg_pp)
+				iotri[7:0] <= 8'b0;
+			end
 		// WIDTH_1W:
-		default: if (cfg_ddr)
+		default: begin
+			if (cfg_ddr)
+			begin
 				iovec <= { 7'h7f, sreg[31], 7'h7f, sreg[30] };
-			else
+				iotri <= { 7'h7f, sreg[31] && sreg[30] };
+			end else begin
 				iovec <= {(2){ 7'h7f, sreg[31] }};
+				iotri <= { 7'h7f, sreg[31] };
+			end
+
+			if (i_cfg_pp)
+				iotri[0] <= 1'b0;
+			end
 		endcase
 		// }}}
 	end
 
 	assign	o_data = iovec;
 	assign	o_tristate = iotri;
+`ifdef	FORMAL
+	// {{{
+	always @(posedge i_clk)
+	if (!i_reset)
+	begin
+		if (!f_active)
+			assert(o_tristate == 8'hff);
+		else if (fc_cfg_pp)
+		begin
+			case(cfg_width)
+			WIDTH_4W: assert(o_tristate == 8'hf0);
+			WIDTH_8W: assert(o_tristate == 8'h00);
+			WIDTH_1W: assert(o_tristate == 8'hfe);
+			default: begin end
+			endcase
+		end else if (fc_cfg_ddr)
+		begin
+			case(cfg_width)
+			WIDTH_4W: assert(o_tristate[7:4] == 4'hf
+					&& o_tristate[3:0] == (o_data[11:8] & o_data[3:0]));
+			WIDTH_8W: assert(o_tristate == (o_data[15:8] & o_data[7:0]));
+			WIDTH_1W: assert(o_tristate[7:1] == 7'h7f
+					&& o_tristate[0] == o_data[8] & o_data[0]);
+			default: begin end
+			endcase
+		end else begin
+			assert(o_data[15:8] == o_data[7:0]);
+			case(cfg_width)
+			WIDTH_4W: assert(o_tristate[7:4] == 4'hf
+					&& o_tristate[3:0] == o_data[11:8]);
+			WIDTH_8W: assert(o_tristate == o_data[15:8]);
+			WIDTH_1W: assert(o_tristate[7:1] == 7'h7f
+					&& o_tristate[0] == o_data[8]);
+			default: begin end
+			endcase
+		end
+	end
+	// }}}
+`endif
 	// }}}
 
 	// CRC fill and stepping
@@ -424,14 +528,14 @@ module	sdstxframe #(
 	begin
 		for(jk=0; jk<2*NUMIO; jk=jk+1)
 			crc_fill[jk] <= 0;
-	end else if (!crc_active)
+	end else if (!crc_active || count[4])
 	begin
 		// {{{
 		for(jk=0; jk<NUMIO; jk=jk+1)
 		begin
 			// Positive edge
 			crc_fill[NUMIO+jk] <= ADVANCE_CRC(crc_fill[NUMIO+jk],
-							iovec[NUMIO+jk]);
+								iovec[8+jk]);
 			// Negative edge
 			crc_fill[jk] <= ADVANCE_CRC(crc_fill[jk], iovec[jk]);
 
@@ -456,14 +560,16 @@ module	sdstxframe #(
 		// }}}
 	end else // if (crc_active)
 	begin
+		// {{{
 		for(jk=0; jk<NUMIO; jk=jk+1)
 		begin
 			// Positive edge
-			crc_fill[NUMIO+jk]<= { crc_fill[NUMIO+jk][14:0], 1'b1 };
+			crc_fill[NUMIO+jk]<= { crc_fill[NUMIO+jk][14:0], 1'b0 };
 
 			// Negative edge
-			crc_fill[jk] <= { crc_fill[jk][14:0], 1'b1 };
+			crc_fill[jk] <= { crc_fill[jk][14:0], 1'b0 };
 		end
+		// }}}
 	end
 	// }}}
 

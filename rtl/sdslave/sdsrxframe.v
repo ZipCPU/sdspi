@@ -239,11 +239,6 @@ module	sdsrxframe #(
 	end
 	// }}}
 
-wire	[NCRC-1:0]	fill0p, fill0n;
-	assign	fill0n = crc_fill[0];
-	assign	fill0p = crc_fill[NUMIO];
-
-
 	// CRC Checking
 	// {{{
 	// Can we do most of the zero calculation on the clock prior?  Such

@@ -98,11 +98,11 @@ module	tb_wb #(
 	//
 	localparam [ADDRESS_WIDTH-1:0]
 			MEM_MASK  = { 1'b1,  {(AW-1){1'b0}}, {(WBLSB){1'b0}} },
-			SCK_MASK  = { 4'b1111,{(AW-4){1'b0}},{(WBLSB){1'b0}} },
-			CON_MASK  = { 4'b1111,{(AW-4){1'b0}},{(WBLSB){1'b0}} },
-			GPIO_MASK = { 4'b1111,{(AW-4){1'b0}},{(WBLSB){1'b0}} },
-			SDIO_MASK = { 4'b1111,{(AW-4){1'b0}}, {(WBLSB){1'b0}} },
-			EMMC_MASK = { 4'b1111,{(AW-4){1'b0}}, {(WBLSB){1'b0}} };
+			SCK_MASK  = { 4'b1111,{(AW+WBLSB-7){1'b1}}, 3'b00 },
+			CON_MASK  = { 4'b1111,{(AW+WBLSB-6){1'b1}}, 2'b00 },
+			GPIO_MASK = { 4'b1111,{(AW+WBLSB-6){1'b1}}, 2'b00 },
+			SDIO_MASK = { 4'b1111,{(AW+WBLSB-9){1'b1}}, 5'b00 },
+			EMMC_MASK = { 4'b1111,{(AW+WBLSB-9){1'b1}}, 5'b00 };
 `ifndef	VERILATOR
 	wire			clk, hsclk;
 	reg			reset;

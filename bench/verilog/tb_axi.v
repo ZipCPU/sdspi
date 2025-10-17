@@ -47,7 +47,8 @@ module	tb_axi
 		parameter	[0:0]	OPT_DMA = 1'b0,
 		parameter	[0:0]	OPT_VCD = 1'b0,
 		parameter	[0:0]	OPT_CPU = 1'b0,
-		parameter	[0:0]	OPT_STREAM = 1'b0,
+		parameter	[0:0]	OPT_STREAM  = 1'b0,
+		parameter	[0:0]	OPT_SDSLAVE = 1'b0,
 		parameter	[0:0]	OPT_1P8V = OPT_SERDES,
 		parameter		DW = 64,
 		parameter		SW = 32,	// May only be 32 or DW
@@ -725,6 +726,9 @@ module	tb_axi
 	wire			zip_reset, zip_halted, zip_gie,
 				zip_opstall, zip_pfstall, zip_icount;
 
+	wire	[119:0]	sdio_CID;
+	wire	[31:0]	sdio_OCR;
+	wire		sdio_rx_err;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -1536,6 +1540,10 @@ module	tb_axi
 		.sd_clk(sd_ck), .sd_cmd(sd_cmd), .sd_dat(sd_dat),
 		.i_1p8v(sdio_1p8v)
 	);
+
+		assign	sdio_CID = u_sdcard.CID;
+		assign	sdio_OCR = u_sdcard.ocr;
+		assign	sdio_rx_err = u_sdcard.rx_err;
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////

@@ -520,12 +520,12 @@ begin
 
 	if (!OPT_SDSLAVE)
 	begin
-		if (read_data[30:0] !== u_sdcard.ocr[30:0])
+		if (read_data[30:0] !== sdio_OCR[30:0])
 		begin
 			$display("ERROR: F"); error_flag = 1'b1;
 		end
 
-		assert(read_data[30:0] == u_sdcard.ocr[30:0]);
+		assert(read_data[30:0] == sdio_OCR[30:0]);
 	end
 
 end endtask

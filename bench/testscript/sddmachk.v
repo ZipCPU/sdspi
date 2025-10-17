@@ -51,7 +51,7 @@ begin
 end
 
 always @(posedge clk)
-if (!reset && !expect_dma_err && u_sdcard.rx_err && !error_flag)
+if (!reset && !expect_dma_err && sdio_rx_err && !error_flag)
 begin
 	$display("ERROR: SDCard (Model) RX ERR (bad CRC) detected");
 	error_flag <= 1'b1;
@@ -142,7 +142,7 @@ begin
 	u_bfm.readio(ADDR_FIFOA, CID[ 31: 0]);
 	$display("READ-CID: %08x:%08x:%08x:%08x",
 		CID[127:96], CID[95:64], CID[63:32], CID[31:0]);
-	assert(CID[127:8] == u_sdcard.CID);
+	assert(CID[127:8] == sdio_CID);
 
 	// CMD3	SEND_RELATIVE_ADDR
 	sdcard_send_relative_addr(r6);

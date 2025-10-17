@@ -42,8 +42,8 @@ module	sdsfsm #(
 		parameter [0:0]	OPT_HIGH_CAPACITY = 1'b1,
 		parameter [0:0]	OPT_1P8V = 1'b0,
 		parameter [0:0]	OPT_UHSII = 1'b0,
-		parameter [127:0]	CID = { 64'hdadd_3519_2347_291a,
-						64'habca_dead_519d_dad1 },
+		parameter [119:0]	CID = { 64'hdadd_3519_2347_291a,
+						56'habca_dead_51da_d1 },
 		parameter [15:0]	OCR_VOLTAGE = 16'hff_80
 		// }}}
 	) (
@@ -185,11 +185,13 @@ module	sdsfsm #(
 
 	reg		new_dma_request, new_tx_en, new_rx_en;
 	reg	[1:0]	new_bufcount;
+	wire	[119:0]	w_CID;
 	// }}}
 
 	assign	R1 = { 19'h0, r_state, 3'h0, app_cmd, 5'h0 };
 	// assign	R1 = 32'h0; // | sd_state | BUS_ERR | CRC_ERR | CMD_ERR | APPCMD
 	assign	CSD = 128'h0;
+	assign	w_CID = CID;
 
 	assign	o_cfg_ds = 1'b0;
 	assign	o_cfg_width = { 1'b0, r_width };
@@ -340,7 +342,7 @@ module	sdsfsm #(
 		o_resp_nocrc <= 1'b0;	// (Most) everything gets a CRC
 		if (i_collision)
 			my_cid <= 1'b0;
-		o_resp_extra <= CID[95:0];
+		o_resp_extra <= { CID[87:0], 8'hff };
 
 		if (!o_dma_request && r_state == ST_PRG && bufcount == 0)
 			r_state <= ST_TRAN;
@@ -475,7 +477,7 @@ module	sdsfsm #(
 				begin
 					o_resp_valid <= 1'b1;
 					r_state <= ST_IDENT;
-					{ o_resp_data, o_resp_extra } <= CID;
+					{ o_resp_data, o_resp_extra } <= { CID, 8'hff };
 					o_resp_typ <= 1'b1;
 					my_cid <= 1'b1;
 				end end
@@ -559,7 +561,7 @@ module	sdsfsm #(
 				// }}}
 			{ 1'b0, 6'd10 }: begin // CMD10: SEND_CID
 				// {{{
-				{ o_resp_data, o_resp_extra } <= CID;
+				{ o_resp_data, o_resp_extra } <= { CID, 8'hff };
 				o_resp_typ <= 1'b1;
 				if (r_state == ST_STBY && i_arg[31:16] == RCA)
 				begin
@@ -1362,7 +1364,7 @@ cover($past(r_state) == ST_PRG);
 		S_SCR: assert(!mm2s_busy && o_cfg_lgblksz == 3);
 		S_STATUS: assert(!mm2s_busy && o_cfg_lgblksz == 6);
 		S_TUNING: begin
-			assert(!mm2s_busy)
+			assert(!mm2s_busy);
 			if (r_width)
 			begin
 				assert(o_cfg_lgblksz == 6);
@@ -1449,10 +1451,12 @@ cover($past(r_state) == ST_PRG);
 						&& r_state == ST_DATA)
 			assert(o_tx_en || $past(o_tx_en));
 
-		assert(!o_cfg_pp);
+		assert(!o_cfg_cmd_pp);
+		assert(!o_cfg_dat_pp);
 		if (mm2s_busy || s2mm_busy)
 		begin
-			assert($stable(o_cfg_pp));
+			assert($stable(o_cfg_dat_pp));
+			assert($stable(o_cfg_cmd_pp));
 			// assert($stable(o_cfg_ds));
 			assert($rose(mm2s_busy || s2mm_busy)
 					|| $stable(o_cfg_lgblksz)

@@ -276,6 +276,10 @@ module	tb_wb #(
 	wire			sdio_1p8v, emmc_1p8v;
 	wire			ign_sdio_reset_n, emmc_reset_n;
 	// }}}
+
+	wire	[119:0]	sdio_CID;
+	wire	[31:0]	sdio_OCR;
+	wire		sdio_rx_err;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -790,6 +794,10 @@ module	tb_wb #(
 		);
 		// }}}
 
+		assign	sdio_CID = u_slave.u_fsm.w_CID;
+		assign	sdio_OCR = 32'h0;
+		assign	sdio_rx_err = 1'b0;
+
 		// Keep Verilator happy
 		// {{{
 		// Verilator lint_off UNUSED
@@ -823,6 +831,10 @@ module	tb_wb #(
 		assign	sds_dma_data = {(DW){1'b0}};
 		assign	sds_dma_sel  = {(DW/8){1'b0}};
 		// }}}
+
+		assign	sdio_CID = u_sdcard.CID;
+		assign	sdio_OCR = u_sdcard.ocr;
+		assign	sdio_rx_err = u_sdcard.rx_err;
 
 		// Keep Verilator happy
 		// {{{

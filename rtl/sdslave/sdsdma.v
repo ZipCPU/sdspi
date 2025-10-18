@@ -468,7 +468,9 @@ module	sdsdma #(
 	sdfifo #(
 		.BW(1+(WBLSB+1)+DW),
 		// Always have enough room for 2x blocks, to allow for ping-pong
-		.LGFLEN(LGFLEN)
+		.LGFLEN(LGFLEN),
+		// If we want to support iCE40 chips, we can't use ASYNC reads
+		.OPT_ASYNC_READ(1'b0)
 	) u_sfifo (
 		.i_clk(i_wb_clk),
 		.i_reset(i_wb_reset || wb_softreset),

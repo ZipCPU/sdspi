@@ -39,8 +39,6 @@
 //	4. sdio_ioctl
 //
 // Issues:
-//	- This controller only handles 3.3V mode.  Even if hardware exists for
-//	  switching to 1.8V, this driver doesn't (yet) enable it.
 //	- The controller doesn't really recover well from a failed init.
 //
 // Creator:	Dan Gisselquist, Ph.D.

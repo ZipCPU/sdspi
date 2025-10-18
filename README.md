@@ -1,19 +1,22 @@
 # SD-Card controller
 
-This repository contains two Verilog hardware RTL controllers for handling
-SD cards from an FPGA.  The [first and older controller](rtl/sdspi.v) handles
-SD cards via their (optional) SPI interface.  The [second and newer
-controller](rtl/sdio.v) works using the SDIO interface.  This [second
-controller](rtl/sdio.v) has also been demonstrated to handle eMMC cards as well.
+This repository contains three Verilog hardware RTL controllers for handling
+SD cards from an FPGA.  The [first and older controller](rtl/sdspi/sdspi.v)
+handles SD cards via their (optional) SPI interface.  The [second and newer
+controller](rtl/sdio/sdio.v) works using the SDIO interface.  This [second
+controller](rtl/sdio/sdio.v) has also been demonstrated to handle eMMC cards
+as well.  A [third controller](rtl/sdslave/sdslave.v) has also been added to
+the mix.  This [third controller](rtl/sdslave/sdslave.v) is an SDIO *slave*
+controller.  It has been designed to enable an FPGA to act like an SD card.
 
 ## SPI-based controller
 
-[The SDSPI controller](rtl/sdspi.v) exports an SD card controller interface
-from internal to an FPGA to the rest of the FPGA core, while taking care of the
-lower level details internal to the interface.  Unlike the [SDIO
-controller](rtl/sdio.v) in this respository, this controller focuses on the SPI
-interface of the SD Card.  While this is a slower interface, the SPI interface
-is necessary to access the card when using a [XuLA2
+[The SDSPI controller](rtl/sdspi/sdspi.v) exports an SD card controller
+interface from internal to an FPGA to the rest of the FPGA core, while taking
+care of the lower level details internal to the interface.  Unlike the [SDIO
+controller](rtl/sdio/sdio.v) in this respository, this controller focuses on
+the SPI interface of the SD Card.  While this is a slower interface, the SPI
+interface is necessary to access the card when using a [XuLA2
 board](http://www.xess.com/shop/product/xula2-lx25/) (for which it was
 originally written), or in general any time the full 7--bit, bi--directional
 interface to the SD card has not been implemented.  Further, for those who are
@@ -25,8 +28,9 @@ provides a lower level interface to the card than other controllers.
 Whereas the [XESS controller](https://github.com/xesscorp/VHDL\_Lib/SDCard.vhd)
 will automatically start up the card and interact with it, this controller
 requires [external software](sw/sdspidrv.c) to be used when interacting with
-the card.  This makes this SDSPI controller both more versatile, in the face
-of potential changes to the card interface, but also less turn-key.
+the card.  This makes this [SDSPI controller](rtl/sdspi/sdspi.v) both more
+versatile, in the face of potential changes to the card interface, but also
+less turn-key.
 
 While this core was written for the purpose of being used with the
 [ZipCPU](https://github.com/ZipCPU/zipcpu), as enhanced by the Wishbone DMA
@@ -65,14 +69,14 @@ For more information, please consult the [SDSPI user guide](doc/sdspi.pdf).
 ## SDIO
 
 This repository also contains a [second and newer SD card
-controller](rtl/sdio.v), designed to exploit both the full SDIO protocol and
-the 8b EMMC protocol--either with or without data strobes.  This controller
+controller](rtl/sdio/sdio.v), designed to exploit both the full SDIO protocol
+and the 8b EMMC protocol--either with or without data strobes.  This controller
 has been tested against both SDIO and eMMC chips, with the differences between
 the two types of chips handled by software.
 
 The interface to this controller is roughly the same as that of the [SDSPI
-controller](rtl/sdspi.v), although there are enough significant differences
-to warrant a [separate user guide](doc/sdio.pdf).
+controller](rtl/sdspi/sdspi.v), although there are enough significant
+differences to warrant a [separate user guide](doc/sdio.pdf).
 
 The controller is designed to support IO modes all the way up to the HS400
 mode used by eMMC.  HS400 is an eMMC DDR mode based off of a 200MHz IO clock,
@@ -89,16 +93,16 @@ register.  No support is planned for any of the UHS-II protocols.
 
 Both Wishbone and AXI interfaces are supported.
 
-*Status*: The SDIO controller has now been **silicon proven**.  It is
-  currently working successfully in [its first FPGA
+*Status*: The SDIO controller has now been **silicon proven**.  It is currently
+  working successfully in [its first FPGA
   project](https://github.com/ZipCPU/eth10g), where it is being used to control
   both an SD card as well as an eMMC chip.  It is also now working successfully
   in a [second project](https://github.com/ZipCPU/videozip/).  Many of the
   components of this IP have formal proofs, which they are known to pass.
 
   Notably missing among the formal component proofs is a proof of the [front
-  end](rtl/sdfrontend.v).  The [front end](rtl/sdfrontend.v)'s verification
-  depends upon integrated simulation testing.
+  end](rtl/sdio/sdfrontend.v).  The [front end](rtl/sdio/sdfrontend.v)'s
+  verification depends upon integrated simulation testing.
 
   Both [Verilog](bench/verilog/mdl_sdio.v) and [C++](bench/cpp/sdiosim.cpp)
   models have been built which can be used to test this controller in
@@ -161,14 +165,14 @@ Features include:
   this component and the [ZipCPU](https://zipcpu.com/about/zipcpu.html).
 
 - **AXI Support**: This design has also been demonstrated in AXI environments.
-  The control interface has an AXI-Lite port which can be used to interact
-  with the IP.  A flag exists to swap endianness, so that the design will be
-  properly little endian when using this interface.  The design now includes
-  an integrated AXI DMA.
+  The control interface also has an (optional) AXI-Lite port which can be used
+  to interact with the IP.  A flag exists to swap endianness, so that the
+  design will be properly little endian when using this interface.  The AXI
+  version of the design includes an integrated AXI DMA.
 
 - **CRC Tokens**: CRC token's are 5b response values, indicating whether
   or not a page has transferred successfully.
-  The [frontend](rtl/sdfrontend.v) can successfully recognize those CRC tokens
+  The [frontend](rtl/sdio/sdfrontend.v) can successfully recognize those CRC tokens
   following block write transfers.
 
   Failure to receive a CRC token when one is expected will (now) generate an
@@ -185,8 +189,15 @@ could still be made, as listed below:
 - **C++ Model**: The design is missing a C++ model for testing the eMMC
   interface.
 
+- **eMMC HS400 Data Strobe**: Although support exists for the data strobe, it
+  has not been tested in hardware.  There are reasons to believe the data strobe
+  front end implementation might not work in hardware, and specifically reasons
+  to believe it won't close timing.  As a result, this feature is awaiting
+  hardware which will support testing with the data strobe.
+
 - **eMMC Boot mode**: No plan exists to support eMMC boot mode (at present).
-  This decision will likely be revisited in the future.
+  This decision may be revisited in the future, as I would love to support eMMC
+  boot mode.
 
   Some (untested, preliminary) support exists for boot mode in the Verilog
   [eMMC model](bench/verilog/mdl_emmc.v).
@@ -198,6 +209,108 @@ could still be made, as listed below:
   Without collision support, the message to leave the IRQ state may be
   corrupted on return.  This should be detectable via a bad CRC on the command
   line.
+
+## SDSlave controller
+
+The [Slave controller](rtl/sdslave/sdslave.v) is new.  This controller is
+designed to let an external "host" interact with an FPGA via the SDIO protocol.
+As an example, I am intending to test an RPi CM4 interface with an FPGA via this
+controller and protocol.  The RPi should be able to read/write anything in the
+FPGA Wishbone (or eventually AXI) address space via this approach.  At present,
+via simulation only, all commands to/from memory only apply to blocks of
+512Bytes, so there's some work left to be done.
+
+Possible uses include:
+
+- Controlling a memory, external to the FPGA, through the SDIO interface.
+
+  Possibilities include flash (read-only), SDRAM, eMMC, SDIO, SATA, you name it.
+  This might make it possible for an external CPU to read data at nearly the
+  same time the FPGA is recording or processing it in real time.
+
+- Video overlay control, whereby the host generates an overlay for the FPGA to
+  place on an active video stream.
+
+- Soft-core CPU software loading or shared memory handling
+
+- Bridging an interface--such as 10Gb network, available to the FPGA, to the
+  host.  (Given that the fastest this interface *might* go is only 50MB/s, it
+  doesn't really make sense to try to keep up with a 10Gb or 125MB/s link over
+  SDIO, but it is still an option.  Perhaps the HS400 mode might make more sense
+  here?)
+
+At any rate, development is ongoing.
+
+Key features of this design include:
+
+- **Hands-Off** - No run-time configuration is required from the local system.
+  All commands come from the external/remote system.
+
+- **SDR/DDR, 1b, 4b, or 8b** - Basic stuff here.  SDIO doesn't have or require
+  8b interfaces, so the only use for the 8b interface would be for eMMC control.
+  This design should be able to (eventually) handle the eMMC, but that's a
+  future thing if ever.
+
+- **Low Logic** - I wasn't expecting this one, but the SDSlave controller has
+  less than half the logic requirement of the SDIO controller.  We'll see if
+  this continues to be the case as more commands are implemented.
+
+### Roadmap and TODO items
+
+- **All Mandatory Commands** - At present, this design only supports *some* of
+  the mandatory SD commands, not all of them.  As such, it's not likely to work
+  with any generic SDIO host (yet).  Commands supported include: CMD0, CMD2,
+  CMD3, CMD7, CMD8, CMD9, CMD10, CMD12, CMD13, CMD15, CMD17, CMD18, CMD19,
+  CMD24, CMD25, CMD55, ACMD6, ACMD13, ACMD41, and ACMD51.  Not all of these
+  commands have been tested or simulated.
+
+  Commands still needing support include: CMD4, CMD11, CMD16, CMD23, CMD27,
+  CMD32, CMD33, CMD38, CMD42, CMD56, ACMD22, ACMD23, and ACMD42.
+
+  The SCR register is only partially implemented, and writes to it are not (yet)
+  supported.
+
+  While reading the CSD register is supported, the values read may (or may not)
+  yet reflect the state of anything within.
+
+- **Error Handling** - The current simulation is primarily a "happy path"
+  simulation environment.  While errors may still take place, I've only ever
+  canceled the simulation following any error rather than making sure the
+  errors are properly handled, detected, identified, and recovered from.
+  For example, any request to read from or write to an address that yields a
+  bus error should properly end any transactions.  That has not been
+  demonstrated yet, and I would (currently) doubt that the error handling would
+  be clean.
+
+- **Variable block sizes** - At some point in time, I may need or wish to
+  support block sizes of other than 512Bytes.  The current architecture,
+  however, will restrict all block sizes to powers of two and ... I'm so far
+  okay with that.
+
+- **Proper Front-end** - The design still needs a proper front end given to it.
+  The one currently found in the [test bench](bench/verilog/tb_wb.v) really
+  needs to be rewritten.
+
+- **Verified Timing** - I'm pretty sure that I'm violating protocol timing in
+  a couple of places.  These are just little things, like guaranteeing exactly
+  two clocks between receive packet and the ACK/NAK token start bit, or not
+  starting a transmit packet until the CMD reply completes, etc.
+
+- **User Guide** - This needs to be written.  For now, the major SDIO commands
+  are implemented, and so the SDIO spec can serve (somewhat) as a user guide
+  for working with this IP.  It's just that ... the SDIO spec will tell you
+  nothing about how to set it up, so this still needs to be done.
+
+- **Hardware Testing** - My plan is to connect this to an RPi CM4 module, and
+  see how things go.  I'll let you know.
+
+- **eMMC FSM** - The FSM module may be rewritten to support an eMMC slave
+  controller.  The other slave modules have been built to work in an eMMC
+  environment (8b, w/ or w/o DS), so it should only require a rewrite of the FSM
+  to support eMMC devices instead of SD devices.
+
+Bottom line?  This is still a work in progress, and it will probably remain
+so until hardware testing completes.
 
 # Logic usage
 

@@ -405,7 +405,7 @@ module	sdsdma #(
 	);
 	// }}}
 
-	// WB ingest, MM2S (TODO)
+	// WB ingest, MM2S
 	// {{{
 	reg	[LGMAXBLKSZ:0]	wide_wb_len;
 

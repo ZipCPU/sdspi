@@ -40,11 +40,12 @@
 //
 `default_nettype none
 // }}}
-module	sdscmd // #(
+module	sdscmd #(
+		parameter	IODELAY = 2
 		// NUMIO ... unused
 		// OPT_DS ... eventually, to support enhanced commands
 		// OPT_DDDR ... unused, commands are always SDR
-	(
+	) (
 		// {{{
 		// i_clk is the SD clock, from the SDIO master
 		// i_reset is ... a power on reset?
@@ -61,8 +62,9 @@ module	sdscmd // #(
 		input	wire		i_valid,
 		input	wire	[5:0]	i_resp,
 		input	wire	[31:0]	i_arg,
-		input wire		i_typ, i_nocrc,
-		input wire	[95:0]	i_extended,
+		input	wire		i_typ, i_nocrc,
+		input	wire	[95:0]	i_extended,
+		output	wire		o_busy,
 		// }}}
 		// Interface to the front end
 		// {{{
@@ -162,9 +164,13 @@ module	sdscmd // #(
 		begin
 			sreg[135:136-7] <= stepped;
 			r_cmden <= !stepped[6] || i_cfg_pp;
-		end if ((!long_message && count >= 48) || (count >= 136)
+		end if ((!long_message && count >= 48+IODELAY)
+				|| (count >= 136+IODELAY)
 				|| i_collision)
 		begin
+			// We need to wait an extra IODELAY clocks here, so
+			// that upon returning to idle we don't "detect" our
+			// last bit as a potential stop bit.
 			state <= CMD_IDLE;
 			r_cmden <= 1'b0;
 		end end
@@ -183,6 +189,7 @@ module	sdscmd // #(
 
 	assign	o_cmdio = sreg[135];
 	assign	o_cmden = r_cmden && !i_collision;
+	assign	o_busy = (state != CMD_IDLE);
 
 	localparam [6:0]	CRC_POLY = 7'h09;
 

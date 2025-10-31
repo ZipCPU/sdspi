@@ -48,28 +48,28 @@ module	sdslave #(
 		input	wire		i_clk, i_reset,
 		// Wishbone interface
 		// {{{
-		output	wire		o_wb_cyc, o_wb_stb, o_wb_we,
-		output	wire [AW-1:0]	o_wb_addr,
-		output	wire [DW-1:0]	o_wb_data,
-		output	wire [DW/8-1:0]	o_wb_sel,
-		input	wire		i_wb_stall,
-		input	wire		i_wb_ack,
-		input	wire [DW-1:0]	i_wb_data,
-		input	wire		i_wb_err,
+		output	wire		o_dma_cyc, o_dma_stb, o_dma_we,
+		output	wire [AW-1:0]	o_dma_addr,
+		output	wire [DW-1:0]	o_dma_data,
+		output	wire [DW/8-1:0]	o_dma_sel,
+		input	wire		i_dma_stall,
+		input	wire		i_dma_ack,
+		input	wire [DW-1:0]	i_dma_data,
+		input	wire		i_dma_err,
 		// }}}
 		// SD slave front-end interface
 		// {{{
 		input	wire		i_sd_clk,
 		//
-		input	wire		i_sd_cmd,
-		output	wire		o_sd_cmd,
-		output	wire		o_sd_cmd_tristate,
+		input	wire		i_cmd,
+		output	wire		o_cmd,
+		output	wire		o_cmd_tristate,
 		//
-		input	wire	[15:0]	i_sd_dat,
-		output	wire	[15:0]	o_sd_dat,
-		output	wire	[7:0]	o_sd_dat_tristate,
-		output	wire	[1:0]	o_sd_ds,
-		output	wire		o_sd_ds_tristate
+		input	wire	[15:0]	i_dat,
+		output	wire	[15:0]	o_dat,
+		output	wire	[7:0]	o_dat_tristate,
+		output	wire	[1:0]	o_ds,
+		output	wire		o_ds_tristate
 		// }}}
 		// }}}
 	);
@@ -77,6 +77,10 @@ module	sdslave #(
 	// Local declarations
 	// {{{
 	localparam	ADDRESS_WIDTH = AW+$clog2(DW/8);
+	localparam [1:0]	S_MEM = 2'b00,
+				S_SCR = 2'b01,
+				S_STATUS = 2'b10,
+				S_TUNING = 2'b11;
 
 	reg		sd_reset, sd_reset_pipe;
 
@@ -89,7 +93,7 @@ module	sdslave #(
 	wire	[5:0]	cmd_cmd;
 	wire	[31:0]	cmd_arg;
 
-	wire		resp_valid, resp_typ, resp_nocrc;
+	wire		resp_valid, resp_typ, resp_nocrc, cmd_busy;
 	wire	[5:0]	resp_cmd;
 	wire	[31:0]	resp_arg;
 	wire	[95:0]	resp_extended;
@@ -117,7 +121,7 @@ module	sdslave #(
 	else
 		{ sd_reset, sd_reset_pipe } <= { sd_reset_pipe, 1'b0 };
 
-	assign	o_sd_ds_tristate = !cfg_ds;
+	assign	o_ds_tristate = !cfg_ds;
 
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -152,6 +156,7 @@ module	sdslave #(
 		.o_resp_typ(resp_typ),
 		.o_resp_nocrc(resp_nocrc),
 		.o_resp_extra(resp_extended),
+		.i_cmd_busy(cmd_busy),
 		.i_collision(1'b0),
 		//
 		.o_rx_en(rx_en),
@@ -200,15 +205,16 @@ module	sdslave #(
 		.i_typ(resp_typ),
 		.i_nocrc(resp_nocrc),
 		.i_extended(resp_extended),
+		.o_busy(cmd_busy),
 		//
-		.i_cmdio(i_sd_cmd),
-		.o_cmdio(o_sd_cmd),
+		.i_cmdio(i_cmd),
+		.o_cmdio(o_cmd),
 		.o_cmden(w_cmd_en),
 		.i_collision(1'b0)
 		// }}}
 	);
 
-	assign	o_sd_cmd_tristate = !w_cmd_en;
+	assign	o_cmd_tristate = !w_cmd_en;
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -237,9 +243,9 @@ module	sdslave #(
 		.i_data(tx_data),
 		.i_last(tx_last),
 		//
-		.o_data(o_sd_dat),
-		.o_tristate(o_sd_dat_tristate),
-		.o_ds(o_sd_ds),
+		.o_data(o_dat),
+		.o_tristate(o_dat_tristate),
+		.o_ds(o_ds),
 		//
 		.o_done(tx_done)
 		// }}}
@@ -263,7 +269,7 @@ module	sdslave #(
 		.i_cfg_ddr(cfg_ddr),
 		.i_cfg_width(cfg_width),
 		//
-		.i_valid(1'b1), .i_data(i_sd_dat),
+		.i_valid(1'b1), .i_data(i_dat),
 		//
 		.o_valid(rx_valid), // .i_ready(rx_ready),
 			.o_data(rx_data),
@@ -277,44 +283,137 @@ module	sdslave #(
 	//
 	// Alternative data sources
 	// {{{
+	// RAM layout:
+	//	Bytes	Words	Content		Size
+	//	-------|-------|--------------|------------
+	//	  0-  7	 0- 1	SCR		 8B
+	//	 64-127	16-31	STATUS		64B
+	//	128-191	32-47	TUNING		64B
+	//
 	reg		lcl_valid, lcl_last;
 	reg	[3:0]	lcl_addr;
-	reg	[31:0]	lcl_ram	[0:31];
+	reg	[31:0]	lcl_ram	[0:63];
 	reg	[31:0]	lcl_data;
 
+	initial begin
+		// SCR block
+		// lcl_ram[ 0] = SCR[63:32];
+		// lcl_ram[ 1] = SCR[31: 0];
+
+		// Random data until the STATUS block ...
+		lcl_ram[ 2] = $random;
+		lcl_ram[ 3] = $random;
+		lcl_ram[ 4] = $random;
+		lcl_ram[ 5] = $random;
+		lcl_ram[ 6] = $random;
+		lcl_ram[ 7] = $random;
+
+		lcl_ram[ 8] = $random;
+		lcl_ram[ 9] = $random;
+		lcl_ram[10] = $random;
+		lcl_ram[11] = $random;
+		lcl_ram[12] = $random;
+		lcl_ram[13] = $random;
+		lcl_ram[14] = $random;
+		lcl_ram[15] = $random;
+
+		// Status block ... needs to be defined still
+		lcl_ram[16] = 32'h0000_0000;
+		lcl_ram[17] = 32'h0000_0000;
+		lcl_ram[18] = 32'h0000_0000;
+		lcl_ram[19] = 32'h0000_0000;
+		lcl_ram[20] = 32'h0000_0000;
+		lcl_ram[21] = 32'h0000_0000;
+		lcl_ram[22] = 32'h0000_0000;
+		lcl_ram[23] = 32'h0000_0000;
+
+		lcl_ram[24] = 32'h0000_0000;
+		lcl_ram[25] = 32'h0000_0000;
+		lcl_ram[26] = 32'h0000_0000;
+		lcl_ram[27] = 32'h0000_0000;
+		lcl_ram[28] = 32'h0000_0000;
+		lcl_ram[29] = 32'h0000_0000;
+		lcl_ram[30] = 32'h0000_0000;
+		lcl_ram[31] = 32'h0000_0000;
+
+		// Tuning block
+		lcl_ram[32] = 32'hff0f_ff00;
+		lcl_ram[33] = 32'hffcc_c3cc;
+		lcl_ram[34] = 32'hc33c_ccff;
+		lcl_ram[35] = 32'hfeff_feef;
+		lcl_ram[36] = 32'hffdf_ffdd;
+		lcl_ram[37] = 32'hfffb_fffb;
+		lcl_ram[38] = 32'hbfff_7fff;
+		lcl_ram[39] = 32'h77f7_bdef;
+
+		lcl_ram[40] = 32'hfff0_fff0;
+		lcl_ram[41] = 32'h0ffc_cc3c;
+		lcl_ram[42] = 32'hcc33_cccf;
+		lcl_ram[43] = 32'hffef_ffee;
+		lcl_ram[44] = 32'hfffd_fffd;
+		lcl_ram[45] = 32'hdfff_bfff;
+		lcl_ram[46] = 32'hbbff_f7ff;
+		lcl_ram[47] = 32'hf77f_7bde;
+
+		// Random garbage ... this data should never be read.
+		lcl_ram[48] = $random;
+		lcl_ram[49] = $random;
+		lcl_ram[50] = $random;
+		lcl_ram[51] = $random;
+		lcl_ram[52] = $random;
+		lcl_ram[53] = $random;
+		lcl_ram[54] = $random;
+		lcl_ram[55] = $random;
+
+		lcl_ram[56] = $random;
+		lcl_ram[57] = $random;
+		lcl_ram[58] = $random;
+		lcl_ram[59] = $random;
+		lcl_ram[60] = $random;
+		lcl_ram[61] = $random;
+		lcl_ram[62] = $random;
+		lcl_ram[63] = $random;
+
+	end
+
 	always @(posedge i_sd_clk)
-	if (!tx_en || tx_src == 2'b00)
+	if (!tx_en || tx_src == S_MEM)
 		lcl_valid <= 0;
 	else if (!lcl_valid || !tx_valid || tx_ready)
 		lcl_valid <= !lcl_last;
 
 	always @(posedge i_sd_clk)
-	if (!tx_en || tx_src == 2'b00)
+	if (!tx_en || tx_src == S_MEM)
 		lcl_addr <= 0;
 	else if (!lcl_last && (!lcl_valid || !tx_valid || tx_ready))
 		lcl_addr <= lcl_addr + 1;
 
 	always @(posedge i_sd_clk)
 	if (!lcl_valid || !tx_valid || tx_ready)
-		lcl_data <= lcl_ram[{ tx_src[1], lcl_addr }];
+		lcl_data <= lcl_ram[{ (tx_src == S_TUNING),
+					(tx_src == S_STATUS), lcl_addr }];
 
 	always @(posedge i_sd_clk)
-	if (!tx_en || tx_src == 2'b00)
+	if (!tx_en || tx_src == S_MEM)
 		lcl_last <= 0;
 	else if (!lcl_last && (!lcl_valid || !tx_valid || tx_ready))
 	begin
-		// S_SCR   =2'b01,  8Bytes
-		// S_STATUS=2'b10, 64Bytes
-		if (tx_src[0])
-			lcl_last <= &lcl_addr[3:0];
-		else // if (tx_src[0])
-			lcl_last <=  lcl_addr[0];
+		// Local data will be valid on the *next* clock cycle, after
+		// the address is valid.  Therefore, we can set lcl_last based
+		// upon the *current* address here, because this will match,
+		// on the *next* clock cycle, with the data read on this same
+		// clock from this address.
+		case(tx_src)
+		S_STATUS: lcl_last <= &lcl_addr[3:0];
+		S_SCR:    lcl_last <=  lcl_addr[0];
+		S_TUNING: lcl_last <= &lcl_addr[3:0];
+		endcase
 	end
 
-	assign	tx_valid = lcl_valid || (mem_valid && tx_src == 2'b00);
+	assign	tx_valid = lcl_valid || (mem_valid && tx_src == S_MEM);
 	assign	mem_ready = (!tx_valid || tx_ready);
-	assign	tx_data  = (tx_src == 2'b00) ? mem_data : lcl_data;
-	assign	tx_last  = (tx_src == 2'b00) ? mem_last : lcl_last;
+	assign	tx_data  = (tx_src == S_MEM) ? mem_data : lcl_data;
+	assign	tx_last  = (tx_src == S_MEM) ? mem_last : lcl_last;
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -355,14 +454,14 @@ module	sdslave #(
 		// }}}
 		// Wishbone interface
 		// {{{
-		.o_dma_cyc(o_wb_cyc), .o_dma_stb(o_wb_stb),
-			.o_dma_we(o_wb_we),
-		.o_dma_addr(o_wb_addr),
-		.o_dma_data(o_wb_data), .o_dma_sel(o_wb_sel),
+		.o_dma_cyc(o_dma_cyc), .o_dma_stb(o_dma_stb),
+			.o_dma_we(o_dma_we),
+		.o_dma_addr(o_dma_addr),
+		.o_dma_data(o_dma_data), .o_dma_sel(o_dma_sel),
 		//
-		.i_dma_stall(i_wb_stall),
-		.i_dma_ack(i_wb_ack), .i_dma_data(i_wb_data),
-		.i_dma_err(i_wb_err)
+		.i_dma_stall(i_dma_stall),
+		.i_dma_ack(i_dma_ack), .i_dma_data(i_dma_data),
+		.i_dma_err(i_dma_err)
 		// }}}
 		// }}}
 	);

@@ -252,7 +252,7 @@ module sdio_top #(
 		// DMA interface
 		// {{{
 `ifdef	SDIO_AXI
-		// (Optional) AXI-Lite interface
+		// (Optional) AXI (Full) DMA interface
 		// {{{
 		output	wire			M_AXI_AWVALID,
 		input	wire			M_AXI_AWREADY,

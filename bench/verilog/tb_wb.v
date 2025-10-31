@@ -648,7 +648,6 @@ module	tb_wb #(
 		// {{{
 		// Local declarations
 		// {{{
-		genvar			sk;
 		reg			slv_reset, slv_reset_pipe;
 		reg			slv_clk;
 
@@ -659,16 +658,7 @@ module	tb_wb #(
 		wire	[DW-1:0]	slv_data, slv_idata;
 		wire	[DW/8-1:0]	slv_sel;
 
-		// SD IO buffer controls
-		reg			i_sd_cmd;
-		wire			o_sd_cmd, w_sd_cmd_tristate;
-
-		reg	[3:0]		i_sd_dat;
-		wire	[15:0]		w_sd_dat;
-		wire	[7:0]		w_sd_dat_tristate;
-
-		wire	[1:0]		w_sd_ds;
-		wire			w_sd_ds_tristate;
+		wire			w_sd_ds;
 		// }}}
 
 		// Bus clock and reset
@@ -689,72 +679,37 @@ module	tb_wb #(
 			{ slv_reset, slv_reset_pipe } <= { slv_reset_pipe, 1'b0 };
 		// }}}
 
-		sdslave #(
-			.AW(AW), .DW(DW), .OPT_DDR(1'b1), .NUMIO(4)
+		sdslave_top #(
+			.ADDRESS_WIDTH(AW), .DW(DW), .NUMIO(4)
 			// .OPT_EMMC(1'b0)
 		) u_slave (
 			// {{{
 			.i_clk(slv_clk), .i_reset(slv_reset),
 			// Wishbone master (DMA) interface
 			// {{{
-			.o_wb_cyc(slv_cyc),
-			.o_wb_stb(slv_stb),
-			.o_wb_we(slv_we),
-			.o_wb_addr(slv_addr),
-			.o_wb_data(slv_data),
-			.o_wb_sel(slv_sel),
+			.o_dma_cyc(slv_cyc),
+			.o_dma_stb(slv_stb),
+			.o_dma_we(slv_we),
+			.o_dma_addr(slv_addr),
+			.o_dma_data(slv_data),
+			.o_dma_sel(slv_sel),
 			//
-			.i_wb_stall(slv_stall),
-			.i_wb_ack(  slv_ack),
-			.i_wb_data( slv_idata),
-			.i_wb_err(  slv_err),
+			.i_dma_stall(slv_stall),
+			.i_dma_ack(  slv_ack),
+			.i_dma_data( slv_idata),
+			.i_dma_err(  slv_err),
 			// }}}
 			// SD slave front-end interface
 			// {{{
-			.i_sd_clk(sd_ck),
+			.i_ck(sd_ck),
 			//
-			.i_sd_cmd(i_sd_cmd),
-			.o_sd_cmd(o_sd_cmd),
-			.o_sd_cmd_tristate(w_sd_cmd_tristate),
+			.io_cmd(sd_cmd),
+			.io_dat(sd_dat),
 			//
-			.i_sd_dat({ 4'hf, i_sd_dat, 4'hf, sd_dat[3:0] }),
-			.o_sd_dat(w_sd_dat),
-			.o_sd_dat_tristate(w_sd_dat_tristate),
-			//
-			.o_sd_ds(w_sd_ds),
-			.o_sd_ds_tristate(w_sd_ds_tristate)
+			.o_ds(w_sd_ds)
 			// }}}
 			// }}}
 		);
-
-		// IO buffers -- CMD
-		// {{{
-		always @(posedge sd_ck or posedge slv_reset)
-		if (slv_reset)
-			i_sd_cmd <= 4'hf;
-		else
-			i_sd_cmd <= sd_cmd;
-
-		assign	sd_cmd = (w_sd_cmd_tristate) ? 1'bz : o_sd_cmd;
-		// }}}
-
-		// IO buffers -- DAT[3:0] (7:4 unused)
-		// {{{
-		always @(posedge sd_ck or posedge slv_reset)
-		if (slv_reset)
-			i_sd_dat = 4'hf;
-		else
-			i_sd_dat = sd_dat;
-
-		for(sk=0; sk<4; sk=sk+1)
-		begin : IOBUF
-			assign	sd_dat[sk] = (w_sd_dat_tristate[sk]) ? 1'bz
-				: (sd_ck ? w_sd_dat[sk+8] : w_sd_dat[sk]);
-		end
-		// }}}
-
-		// IO buffers -- DS (Unused in SDIO mode)
-		// assign	sd_ds = (w_sd_ds_tristate) ? 1'bz : (sd_ck ? w_sd_ds[1] : w_sd_ds[0]);
 
 		// Move WB request across clock domains
 		// {{{
@@ -794,7 +749,7 @@ module	tb_wb #(
 		);
 		// }}}
 
-		assign	sdio_CID = u_slave.u_fsm.w_CID;
+		assign	sdio_CID = u_slave.u_sdslave.u_fsm.w_CID;
 		assign	sdio_OCR = 32'h0;
 		assign	sdio_rx_err = 1'b0;
 
@@ -802,10 +757,7 @@ module	tb_wb #(
 		// {{{
 		// Verilator lint_off UNUSED
 		wire	unused_io;
-		assign	unused_io = &{ 1'b0, w_sd_dat[15:12], w_sd_dat[7:4],
-					w_sd_dat_tristate[15:12],
-					w_sd_dat_tristate[ 7: 4],
-					w_sd_ds, w_sd_ds_tristate };
+		assign	unused_io = &{ 1'b0, w_sd_ds };
 		// Verilator lint_on  UNUSED
 		// }}}
 		// }}}

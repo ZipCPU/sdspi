@@ -71,6 +71,7 @@ module	sdsfsm #(
 		output	reg	[95:0]	o_resp_extra,
 		//
 		input	wire		i_collision,
+		input	wire		i_cmd_busy,
 		// }}}
 		// RX (host -> slave) control
 		// {{{
@@ -186,6 +187,7 @@ module	sdsfsm #(
 	reg		new_dma_request, new_tx_en, new_rx_en;
 	reg	[1:0]	new_bufcount;
 	wire	[119:0]	w_CID;
+	reg		r_reply_active;
 	// }}}
 
 	assign	R1 = { 19'h0, r_state, 3'h0, app_cmd, 5'h0 };
@@ -335,6 +337,7 @@ module	sdsfsm #(
 		my_cid <= 1'b0;
 		r_inactive <= 1'b0;
 		first_command <= 1'b1;
+		r_reply_active <= 1'b0;
 		// }}}
 	end else begin
 		o_resp_valid <= 1'b0;
@@ -359,6 +362,9 @@ module	sdsfsm #(
 
 		if (i_cmd_valid && !r_inactive)
 			first_command <= 1'b0;
+
+		if (!i_cmd_busy && !o_resp_valid)
+			r_reply_active <= 1'b0;
 
 		if (r_inactive)
 		begin
@@ -433,6 +439,7 @@ module	sdsfsm #(
 					o_resp_data[12:9] <= ST_DATA;
 					// The SD Status result is 64 bytes
 					o_cfg_lgblksz <= 4'h6;
+					r_reply_active <= 1'b1;
 				end end
 				// }}}
 			// { 1'b1, 6'd22 }: begin // ACMD22: SEND_NUM_WR_BLOCKS
@@ -452,6 +459,7 @@ module	sdsfsm #(
 					o_resp_data[12:9] <= ST_DATA;
 					// The SD Config Register is 8bytes
 					o_cfg_lgblksz <= 4'h3;
+					r_reply_active <= 1'b1;
 				end end
 				// }}}
 			{ 1'b?, 6'd0 }: begin	// CMD0: GO_IDLE
@@ -575,6 +583,7 @@ module	sdsfsm #(
 				begin
 					o_resp_valid <= 1'b1;
 					o_resp_data <= R1;
+					r_reply_active <= 1'b1;
 					if (r_state == ST_RCV)
 					begin
 						r_state <= ST_PRG;
@@ -633,6 +642,7 @@ module	sdsfsm #(
 					o_resp_data <= R1;
 					o_resp_data[12:9] <= ST_DATA;
 					o_cfg_lgblksz <= 4'h9;
+					r_reply_active <= 1'b1;
 				end end
 				// }}}
 			{ 1'b0, 6'd18 }: begin // CMD18: READ_MULTIPLE_BLOCK
@@ -651,6 +661,7 @@ module	sdsfsm #(
 					begin
 						o_resp_data[12:9] <= ST_DATA;
 						o_cfg_lgblksz <= 4'h9;
+						r_reply_active <= 1'b1;
 					end else
 						o_resp_data <= R1
 							| ILLEGAL_COMMAND;
@@ -664,6 +675,7 @@ module	sdsfsm #(
 					o_resp_valid <= 1'b1;
 					o_resp_data <= R1;
 					o_resp_data[12:9] <= ST_DATA;
+					r_reply_active <= 1'b1;
 					// The SD Config Register is 8bytes
 					if (r_width)
 						// 128 clocks, 4b/clk => 64B
@@ -776,7 +788,7 @@ module	sdsfsm #(
 			D_DEV2HOST:
 				if (r_multiblock && !o_dma_request
 							&& new_bufcount < 2)
-					new_dma_request = 1'b1;
+					new_dma_request = (o_tx_src == S_MEM);
 			D_HOST2DEV: if (!s2mm_busy && new_bufcount > 0)
 					new_dma_request = 1'b1;
 			endcase
@@ -787,6 +799,7 @@ module	sdsfsm #(
 
 		case(o_dma_dir)
 		D_DEV2HOST: if (!o_tx_en && new_bufcount > 0
+							&& !r_reply_active
 							&& r_state == ST_DATA)
 			// Once a page is loaded, send it, but first
 			// guarantee an empty cycle
@@ -849,7 +862,7 @@ module	sdsfsm #(
 		r_multiblock <= 1'b0;
 		// }}}
 	end else begin
-		if (o_dma_reset && (!o_tx_en || i_tx_done))
+		if (o_dma_reset && bufcount == 0 && (!o_tx_en || i_tx_done))
 			o_tx_src <= S_MEM;
 
 		if (i_cfg_ready)
@@ -937,16 +950,24 @@ module	sdsfsm #(
 				// {{{
 				if (r_state == ST_TRAN)
 				begin
-					o_tx_en  <= 1'b1;
+					// Need to wait for the reply to
+					//  complete before we enable the
+					//  transmit side
+					// o_tx_en  <= 1'b1;
 					o_tx_src <= S_STATUS;	// 512b/64B vector
+					bufcount <= 1;
 				end end
 				// }}}
 			{ 1'b1, 6'd51 }: begin // ACMD51: SEND_SCR
 				// {{{
 				if (r_state == ST_TRAN)
 				begin
-					o_tx_en  <= 1'b1;
+					// Need to wait for the reply to
+					//  complete before we enable the
+					//  transmit side
+					// o_tx_en  <= 1'b0;
 					o_tx_src <= S_SCR;	// 64b/8B vector
+					bufcount <= 1;
 				end end
 				// }}}
 			{ 1'b?, 6'd0 }: begin // CMD0
@@ -1099,8 +1120,9 @@ module	sdsfsm #(
 				// {{{
 				if (r_state == ST_TRAN && !o_tx_busy)
 				begin
-					o_tx_en  <= 1'b1;
+					// o_tx_en  <= 1'b1;
 					o_tx_src <= S_TUNING;
+					bufcount <= 1;
 				end end
 				// }}}
 			{ 1'b0, 6'd24 }: begin // CMD24: WRITE_BLOCK

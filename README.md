@@ -287,15 +287,6 @@ Key features of this design include:
   however, will restrict all block sizes to powers of two and ... I'm so far
   okay with that.
 
-- **Proper Front-end** - The design still needs a proper front end given to it.
-  The one currently found in the [test bench](bench/verilog/tb_wb.v) really
-  needs to be rewritten.
-
-- **Verified Timing** - I'm pretty sure that I'm violating protocol timing in
-  a couple of places.  These are just little things, like guaranteeing exactly
-  two clocks between receive packet and the ACK/NAK token start bit, or not
-  starting a transmit packet until the CMD reply completes, etc.
-
 - **User Guide** - This needs to be written.  For now, the major SDIO commands
   are implemented, and so the SDIO spec can serve (somewhat) as a user guide
   for working with this IP.  It's just that ... the SDIO spec will tell you

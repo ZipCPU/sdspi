@@ -51,6 +51,8 @@ wb2axip/wbxclk.v
 ../../rtl/sdio/sdtxframe.v
 ../../rtl/sdio/sdrxframe.v
 ##
+../../rtl/sdslave/sdslave_top.v
+../../rtl/sdslave/sdsfrontend.v
 ../../rtl/sdslave/sdslave.v
 ../../rtl/sdslave/sdsfsm.v
 ../../rtl/sdslave/sdscmd.v

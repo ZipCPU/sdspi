@@ -1220,13 +1220,13 @@ module	sdax_mm2s #(
 	// End-to-end byte counting
 	// {{{
 
-	// TRANSFERLEN == 
+	// TRANSFERLEN ==
 	//		r_bytes_remaining + (rx_valid ? rx_bytes : 0)
 	//			+ (fgbox_rcvd-fgbox_sent)
 	//			+ FIFO_FILL * (BUS_WIDTH/8) // If !LAST
 	//
 
-	// TRANSFERLEN == 
+	// TRANSFERLEN ==
 	//		(ar_requests_remaining + faxi_rd_outstanding) << burstsz
 	//			+ (rx_valid ? rx_bytes : 0)
 	//			+ (fgbox_rcvd-fgbox_sent)
@@ -1317,7 +1317,7 @@ module	sdax_mm2s #(
 				+ faxi_rd_outstanding + (rx_valid ? 1 : 0)
 				+ ((faxis_beats+ign_fifo_fill) << (AXILSB-1));
 
-			
+
 			if (fgbox_rcvd_valid)
 			begin
 				ftot_count = ftot_count
@@ -2127,7 +2127,7 @@ module	sdax_mm2s #(
 
 		assert(faxi_rd_ckaddr == f_ckaddr);
 		// if (first_burst && first_beat)
-		//	assert(faxi_rd_ckaddr == 
+		//	assert(faxi_rd_ckaddr ==
 		// .f_axi_rd_ckincr(faxi_rd_ckincr),
 
 		// Increment v fixed

@@ -44,10 +44,10 @@
 //		of data at the maximum transfer size.
 //
 //		Our SFIFO will run on the bus (WB) clock.
-//		
+//
 //	S2MM
 //	MM2S
-//		
+//
 //
 // So ... how do we do this?
 	// RX Data path: sdsrxframe -> rxgears -> AFIFO -> FIFO(sys) -> S2MM

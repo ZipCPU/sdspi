@@ -824,7 +824,7 @@ module	sdio #(
 		wire	unused_dma;
 		assign	unused_dma = &{ 1'b0,
 `ifdef	SDIO_AXI
-				M_AXI_AWREADY, M_AXI_WREADY, M_AXI_ARREADY, 
+				M_AXI_AWREADY, M_AXI_WREADY, M_AXI_ARREADY,
 				M_AXI_BVALID, M_AXI_BID, M_AXI_BRESP,
 				M_AXI_RVALID, M_AXI_RID, M_AXI_RDATA,
 					M_AXI_RLAST, M_AXI_RRESP,

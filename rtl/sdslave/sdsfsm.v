@@ -317,6 +317,7 @@ module	sdsfsm #(
 	// }}}
 
 	initial	r_state = ST_IDLE;
+	initial	r_reply_active = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset)
 	begin
@@ -920,9 +921,6 @@ module	sdsfsm #(
 		if (o_dma_reset)
 			bufcount <= 0;
 
-		o_tx_en <= new_tx_en;
-		o_rx_en <= new_rx_en;
-
 		if (!o_dma_request && new_dma_request)
 		begin
 			o_cfg_valid <= 1'b1;
@@ -956,6 +954,7 @@ module	sdsfsm #(
 					// o_tx_en  <= 1'b1;
 					o_tx_src <= S_STATUS;	// 512b/64B vector
 					bufcount <= 1;
+					o_dma_dir <= D_DEV2HOST;
 				end end
 				// }}}
 			{ 1'b1, 6'd51 }: begin // ACMD51: SEND_SCR
@@ -968,6 +967,7 @@ module	sdsfsm #(
 					// o_tx_en  <= 1'b0;
 					o_tx_src <= S_SCR;	// 64b/8B vector
 					bufcount <= 1;
+					o_dma_dir    <= D_DEV2HOST;
 				end end
 				// }}}
 			{ 1'b?, 6'd0 }: begin // CMD0
@@ -1123,6 +1123,7 @@ module	sdsfsm #(
 					// o_tx_en  <= 1'b1;
 					o_tx_src <= S_TUNING;
 					bufcount <= 1;
+					o_dma_dir    <= D_DEV2HOST;
 				end end
 				// }}}
 			{ 1'b0, 6'd24 }: begin // CMD24: WRITE_BLOCK
@@ -1225,6 +1226,29 @@ module	sdsfsm #(
 
 	always @(posedge i_clk)
 		assume(!i_cmd_valid || !i_cmd_err);
+
+	always @(posedge i_clk)
+	if (f_past_valid && !$past(i_reset))
+	begin
+		/*
+		if (!$past(i_cmd_err) && o_resp_valid && (o_resp == 6'd12
+				|| o_resp == 6'd17
+				|| o_resp == 6'd18
+				|| o_resp == 6'd19))
+		begin
+			assert(r_reply_active);
+		end
+		*/
+
+		if (r_reply_active)
+		begin
+			if (!$past(r_reply_active))
+				assert(o_resp_valid);
+			assume(!i_cmd_valid && !i_cmd_err);
+		end
+
+		assume($rose(i_cmd_busy) == $past(o_resp_valid));
+	end
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -1371,16 +1395,17 @@ cover($past(r_state) == ST_PRG);
 		if (!r_multiblock)
 		begin
 			assert(!o_tx_en || !mm2s_busy);
-			assert(bufcount <= 1);
+			assert(bufcount + (mm2s_busy ? 1:0) <= 1);
 		end
 		// assert(!o_dma_reset || (!mm2s_busy && o_tx_src != S_MEM));
 		assert(o_dma_reset == (o_tx_src != S_MEM));
 		assert(!s2mm_busy);
 		assert(!o_rx_en);
-		assert($rose(o_tx_en) || $stable(o_tx_src));
+		if (o_tx_en && $stable(o_tx_en))
+			assert($stable(o_tx_src));
 		assert(RCA != 0);
 		if (o_tx_src != S_MEM)
-			assert(!o_dma_request && !mm2s_busy && bufcount == 0);
+			assert(!o_dma_request && !mm2s_busy);
 		case(o_tx_src)
 		S_MEM: begin end
 		S_SCR: assert(!mm2s_busy && o_cfg_lgblksz == 3);
@@ -1450,6 +1475,17 @@ cover($past(r_state) == ST_PRG);
 	always @(posedge i_clk)
 	if (!i_reset && !$past(i_reset))
 	begin
+		if (o_tx_en)
+			assert(bufcount > 0);
+		if (o_tx_src != S_MEM)
+		begin
+			assert(o_dma_dir == D_DEV2HOST);
+			assert(o_dma_reset);
+			assert(!o_dma_request);
+			assert(!mm2s_busy);
+			assert(!s2mm_busy);
+			assert(bufcount <= 1);
+		end
 		assert(bufcount <= 2);
 		if (bufcount == 2)
 		begin
@@ -1469,14 +1505,18 @@ cover($past(r_state) == ST_PRG);
 			assert(s2mm_busy == (o_dma_dir == D_HOST2DEV));
 		end
 
-		if (bufcount > 0 && o_dma_dir == D_DEV2HOST
-						&& r_state == ST_DATA)
-			assert(o_tx_en || $past(o_tx_en));
+		if (bufcount > 0 && $past(bufcount > 0)
+					&& o_dma_dir == D_DEV2HOST
+					&& r_state == ST_DATA)
+		begin
+			assert(o_tx_en || $past(o_tx_en || r_reply_active));
+		end
 
 		assert(!o_cfg_cmd_pp);
 		assert(!o_cfg_dat_pp);
 		if (mm2s_busy || s2mm_busy)
 		begin
+			assert(o_tx_src == S_MEM);
 			assert($stable(o_cfg_dat_pp));
 			assert($stable(o_cfg_cmd_pp));
 			// assert($stable(o_cfg_ds));

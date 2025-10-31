@@ -4,10 +4,9 @@ cvr
 
 [options]
 prf: mode prove
-prf: depth 8		## Takes less than 1min
-# prf: depth 40		## Debug only, not really necessary
+prf: depth 6		## Takes less than 1min
 cvr: mode cover
-cvr: depth 54		## Takes about 6min
+cvr: depth 70		## Takes about 6min
 
 [engines]
 smtbmc

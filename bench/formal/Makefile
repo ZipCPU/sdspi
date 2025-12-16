@@ -104,7 +104,7 @@ $(SPICMD)_cvr/PASS: $(RTL)/spi/$(SPICMD).v $(SPICMD).sby
 
 .PHONY: $(SDSPITX)
 ## {{{
-$(SDSPITX): $(SDSPITX)_prf/PASS $(SDSPITX)_cvr/PASS
+$(SDSPITX): $(SDSPITX)_prf/PASS $(SDSPITX)_cvr/PASS $(SDSPITX)_prfle/PASS
 $(SDSPITX)_prf/PASS: $(RTL)/spi/$(SDSPITX).v $(SDSPITX).sby
 	sby -f $(SDSPITX).sby prf
 $(SDSPITX)_prfle/PASS: $(RTL)/spi/$(SDSPITX).v $(SDSPITX).sby
@@ -115,7 +115,7 @@ $(SDSPITX)_cvr/PASS: $(RTL)/spi/$(SDSPITX).v $(SDSPITX).sby
 
 .PHONY: $(SDSPIRX)
 ## {{{
-$(SDSPIRX): $(SDSPIRX)_prf/PASS $(SDSPIRX)_cvr/PASS
+$(SDSPIRX): $(SDSPIRX)_prf/PASS $(SDSPIRX)_cvr/PASS $(SDSPIRX)_prfle/PASS
 $(SDSPIRX)_prf/PASS: $(RTL)/spi/$(SDSPIRX).v $(SDSPIRX).sby
 	sby -f $(SDSPIRX).sby prf
 $(SDSPIRX)_prfle/PASS: $(RTL)/spi/$(SDSPIRX).v $(SDSPIRX).sby

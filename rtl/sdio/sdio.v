@@ -78,6 +78,15 @@ module	sdio #(
 		parameter [0:0]	OPT_CRCTOKEN = 1'b1,
 		parameter	LGTIMEOUT = 23,
 		parameter [0:0]	OPT_ISTREAM = 0, OPT_OSTREAM = 0,
+		// Boot parameters
+		parameter [0:0]		OPT_BOOTEN   = 1'b1,
+		parameter [0:0]		OPT_AUTOBOOT = 1'b1,
+		parameter [0:0]		BOOT_TOKEN   = 1'b1,
+		parameter [3:0]	BOOT_MODE = 4'b0010,	// No DS, SDR, 8b
+		parameter [DMA_AW-1:0]	BOOT_ADDR=0,
+		parameter [31:0]	BOOT_BLOCKS=32'd256,
+		parameter [7:0]		BOOT_SPEED=8'd4,
+		//
 		parameter	SW = 32
 		// }}}
 	) (
@@ -245,6 +254,8 @@ module	sdio #(
 				cfg_cmd_pp, cfg_data_pp;
 	wire	[7:0]		cfg_ckspeed;
 	wire	[1:0]		cfg_width;
+	wire			w_cmd_en, w_cmd_tristate, w_boot_cmd;
+	wire	[1:0]		w_cmd_data;
 
 	wire			clk_stb, clk_half, clk_clk90;
 	wire	[7:0]		clk_wide, clk_ckspd;
@@ -303,7 +314,15 @@ module	sdio #(
 		.OPT_EMMC(OPT_EMMC),
 			.OPT_HWRESET(OPT_HWRESET), .OPT_1P8V(OPT_1P8V),
 		.OPT_STREAM(OPT_ISTREAM || OPT_OSTREAM),
-		.OPT_CRCTOKEN(OPT_CRCTOKEN)
+		.OPT_CRCTOKEN(OPT_CRCTOKEN),
+		// Boot parameters
+		.OPT_BOOTEN(OPT_BOOTEN && OPT_EMMC && OPT_DMA),
+		.OPT_AUTOBOOT(OPT_AUTOBOOT),
+		.BOOT_TOKEN(BOOT_TOKEN && OPT_CRCTOKEN),
+		.BOOT_MODE(BOOT_MODE),
+		.BOOT_ADDR(BOOT_ADDR),
+		.BOOT_BLOCKS(BOOT_BLOCKS),
+		.BOOT_SPEED(BOOT_SPEED)
 		// }}}
 	) u_control (
 		// {{{
@@ -399,6 +418,13 @@ module	sdio #(
 		//
 		.i_rx_done(rx_done), .i_rx_err(rx_err), .i_rx_ercode(rx_ercode),
 		// }}}
+		// Boot interface
+		// {{{
+		.i_boot_ack(i_crcack && OPT_CRCTOKEN),
+		.i_boot_nak(i_crcnak && OPT_CRCTOKEN),
+		.o_boot_tok(w_boot_tok),
+		.o_boot_cmden(w_boot_cmd),
+		// }}}
 		.i_card_detect(i_card_detect),
 		.i_card_busy(i_card_busy),
 		.o_hwreset_n(o_hwreset_n),
@@ -420,7 +446,15 @@ module	sdio #(
 		.OPT_EMMC(OPT_EMMC),
 			.OPT_HWRESET(OPT_HWRESET), .OPT_1P8V(OPT_1P8V),
 		.OPT_STREAM(OPT_ISTREAM || OPT_OSTREAM),
-		.OPT_CRCTOKEN(OPT_CRCTOKEN)
+		.OPT_CRCTOKEN(OPT_CRCTOKEN),
+		// Boot parameters
+		.OPT_BOOTEN(OPT_BOOTEN && OPT_EMMC && OPT_DMA),
+		.OPT_AUTOBOOT(OPT_AUTOBOOT),
+		.BOOT_TOKEN(BOOT_TOKEN && OPT_CRCTOKEN),
+		.BOOT_MODE(BOOT_MODE),
+		.BOOT_ADDR(BOOT_ADDR),
+		.BOOT_BLOCKS(BOOT_BLOCKS),
+		.BOOT_SPEED(BOOT_SPEED)
 		// }}}
 	) u_control (
 		// {{{
@@ -499,6 +533,13 @@ module	sdio #(
 		//
 		.i_rx_done(rx_done), .i_rx_err(rx_err), .i_rx_ercode(rx_ercode),
 		// }}}
+		// Boot interface
+		// {{{
+		.i_boot_ack(i_crcack && OPT_CRCTOKEN),
+		.i_boot_nak(i_crcnak && OPT_CRCTOKEN),
+		.o_boot_tok(w_boot_tok),
+		.o_boot_cmden(w_boot_cmd),
+		// }}}
 		.i_card_detect(i_card_detect),
 		.i_card_busy(i_card_busy),
 		.o_hwreset_n(o_hwreset_n),
@@ -566,9 +607,10 @@ module	sdio #(
 		.o_busy(cmd_busy), .o_done(cmd_done), .o_err(cmd_err),
 			.o_ercode(cmd_ercode),
 		//
-		.o_cmd_en(o_cmd_en), .o_cmd_data(o_cmd_data),
-			.o_cmd_tristate(o_cmd_tristate),
-		.i_cmd_strb(i_cmd_strb), .i_cmd_data(i_cmd_data),
+		.o_cmd_en(w_cmd_en), .o_cmd_data(w_cmd_data),
+			.o_cmd_tristate(w_cmd_tristate),
+		.i_cmd_strb(i_cmd_strb), .i_cmd_data(i_cmd_data
+				|| {(2){w_boot_cmd}}),
 			.i_cmd_collision(i_cmd_collision),
 		.S_ASYNC_VALID(S_AC_VALID), .S_ASYNC_DATA(S_AC_DATA),
 		//
@@ -579,6 +621,10 @@ module	sdio #(
 			.o_mem_addr(cmd_mem_addr), .o_mem_data(cmd_mem_data)
 		// }}}
 	);
+
+	assign	o_cmd_en       = w_cmd_en || w_boot_cmd;
+	assign	w_cmd_tristate = w_cmd_tristate && !w_boot_cmd;
+	assign	o_cmd_data     = w_cmd_data && !w_boot_cmd;
 
 	sdtxframe #(
 		// {{{

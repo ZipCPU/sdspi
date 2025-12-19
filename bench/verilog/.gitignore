@@ -7,3 +7,4 @@ sdiosim
 test/
 /cpu/
 /testscript.v
+*.gtkw

@@ -88,11 +88,18 @@ module	sdscmd #(
 	reg	[6:0]		cmdcrc;
 	reg	[7:0]		count;
 	wire	[6:0]		stepped;
+	reg	[1:0]		self_busy;
 	// }}}
 
 	assign	stepped = STEPCRC(cmdcrc, sreg[135]);
 
-	always @(posedge i_clk)
+	always @(posedge i_clk or posedge i_reset)
+	if (i_reset)
+		self_busy <= 2'b00;
+	else
+		self_busy <= { self_busy[0], o_cmden && !o_cmdio };
+
+	always @(posedge i_clk or posedge i_reset)
 	if (i_reset)
 	begin
 		// {{{
@@ -117,7 +124,7 @@ module	sdscmd #(
 		o_valid <= 1'b0;
 		o_err   <= 1'b0;
 		r_cmden <= 1'b0;
-		if (!i_cmdio)
+		if (!i_cmdio && self_busy == 0)
 		begin
 			state <= CMD_RX;
 			count <= 1;

@@ -539,12 +539,12 @@ begin
 
 	if (!OPT_SDSLAVE)
 	begin
-		if (read_data[30:0] !== sdio_OCR[30:0])
+		if (read_data[30:0] !== sd_ocr[30:0])
 		begin
 			$display("ERROR: F"); error_flag = 1'b1;
 		end
 
-		assert(read_data[30:0] == sdio_OCR[30:0]);
+		assert(read_data[30:0] == sd_ocr[30:0]);
 	end
 
 end endtask
@@ -616,6 +616,7 @@ begin
 	u_bfm.readio(ADDR_SDPHY, read_data);
 	phy_reg = read_data;
 	phy_reg[20:16] = 5'h1f;
+	phy_reg[15] = 1'b1;	// Turn the clock off for this test
 	phy_reg[7:0] = 8'h0;
 	phy_reg[8] = 1'b0;	// Turn off DDR
 	u_bfm.write_f(ADDR_SDPHY, phy_reg);
@@ -663,13 +664,14 @@ begin
 	phy_reg[9] = 1'b1;
 	phy_reg[8] = 1'b1;
 	phy_reg[7:0] = 8'h0;
-	u_bfm.writeio(ADDR_SDPHY, phy_reg);
+	u_bfm.write_f(ADDR_SDPHY, phy_reg);
 	u_bfm.readio(ADDR_SDPHY, phy_reg);
 	while(phy_reg[7:0] === read_data[7:0])
 	begin
 		u_bfm.readio(ADDR_SDPHY, phy_reg);
 	end
 
+	$display("RAW PHY:        %08x", phy_reg);
 	if (phy_reg[8] === 1'b0)
 	begin
 		$display("DDR:            Unsupported");

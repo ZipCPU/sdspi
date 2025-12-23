@@ -85,15 +85,18 @@ module	xsdserdes8x #(
 
 `ifdef OPENSIM
 	// {{{
-	reg		last_ck;
+	reg		last_ck, r_edge;
 	reg	[7:0]	ir_wide, rx_wide;
 	reg	[14:0]	or_wide;	// Output register
 
 	always @(posedge i_hsclk or negedge i_hsclk)
+	begin
 		last_ck <= i_clk;
+		r_edge  <= i_clk && !last_ck;
+	end
 
 	always @(posedge i_hsclk or negedge i_hsclk)
-	if (i_clk && !last_ck)
+	if (r_edge)
 		or_wide <= { or_wide[13:7], i_data };
 	else
 		or_wide <= { or_wide[13:0], 1'b0 };

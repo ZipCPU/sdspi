@@ -104,6 +104,7 @@ module	sdwb #(
 		// If the device actually indicates a busy (like it's supposed
 		// to), then we'll only be busy until the device releases.
 		parameter	LGCARDBUSY = 12,
+		parameter [4:0]	DEF_SAMPLE_SHIFT = 5'h18,
 		// BOOT parameters
 		parameter [0:0]	OPT_BOOTEN   = 1'b1,
 		parameter [0:0]	OPT_AUTOBOOT = OPT_BOOTEN,
@@ -1273,7 +1274,6 @@ module	sdwb #(
 
 	// o_cfg_sample_shift: Control when we sample data returning from card
 	// {{{
-	parameter [4:0]	DEF_SAMPLE_SHIFT = 5'h18;
 	initial	o_cfg_sample_shift = DEF_SAMPLE_SHIFT;
 	always @(posedge i_clk)
 	begin

@@ -43,97 +43,108 @@
 // }}}
 module sdslave_top #(
 		// {{{
-		// NUMIO : Controls the number of data pins available on the
-		// {{{
-		// interface.  eMMC cards can have up to 8 data pins.  SDIO
-		// is limited to 4 data pins.  Both have modes that can support
-		// a single data pin alone.  Set appropriately based upon your
-		// ultimate hardware.
-		parameter	NUMIO=4,
-		// }}}
 		// ADDRESS_WIDTH: Number of bits to the DMA's address lines,
 		// {{{
 		// as required to access octets of memory.  This is not the word
 		// address width, but the octet/byte address width.
 		parameter	ADDRESS_WIDTH=48,
-		localparam	AW = ADDRESS_WIDTH,
+`ifdef	SDIO_AXI
+		parameter		AXI_IW=4,
+		parameter [AXI_IW-1:0]	AXI_READ_ID  = 0,
+		parameter [AXI_IW-1:0]	AXI_WRITE_ID = 1,
+		localparam		AW = ADDRESS_WIDTH,
+`else
+		localparam		AW = ADDRESS_WIDTH - $clog2(DW/8),
+`endif
 		// }}}
-		// Bus data width, DW: Bit-width of the bus, number of bits that
+		// NUMIO can only be 1, 4, or 8.  It can *only* be 8 if OPT_EMMC
 		// {{{
-		// can be transferred across the bus (by the DMA) in any one
-		// clock cycle.
-		parameter	DW=64
+		//   is set, otherwise it must be either 1 or 4.  Most SDIO
+		//   devices want to operate in 4bit mode, so 1bit is not
+		//   recommended.  (This slave does *not* support the 1b SPI
+		//   protocol.)
+		parameter	NUMIO = 4,
 		// }}}
-		// OPT_EMMC: Enables eMMC support.  There are subtle differences
+		// If OPT_EMMC is set, our state machine will support eMMC
 		// {{{
-		// between the eMMC protocol and the SDIO protocol.  This
-		// enables the extra features required by eMMC.  These extra
-		// features still need to be implemented in a to-be-written
-		// emmcsfsm.v module.
-		// parameter [0:0]	OPT_EMMC=1,
+		//   devices.  This state machine hasn't (yet) been built, so
+		//   we're stuck (for the time being) with SDIO devices only.
+		localparam [0:0]	OPT_EMMC = 1'b0,
 		// }}}
-		// OPT_DS: Data strobe support
+		// If OPT_DDR is set, we support DDR protocols, such as DDR50,
 		// {{{
-		// eMMC chips include a data strobe pin, which can be used to
-		// clock return values.  Set this parameter true to support
-		// sampling based upon this data strobe.  Beware that you may
-		// need additional timing constraints to make this work.
-		// parameter [0:0]	OPT_DS= OPT_EMMC,
+		//   and (perhaps later) HS400.  For now, this *must* be 0,
+		//   since our FSM doesn't (yet) support getting into or out of
+		//   any DDR modes.
+		localparam [0:0]	OPT_DDR = 1'b0,
+		// }}}
+		// If OPT_DS is set, we (might) support HS400.  This requires
+		// {{{
+		//   OPT_EMMC && OPT_DDR to be set.  It's only a *might* at
+		//   present, since the EMMC logic doesn't (yet) exist.
+		localparam [0:0]	OPT_DS = OPT_EMMC && OPT_DDR,
+		// }}}
+		// If OPT_1P8V is set, we'll (somehow) support voltage switching
+		// {{{
+		//   from 3.3V mode down to 1.8V.  Since this isn't (normally)
+		//   possible from an FPGA, this is set to zero.
+		localparam [0:0]	OPT_1P8V = 1'b0
 		// }}}
 		// }}}
 	) (
 		// {{{
-		input	wire			i_clk, i_reset,
-		// Control interface
-		//	Slaves don't have a control interface
-		// DMA interface
+		input	wire			i_bus_clk, i_aresetn,
+		// DMA Interface
 		// {{{
-`ifdef	SDSLAVE_AXI
-		// (Optional) AXI (full) interface
+`ifdef	SDIO_AXI
+		// AXI DMA (Master) interface
 		// {{{
+		// AXI Write address
 		output	wire			M_AXI_AWVALID,
 		input	wire			M_AXI_AWREADY,
-		output	wire [AXI_IW-1:0]	M_AXI_AWID,
-		output	wire [AW-1:0]		M_AXI_AWADDR,
-		output	wire [7:0]		M_AXI_AWLEN,
-		output	wire [2:0]		M_AXI_AWSIZE,
-		output	wire [1:0]		M_AXI_AWBURST,
-		output	wire 			M_AXI_AWLOCK,
-		output	wire [3:0]		M_AXI_AWCACHE,
+		output	wire	[AXI_IW-1:0]	M_AXI_AWID,
+		output	wire	[AW-1:0]	M_AXI_AWADDR,
+		output	wire	[7:0]		M_AXI_AWLEN,
+		output	wire	[2:0]		M_AXI_AWSIZE,
+		output	wire	[1:0]		M_AXI_AWBURST,
+		output	wire			M_AXI_AWLOCK,
+		output	wire	[3:0]		M_AXI_AWCACHE,
 		output	wire	[2:0]		M_AXI_AWPROT,
-		output	wire [3:0]		M_AXI_AWQOS,
-		//
+		output	wire	[3:0]		M_AXI_AWQOS,
+		// AXI Write data
 		output	wire			M_AXI_WVALID,
 		input	wire			M_AXI_WREADY,
-		output	wire [DW-1:0]		M_AXI_WDATA,
-		output	wire [DW/8-1:0]		M_AXI_WSTRB,
+		output	wire	[DW-1:0]	M_AXI_WDATA,
+		output	wire	[DW/8-1:0]	M_AXI_WSTRB,
 		output	wire			M_AXI_WLAST,
-		//
+		// AXI Write response
 		input	wire			M_AXI_BVALID,
 		output	wire			M_AXI_BREADY,
-		input	wire [AXI_IW-1:0]	M_AXI_BID,
+		input	wire	[AXI_IW-1:0]	M_AXI_BID,
 		input	wire	[1:0]		M_AXI_BRESP,
-		//
+		// AXI Read address
 		output	wire			M_AXI_ARVALID,
 		input	wire			M_AXI_ARREADY,
-		output	wire [AXI_IW-1:0]	M_AXI_ARID,
-		output	wire [AW-1:0]		M_AXI_ARADDR,
-		output	wire [7:0]		M_AXI_ARLEN,
-		output	wire [2:0]		M_AXI_ARSIZE,
-		output	wire [1:0]		M_AXI_ARBURST,
-		output	wire 			M_AXI_ARLOCK,
-		output	wire [3:0]		M_AXI_ARCACHE,
+		output	wire	[AXI_IW-1:0]	M_AXI_ARID,
+		output	wire	[AW-1:0]	M_AXI_ARADDR,
+		output	wire	[7:0]		M_AXI_ARLEN,
+		output	wire	[2:0]		M_AXI_ARSIZE,
+		output	wire	[1:0]		M_AXI_ARBURST,
+		output	wire			M_AXI_ARLOCK,
+		output	wire	[3:0]		M_AXI_ARCACHE,
 		output	wire	[2:0]		M_AXI_ARPROT,
-		output	wire [3:0]		M_AXI_ARQOS,
-		//
+		output	wire	[3:0]		M_AXI_ARQOS,
+>>>>>>> 32384f9 (SDSLAVE: WB & AXI simulations pass)
+		// AXI Read data
 		input	wire			M_AXI_RVALID,
 		output	wire			M_AXI_RREADY,
-		input	wire [AXI_IW-1:0]	M_AXI_RID,
-		input	wire [DW-1:0]		M_AXI_RDATA,
+		input	wire	[AXI_IW-1:0]	M_AXI_RID,
+		input	wire	[DW-1:0]	M_AXI_RDATA,
 		input	wire			M_AXI_RLAST,
 		input	wire	[1:0]		M_AXI_RRESP,
 		// }}}
 `else
+<<<<<<< HEAD
 		output	wire			o_dma_cyc, o_dma_stb, o_dma_we,
 		output	wire	[AW-1:0]	o_dma_addr,
 		output	wire	[DW-1:0]	o_dma_data,
@@ -166,6 +177,17 @@ module sdslave_top #(
 	wire		w_ds_tristate;
 	// }}}
 
+	// Bus clock and reset
+	// {{{
+	initial	{ slv_resetn, slv_resetn_pipe } <= 2'b00;
+	always @(posedge i_bus_clk or negedge i_aresetn)
+	if (!i_aresetn)
+		{ slv_resetn, slv_resetn_pipe } <= 2'b00;
+	else
+		{ slv_resetn, slv_resetn_pipe } <= { slv_resetn_pipe, 1'b1 };
+	// }}}
+
+
 	sdslave #(
 		// {{{
 		.NUMIO(NUMIO), .AW(AW), .DW(DW)
@@ -173,15 +195,27 @@ module sdslave_top #(
 		// .OPT_DS(OPT_DS),
 		// .OPT_EMMC(OPT_EMMC),
 		// .OPT_1P8V(OPT_1P8V),
+`ifdef	SDIO_AXI
+		.AXI_IW(AXI_IW), .AXI_READ_ID(AXI_READ_ID),
+		.AXI_WRITE_ID(AXI_WRITE_ID),
+`endif
+		.OPT_DDR(OPT_DDR), .NUMIO(NUMIO)
 		// }}}
 	) u_sdslave (
 		// {{{
-		.i_clk(i_clk), .i_reset(i_reset),
+		.i_clk(i_bus_clk), .i_reset(!slv_resetn),
 		// DMA interface
 		// {{{
 `ifdef	SDIO_AXI
 		// AXI DMA interface
 		// {{{
+
+		// {{{
+`ifdef	SDIO_AXI
+		// AXI master (DMA) interface
+		// {{{
+		// AXI Write address
+>>>>>>> 32384f9 (SDSLAVE: WB & AXI simulations pass)
 		.M_AXI_AWVALID(M_AXI_AWVALID),
 		.M_AXI_AWREADY(M_AXI_AWREADY),
 		.M_AXI_AWID(M_AXI_AWID),
@@ -193,19 +227,19 @@ module sdslave_top #(
 		.M_AXI_AWCACHE(M_AXI_AWCACHE),
 		.M_AXI_AWPROT(M_AXI_AWPROT),
 		.M_AXI_AWQOS(M_AXI_AWQOS),
-		//
+		// AXI Write data
 		.M_AXI_WVALID(M_AXI_WVALID),
 		.M_AXI_WREADY(M_AXI_WREADY),
 		.M_AXI_WDATA(M_AXI_WDATA),
 		.M_AXI_WSTRB(M_AXI_WSTRB),
 		.M_AXI_WLAST(M_AXI_WLAST),
-		//
-		//
+		// AXI Write respons
 		.M_AXI_BVALID(M_AXI_BVALID),
 		.M_AXI_BREADY(M_AXI_BREADY),
 		.M_AXI_BID(M_AXI_BID),
 		.M_AXI_BRESP(M_AXI_BRESP),
 		//
+		// AXI Read address
 		.M_AXI_ARVALID(M_AXI_ARVALID),
 		.M_AXI_ARREADY(M_AXI_ARREADY),
 		.M_AXI_ARID(M_AXI_ARID),
@@ -217,7 +251,7 @@ module sdslave_top #(
 		.M_AXI_ARCACHE(M_AXI_ARCACHE),
 		.M_AXI_ARPROT(M_AXI_ARPROT),
 		.M_AXI_ARQOS(M_AXI_ARQOS),
-		//
+		// AXI Read data
 		.M_AXI_RVALID(M_AXI_RVALID),
 		.M_AXI_RREADY(M_AXI_RREADY),
 		.M_AXI_RID(M_AXI_RID),
@@ -226,6 +260,8 @@ module sdslave_top #(
 		.M_AXI_RRESP(M_AXI_RRESP),
 		// }}}
 `else
+		// Wishbone master (DMA) interface
+		// {{{
 		.o_dma_cyc(o_dma_cyc),
 		.o_dma_stb(o_dma_stb),
 		.o_dma_we(o_dma_we),
@@ -236,8 +272,8 @@ module sdslave_top #(
 		.i_dma_ack(i_dma_ack),
 		.i_dma_data(i_dma_data),
 		.i_dma_err(i_dma_err),
-`endif
 		// }}}
+`endif
 		// Interface to PHY
 		// {{{
 		.i_sd_clk(i_ck),

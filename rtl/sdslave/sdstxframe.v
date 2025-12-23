@@ -308,7 +308,7 @@ module	sdstxframe #(
 
 	// iovec, iotri
 	// {{{
-	always @(posedge i_clk)
+	always @(posedge i_clk or posedge i_reset)
 	if (i_reset)
 	begin
 		iovec <= 16'hff_ff;

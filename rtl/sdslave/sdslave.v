@@ -38,14 +38,69 @@
 // }}}
 module	sdslave #(
 		// {{{
+		parameter	ADDRESS_WIDTH=30,
+		parameter	DW=32,
+`ifdef	SDIO_AXI
+		localparam	AW = ADDRESS_WIDTH,
+		parameter	AXI_IW=1,
+		parameter	AXI_READ_ID = 0,
+		parameter	AXI_WRITE_ID= 0,
+`else
+		localparam	AW = ADDRESS_WIDTH - $clog2(DW/8),
+`endif
 		parameter [0:0]	OPT_DDR  = 1'b1,
 		parameter [0:0]	OPT_1P8V = 1'b0,	// No 1.8V support
-		parameter	NUMIO=4,
-		parameter	AW = 30, DW=32
+		parameter	NUMIO=4
 		// }}}
 	) (
 		// {{{
 		input	wire		i_clk, i_reset,
+`ifdef	SDIO_AXI
+		// AXI MM (Master) interface
+		// {{{
+		output	wire			M_AXI_AWVALID,
+		input	wire			M_AXI_AWREADY,
+		output	wire [AXI_IW-1:0]	M_AXI_AWID,
+		output	wire [AW-1:0]		M_AXI_AWADDR,
+		output	wire [7:0]		M_AXI_AWLEN,
+		output	wire [2:0]		M_AXI_AWSIZE,
+		output	wire [1:0]		M_AXI_AWBURST,
+		output	wire	 		M_AXI_AWLOCK,
+		output	wire [3:0]		M_AXI_AWCACHE,
+		output	wire [2:0]		M_AXI_AWPROT,
+		output	wire [3:0]		M_AXI_AWQOS,
+		//
+		output	wire			M_AXI_WVALID,
+		input	wire			M_AXI_WREADY,
+		output	wire [DW-1:0]		M_AXI_WDATA,
+		output	wire [DW/8-1:0]		M_AXI_WSTRB,
+		output	wire			M_AXI_WLAST,
+		//
+		input	wire			M_AXI_BVALID,
+		output	wire			M_AXI_BREADY,
+		input	wire [AXI_IW-1:0]	M_AXI_BID,
+		input	wire [1:0]		M_AXI_BRESP,
+		//
+		output	wire			M_AXI_ARVALID,
+		input	wire			M_AXI_ARREADY,
+		output	wire [AXI_IW-1:0]	M_AXI_ARID,
+		output	wire [AW-1:0]		M_AXI_ARADDR,
+		output	wire [7:0]		M_AXI_ARLEN,
+		output	wire [2:0]		M_AXI_ARSIZE,
+		output	wire [1:0]		M_AXI_ARBURST,
+		output	wire	 		M_AXI_ARLOCK,
+		output	wire [3:0]		M_AXI_ARCACHE,
+		output	wire [2:0]		M_AXI_ARPROT,
+		output	wire [3:0]		M_AXI_ARQOS,
+		//
+		input	wire			M_AXI_RVALID,
+		output	wire			M_AXI_RREADY,
+		input	wire [AXI_IW-1:0]	M_AXI_RID,
+		input	wire [DW-1:0]		M_AXI_RDATA,
+		input	wire			M_AXI_RLAST,
+		input	wire [1:0]		M_AXI_RRESP,
+		// }}}
+`else
 		// Wishbone interface
 		// {{{
 		output	wire		o_dma_cyc, o_dma_stb, o_dma_we,
@@ -57,6 +112,7 @@ module	sdslave #(
 		input	wire [DW-1:0]	i_dma_data,
 		input	wire		i_dma_err,
 		// }}}
+`endif
 		// SD slave front-end interface
 		// {{{
 		input	wire		i_sd_clk,
@@ -76,7 +132,6 @@ module	sdslave #(
 
 	// Local declarations
 	// {{{
-	localparam	ADDRESS_WIDTH = AW+$clog2(DW/8);
 	localparam [1:0]	S_MEM = 2'b00,
 				S_SCR = 2'b01,
 				S_STATUS = 2'b10,
@@ -421,10 +476,17 @@ module	sdslave #(
 	// SDS DMA Handler
 	// {{{
 	sdsdma #(
+		// {{{
+`ifdef	SDIO_AXI
+		.AXI_IW(AXI_IW),
+		.AXI_READ_ID(AXI_READ_ID),
+		.AXI_WRITE_ID(AXI_WRITE_ID),
+`endif
 		.BUS_WIDTH(DW), .ADDRESS_WIDTH(ADDRESS_WIDTH)
+		// }}}
 	) u_dma (
 		// {{{
-		.i_wb_clk(i_clk), .i_wb_reset(i_reset),
+		.i_bus_clk(i_clk), .i_bus_reset(i_reset),
 		//
 		.i_sd_clk(i_sd_clk), .i_sd_reset(sd_reset),
 		//
@@ -452,6 +514,52 @@ module	sdslave #(
 		.o_tx_valid(mem_valid), .i_tx_ready(mem_ready),
 			.o_tx_data(mem_data), .o_tx_last(mem_last),
 		// }}}
+`ifdef	SDIO_AXI
+		// AXI MM (Master) interface
+		// {{{
+		.M_AXI_AWVALID(M_AXI_AWVALID),
+		.M_AXI_AWREADY(M_AXI_AWREADY),
+		.M_AXI_AWID(M_AXI_AWID),
+		.M_AXI_AWADDR(M_AXI_AWADDR),
+		.M_AXI_AWLEN(M_AXI_AWLEN),
+		.M_AXI_AWSIZE(M_AXI_AWSIZE),
+		.M_AXI_AWBURST(M_AXI_AWBURST),
+		.M_AXI_AWLOCK(M_AXI_AWLOCK),
+		.M_AXI_AWCACHE(M_AXI_AWCACHE),
+		.M_AXI_AWPROT(M_AXI_AWPROT),
+		.M_AXI_AWQOS(M_AXI_AWQOS),
+		//
+		.M_AXI_WVALID(M_AXI_WVALID),
+		.M_AXI_WREADY(M_AXI_WREADY),
+		.M_AXI_WDATA(M_AXI_WDATA),
+		.M_AXI_WSTRB(M_AXI_WSTRB),
+		.M_AXI_WLAST(M_AXI_WLAST),
+		//
+		.M_AXI_BVALID(M_AXI_BVALID),
+		.M_AXI_BREADY(M_AXI_BREADY),
+		.M_AXI_BID(M_AXI_BID),
+		.M_AXI_BRESP(M_AXI_BRESP),
+		//
+		.M_AXI_ARVALID(M_AXI_ARVALID),
+		.M_AXI_ARREADY(M_AXI_ARREADY),
+		.M_AXI_ARID(M_AXI_ARID),
+		.M_AXI_ARADDR(M_AXI_ARADDR),
+		.M_AXI_ARLEN(M_AXI_ARLEN),
+		.M_AXI_ARSIZE(M_AXI_ARSIZE),
+		.M_AXI_ARBURST(M_AXI_ARBURST),
+		.M_AXI_ARLOCK(M_AXI_ARLOCK),
+		.M_AXI_ARCACHE(M_AXI_ARCACHE),
+		.M_AXI_ARPROT(M_AXI_ARPROT),
+		.M_AXI_ARQOS(M_AXI_ARQOS),
+		//
+		.M_AXI_RVALID(M_AXI_RVALID),
+		.M_AXI_RREADY(M_AXI_RREADY),
+		.M_AXI_RID(M_AXI_RID),
+		.M_AXI_RDATA(M_AXI_RDATA),
+		.M_AXI_RLAST(M_AXI_RLAST),
+		.M_AXI_RRESP(M_AXI_RRESP)
+		// }}}
+`else
 		// Wishbone interface
 		// {{{
 		.o_dma_cyc(o_dma_cyc), .o_dma_stb(o_dma_stb),
@@ -463,6 +571,7 @@ module	sdslave #(
 		.i_dma_ack(i_dma_ack), .i_dma_data(i_dma_data),
 		.i_dma_err(i_dma_err)
 		// }}}
+`endif
 		// }}}
 	);
 

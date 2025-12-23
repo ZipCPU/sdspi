@@ -183,6 +183,7 @@ module	sdsfsm #(
 	wire		transfer_complete, operation_complete;
 
 	wire	[127:0]	CSD;
+	wire	[30:0]	OCR;
 
 	reg		new_dma_request, new_tx_en, new_rx_en;
 	reg	[1:0]	new_bufcount;
@@ -198,6 +199,13 @@ module	sdsfsm #(
 	assign	o_cfg_ds = 1'b0;
 	assign	o_cfg_width = { 1'b0, r_width };
 
+	assign	OCR = { hcs_support && i_arg[30],
+					OPT_UHSII,
+					4'h0,
+					OPT_1P8V && i_arg[24],
+					// OCR
+					OCR_VOLTAGE & i_arg[23:8],
+					8'h00	};
 	// Setup commands:
 	//	CMD0		Go IDLE
 	//	CMD8		SEND_IF_COND
@@ -400,13 +408,7 @@ module	sdsfsm #(
 					o_resp_data <= {
 						// 1'b0, 1'b0, 6'h3f,
 						1'b1, // Initialization complete
-						hcs_support && i_arg[30],
-						OPT_UHSII,
-						4'h0,
-						OPT_1P8V && i_arg[24],
-						// OCR
-						OCR_VOLTAGE & i_arg[23:8],
-						8'h00
+						OCR
 						};
 					o_resp_nocrc <= 1'b1;
 				end end

@@ -52,6 +52,9 @@
 ##		script would be a hex file specifying the software load for
 ##		the test.
 ## }}}
+##
+## SD card checks
+## {{{
 sdioio		WB  sdiostart	OPT_SERDES=0 OPT_DDR=0
 sdioddr		WB  sdiostart	OPT_SERDES=0 OPT_DDR=1
 sdio8x		WB  sdiostart	OPT_SERDES=1 OPT_DDR=1
@@ -62,20 +65,39 @@ axsdioddr	AXI sdiostart	OPT_SERDES=0 OPT_DDR=1
 axsdio8x	AXI sdiostart	OPT_SERDES=1 OPT_DDR=1
 axsdstream	AXI sdstream	OPT_SERDES=1 OPT_DDR=1 OPT_DMA=1 OPT_STREAM=1
 axdmachk	AXI sddmachk	OPT_SERDES=1 OPT_DDR=1 OPT_DMA=1
+## }}}
+##
+## eMMC checks
+## {{{
 emmcio		WB  emmcstart	OPT_SERDES=0 OPT_DDR=0
 emmcddr		WB  emmcstart	OPT_SERDES=0 OPT_DDR=1
 emmc8x		WB  emmcstart	OPT_SERDES=1 OPT_DDR=1
 axemmcio	AXI emmcstart	OPT_SERDES=0 OPT_DDR=0
 axemmcddr	AXI emmcstart	OPT_SERDES=0 OPT_DDR=1
 axemmc8x	AXI emmcstart	OPT_SERDES=1 OPT_DDR=1
+## }}}
+##
+## eMMC BOOT
+# emmcboot8x	WB  emmcboot	OPT_SERDES=1 OPT_DDR=1 OPT_BOOTEN=1 OPT_VCD=1
 #
-sdslvio		WB  sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_SDSLAVE=1 OPT_VCD=1
+## SDSLAVE
+## {{{
+sdslvio		WB  sdiostart	OPT_SERDES=0 OPT_DDR=1 OPT_SDSLAVE=1 OPT_VCD=1
+## The AXI version of the SDSLAVE doesn't (yet) exist
+axslvio	AXI sdiostart	OPT_SERDES=0 OPT_DDR=1 OPT_SDSLAVE=1 OPT_VCD=1
+## }}}
 #
-# The SDSPI tests aren't yet fully implemented in all Verilog yet
-#	They currently exist as part of an integrated C++/Verilog test bench,
-#	run from the bench/cpp directory under Verilator.
-#
-# The CPU tests aren't yet fully implemented ...
+## SDSPI
+## {{{
+## The SDSPI tests aren't yet fully implemented in all Verilog yet
+##	They currently exist as part of an integrated C++/Verilog test bench,
+##	run from the bench/cpp directory under Verilator.
+## }}}
+##
+## CPU tests
+## {{{
+# The CPU tests aren't yet implemented here, since they would require a CPU
+# that ... isn't part of this repository.
 # cpusdio	WBCPU sdcheck.hex	OPT_SERDES=0 OPT_DDR=0
 # cpusdddr	WBCPU sdcheck.hex	OPT_SERDES=0 OPT_DDR=1
 # cpusd8x	WBCPU sdcheck.hex	OPT_SERDES=1 OPT_DDR=1
@@ -89,3 +111,4 @@ sdslvio		WB  sdiostart	OPT_SERDES=0 OPT_DDR=0 OPT_SDSLAVE=1 OPT_VCD=1
 # caxemio	AXCPU emcheck.hex	OPT_SERDES=0 OPT_DDR=0
 # caxemddr	AXCPU emcheck.hex	OPT_SERDES=0 OPT_DDR=1
 # caxem8x	AXCPU emcheck.hex	OPT_SERDES=1 OPT_DDR=1
+## }}}

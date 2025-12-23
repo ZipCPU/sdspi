@@ -231,16 +231,17 @@ module	sdrxframe #(
 		// s2_data <= sync_sreg >> sync_fill[3:0];
 		// Vastly simplified below
 		case(w_cfg_width)
-		WIDTH_1W: if (sync_fill[0])
-				s2_data <= sync_sreg[16:1];
-			else
-				s2_data <= sync_sreg[15:0];
 		WIDTH_4W: if (sync_fill[2])
 				s2_data <= sync_sreg[19:4];
 			else
 				s2_data <= sync_sreg[15:0];
 		WIDTH_8W: if (sync_fill[3])
 				s2_data <= sync_sreg[23:8];
+			else
+				s2_data <= sync_sreg[15:0];
+		// WIDTH_1W:
+		default: if (sync_fill[0])
+				s2_data <= sync_sreg[16:1];
 			else
 				s2_data <= sync_sreg[15:0];
 		endcase

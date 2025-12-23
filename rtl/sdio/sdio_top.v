@@ -203,7 +203,18 @@ module sdio_top #(
 		// choice.  Examples of what might cause such a timeout failure
 		// include an unplugged card, a malfunctioning card, or a
 		// bad board connection.
-		parameter	LGTIMEOUT = 23
+		parameter	LGTIMEOUT = 23,
+		// }}}
+		// EMMC BOOT parameters
+		// {{{
+		parameter [0:0]	OPT_BOOTEN   = OPT_EMMC,
+		parameter [0:0]	OPT_AUTOBOOT = 1'b0,
+		parameter [0:0]	BOOT_TOKEN = 1'b1,
+		parameter [3:0]	BOOT_MODE = 4'b0010,
+		parameter [ADDRESS_WIDTH+((OPT_ISTREAM||OPT_OSTREAM) ? 1:0)-1:0]
+			BOOT_ADDR = 0,
+		parameter [31:0]	BOOT_BLOCKS = 32'h0,
+		parameter [7:0]		BOOT_SPEED = 8'd252
 		// }}}
 		// }}}
 	) (
@@ -346,7 +357,7 @@ module sdio_top #(
 
 	// Local declarations
 	// {{{
-	wire		cfg_ddr, cfg_ds, cfg_dscmd;
+	wire		cfg_ddr, cfg_ds, cfg_dscmd, expect_token;
 	wire	[4:0]	cfg_sample_shift;
 	wire	[7:0]	sdclk;
 	wire		w_crcack, w_crcnak;
@@ -388,7 +399,17 @@ module sdio_top #(
 		.OPT_CRCTOKEN(OPT_CRCTOKEN),
 		.OPT_HWRESET(OPT_HWRESET),
 		.OPT_1P8V(OPT_1P8V),
-		.LGTIMEOUT(LGTIMEOUT)
+		.LGTIMEOUT(LGTIMEOUT),
+		// Boot parameters
+		// {{{
+		.OPT_BOOTEN(OPT_BOOTEN && OPT_EMMC),
+		.OPT_AUTOBOOT(OPT_AUTOBOOT && OPT_BOOTEN && OPT_EMMC),
+		.BOOT_TOKEN(BOOT_TOKEN && OPT_EMMC && OPT_CRCTOKEN),
+		.BOOT_MODE(BOOT_MODE),
+		.BOOT_ADDR(BOOT_ADDR),
+		.BOOT_BLOCKS(BOOT_BLOCKS),
+		.BOOT_SPEED(BOOT_SPEED)
+		// }}}
 		// }}}
 	) u_sdio (
 		// {{{
@@ -513,6 +534,7 @@ module sdio_top #(
 		// {{{
 		.o_cfg_ddr(cfg_ddr), .o_cfg_ds(cfg_ds), .o_cfg_dscmd(cfg_dscmd),
 		.o_cfg_sample_shift(cfg_sample_shift),
+		.o_expect_token(expect_token),
 		.o_sdclk(sdclk),
 		//
 		.o_cmd_en(cmd_en), .o_cmd_tristate(cmd_tristate),
@@ -547,6 +569,7 @@ module sdio_top #(
 		.i_clk(i_clk),.i_hsclk(i_hsclk && OPT_SERDES),.i_reset(i_reset),
 		.i_cfg_ddr(cfg_ddr), .i_cfg_ds(cfg_ds), .i_cfg_dscmd(cfg_dscmd),
 		.i_sample_shift(cfg_sample_shift),
+		.i_expect_token(expect_token),
 		// Tx path
 		// {{{
 		// MSB "first" incoming data.

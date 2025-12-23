@@ -50,6 +50,7 @@ module	mdl_emmc #(
 		parameter	LGMEMSZ = 20,	// Log_2(Mem size in bytes)
 		parameter	LGBOOTSZ = 17,	// Minimum of 17, for 128kB
 		parameter	MAX_BLKLEN = 512,	// Max Blk Size in bytes
+		parameter [3:0]	OPT_BOOTMODE = 4'h0,
 		// MEM_HEX: If non-zero, is the name of a hex file to be used
 		// to initialize the main memory of the device.
 		parameter	MEM_HEX = 0,
@@ -155,7 +156,7 @@ module	mdl_emmc #(
 	wire	[31:0]	QSR;
 
 	reg	[6:0]	boot_clk_count;
-	reg		boot_mode, boot_active;
+	reg		boot_mode, boot_active, alt_boot_mode;
 	reg		busy_programming;
 
 	reg	err_addr_out_of_range, err_address_misalign,
@@ -276,7 +277,8 @@ module	mdl_emmc #(
 	always @(posedge sd_clk or negedge rst_n)
 	if (!rst_n)
 		boot_clk_count <= 0;
-	else if (sd_cmd !== 1'b0 || card_state != EMMC_PRE_IDLE)
+	else if ((!alt_boot_mode && sd_cmd !== 1'b0)
+				|| card_state != EMMC_PRE_IDLE)
 		boot_clk_count <= 0;
 	else if (!(&boot_clk_count))
 		boot_clk_count <= boot_clk_count + 1;
@@ -327,6 +329,22 @@ module	mdl_emmc #(
 
 		// BUS_WIDTH
 		ext_csd[183] = 8'd0;
+
+		// Boot mode
+		case(OPT_BOOTMODE[1:0])
+		2'b00: ext_csd[177][1:0] = 2'b00;
+		2'b01: ext_csd[177][1:0] = 2'b01;
+		2'b10: ext_csd[177][1:0] = 2'b10;
+		default: begin end
+		endcase
+
+		if (OPT_BOOTMODE[2])	// Boot into DDR
+		begin
+			ext_csd[177][4:3] = 2'h2;
+			if (OPT_BOOTMODE[1:0] == 2'h0)
+				// In DDR mode, we disallow starting in 1b mode
+				ext_csd[177][1:0] = 2'b1;
+		end
 
 		// Only some of these registers are properly implemented
 	end
@@ -587,8 +605,8 @@ module	mdl_emmc #(
 		bustest_w <= 1'b0;
 		bustest_r <= 1'b0;
 		boot_mode <= 1'b1;
-		boot_active <= 1'b0;
 		cfg_ppull <= 1'b0;
+		alt_boot_mode <= 1'b0;
 		// }}}
 	end else if (card_state == EMMC_INACTIVE)
 	begin
@@ -600,12 +618,16 @@ module	mdl_emmc #(
 			&& cmd_arg != 32'hfffffffa && cmd_arg != 32'hf0f0f0f0)
 	begin // CMD0: GO_IDLE_STATE, overrides all other internal states
 		// {{{
+		alt_boot_mode <= 1'b0;
 		if (cmd_arg == 32'hf0f0f0f0)
-			card_state <= EMMC_PRE_IDLE;
-		else if (cmd_arg == 32'hffff_fffa)
 		begin
 			card_state <= EMMC_PRE_IDLE;
 			boot_mode <= 1;
+		end else if (cmd_arg == 32'hffff_fffa)
+		begin
+			card_state <= EMMC_PRE_IDLE;
+			boot_mode <= 1;
+			alt_boot_mode <= 1'b1;
 		end
 
 		reply_valid <= 1'b0;
@@ -630,10 +652,13 @@ module	mdl_emmc #(
 		// }}}
 	end else if (card_state == EMMC_PRE_IDLE)
 	begin
-		if (sd_cmd !== 1'b0)
+		if (!alt_boot_mode && sd_cmd !== 1'b0)
 			card_state <= EMMC_IDLE;
 		else if (boot_clk_count >= 73 && boot_mode)
+		begin
 			card_state <= EMMC_BOOT;
+			boot_active <= 1'b1;
+		end
 		clear_errors  <= 1'b0;
 		bustest_w <= 1'b0;
 		bustest_r <= 1'b0;
@@ -652,8 +677,12 @@ module	mdl_emmc #(
 		bustest_r <= 1'b0;
 		write_ext_csd <= 1'b0;
 
-		if (sd_cmd !== 1'b0 || (tx_valid && tx_last && read_posn >= BOOTSZ))
+		if ((!alt_boot_mode && sd_cmd !== 1'b0)
+				||(cmd_valid && !cmd_crc_err
+					&& cmd_arg == 32'h0 &&cmd[5:0] == 6'd0)
+			|| (tx_valid && tx_last && read_posn >= BOOTSZ))
 		begin
+			// End of boot
 			pending_write <= 1'b0;
 			multi_block   <= 1'b0;
 			card_state <= EMMC_IDLE;
@@ -1297,6 +1326,16 @@ $display("READ-CMD-ERR: Small Sector out of bounds");
 	end else begin
 		{ r_crcack,pending_ack }<= { pending_ack, (read_en && rx_good)};
 		{ r_crcnak,pending_nak }<= { pending_nak, (read_en && rx_err) };
+
+		if (!alt_boot_mode && sd_cmd !== 1'b0)
+		begin
+			// card_state <= EMMC_IDLE;
+		end else if (card_state == EMMC_PRE_IDLE
+			&& boot_clk_count >= 73 && boot_mode)
+		begin
+			pending_ack <= 1'b1;
+			pending_nak <= 1'b0;
+		end
 	end
 
 	always @(posedge sd_clk or negedge rst_n)

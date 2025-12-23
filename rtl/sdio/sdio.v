@@ -79,11 +79,13 @@ module	sdio #(
 		parameter	LGTIMEOUT = 23,
 		parameter [0:0]	OPT_ISTREAM = 0, OPT_OSTREAM = 0,
 		// Boot parameters
+		parameter	SWIDE_AW = ADDRESS_WIDTH
+					+ ((OPT_ISTREAM||OPT_OSTREAM)? 1:0),
 		parameter [0:0]		OPT_BOOTEN   = 1'b1,
 		parameter [0:0]		OPT_AUTOBOOT = 1'b1,
 		parameter [0:0]		BOOT_TOKEN   = 1'b1,
 		parameter [3:0]	BOOT_MODE = 4'b0010,	// No DS, SDR, 8b
-		parameter [DMA_AW-1:0]	BOOT_ADDR=0,
+		parameter [SWIDE_AW-1:0] BOOT_ADDR=0,
 		parameter [31:0]	BOOT_BLOCKS=32'd256,
 		parameter [7:0]		BOOT_SPEED=8'd4,
 		//
@@ -222,6 +224,7 @@ module	sdio #(
 		// But these ones ...
 		output	wire		o_cfg_ddr, o_cfg_ds, o_cfg_dscmd,
 		output	wire	[4:0]	o_cfg_sample_shift,
+		output	wire		o_expect_token,
 		output	reg	[7:0]	o_sdclk,
 		//
 		output	wire		o_cmd_en, o_cmd_tristate,
@@ -254,7 +257,8 @@ module	sdio #(
 				cfg_cmd_pp, cfg_data_pp;
 	wire	[7:0]		cfg_ckspeed;
 	wire	[1:0]		cfg_width;
-	wire			w_cmd_en, w_cmd_tristate, w_boot_cmd;
+	wire			w_cmd_en, w_cmd_tristate, w_boot_cmd,
+				w_boot_tok;
 	wire	[1:0]		w_cmd_data;
 
 	wire			clk_stb, clk_half, clk_clk90;
@@ -295,7 +299,7 @@ module	sdio #(
 	wire	[31:0]	s2sd_data;
 		//
 	wire			dma_busy, dma_abort, dma_err;
-	wire	[ADDRESS_WIDTH+((OPT_ISTREAM||OPT_OSTREAM) ? 1:0)-1:0] dma_addr;
+	wire	[SWIDE_AW-1:0]	dma_addr;
 	wire	[LGFIFO:0]	dma_len;
 	// }}}
 	// }}}
@@ -304,13 +308,13 @@ module	sdio #(
 	sdaxil #(
 		// {{{
 		.LGFIFO(LGFIFO), .NUMIO(NUMIO),
-		.OPT_DMA(OPT_DMA),
-		.DMA_AW(ADDRESS_WIDTH + ((OPT_ISTREAM||OPT_OSTREAM) ? 1:0)),
-		.OPT_SERDES(OPT_SERDES),
-		.OPT_DDR(OPT_DDR),
-		.OPT_DS(OPT_DS),
-		.OPT_CARD_DETECT(OPT_CARD_DETECT),
 		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN),
+		.OPT_SERDES(OPT_SERDES),
+		.OPT_DS(OPT_DS),
+		.OPT_DDR(OPT_DDR),
+		.OPT_CARD_DETECT(OPT_CARD_DETECT),
+		.OPT_DMA(OPT_DMA),
+		.DMA_AW(SWIDE_AW),
 		.OPT_EMMC(OPT_EMMC),
 			.OPT_HWRESET(OPT_HWRESET), .OPT_1P8V(OPT_1P8V),
 		.OPT_STREAM(OPT_ISTREAM || OPT_OSTREAM),
@@ -442,7 +446,7 @@ module	sdio #(
 		.OPT_DDR(OPT_DDR),
 		.OPT_CARD_DETECT(OPT_CARD_DETECT),
 		.OPT_DMA(OPT_DMA),
-		.DMA_AW(ADDRESS_WIDTH + ((OPT_ISTREAM||OPT_OSTREAM) ? 1:0)),
+		.DMA_AW(SWIDE_AW),
 		.OPT_EMMC(OPT_EMMC),
 			.OPT_HWRESET(OPT_HWRESET), .OPT_1P8V(OPT_1P8V),
 		.OPT_STREAM(OPT_ISTREAM || OPT_OSTREAM),
@@ -568,6 +572,8 @@ module	sdio #(
 `endif
 
 	assign	o_rx_en = rx_en && rx_active;
+	assign	o_expect_token = w_boot_tok || o_data_en;
+
 
 	sdckgen #(
 		.OPT_SERDES(OPT_SERDES),
@@ -610,7 +616,7 @@ module	sdio #(
 		.o_cmd_en(w_cmd_en), .o_cmd_data(w_cmd_data),
 			.o_cmd_tristate(w_cmd_tristate),
 		.i_cmd_strb(i_cmd_strb), .i_cmd_data(i_cmd_data
-				|| {(2){w_boot_cmd}}),
+				| {(2){w_boot_cmd}}),
 			.i_cmd_collision(i_cmd_collision),
 		.S_ASYNC_VALID(S_AC_VALID), .S_ASYNC_DATA(S_AC_DATA),
 		//
@@ -623,8 +629,8 @@ module	sdio #(
 	);
 
 	assign	o_cmd_en       = w_cmd_en || w_boot_cmd;
-	assign	w_cmd_tristate = w_cmd_tristate && !w_boot_cmd;
-	assign	o_cmd_data     = w_cmd_data && !w_boot_cmd;
+	assign	o_cmd_tristate = w_cmd_tristate && !w_boot_cmd;
+	assign	o_cmd_data     = w_cmd_data & {(2){!w_boot_cmd}};
 
 	sdtxframe #(
 		// {{{

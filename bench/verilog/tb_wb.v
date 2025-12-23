@@ -48,6 +48,9 @@ module	tb_wb #(
 		parameter	[0:0]	OPT_STREAM = 1'b0,
 		parameter	[0:0]	OPT_SDSLAVE = 1'b0,
 		parameter	[0:0]	OPT_1P8V = OPT_SERDES,
+		parameter	[0:0]	OPT_BOOTEN = 1'b0,
+		parameter	[0:0]	OPT_AUTOBOOT = OPT_BOOTEN,
+		parameter	[3:0]	BOOT_MODE = 4'b0010,
 		parameter		DW = 512,
 		parameter		SW = 32,
 		parameter		MEM_FILE = "",
@@ -103,7 +106,14 @@ module	tb_wb #(
 			GPIO_MASK = { 4'b1111,{(AW+WBLSB-6){1'b1}}, 2'b00 },
 			SDIO_MASK = { 4'b1111,{(AW+WBLSB-9){1'b1}}, 5'b00 },
 			EMMC_MASK = { 4'b1111,{(AW+WBLSB-9){1'b1}}, 5'b00 };
+
+	localparam	SWIDE_AW = ADDRESS_WIDTH + (OPT_STREAM ? 1 : 0);
+	localparam [ADDRESS_WIDTH:0]	BOOT_ADDR = { 1'b0, MEM_MASK };
+	localparam		EMMC_LGBOOTSZ = 17;	// 128kB
+	localparam	[31:0]	BOOT_BLOCKS = (1<<(EMMC_LGBOOTSZ-9)); // in 512B blks
+	localparam	[7:0]	BOOT_SPEED  = 8'h01;	// 100MHz
 `ifndef	VERILATOR
+	reg	[2:0]		ckcounter;
 	wire			clk, hsclk;
 	reg			reset;
 `endif
@@ -275,9 +285,13 @@ module	tb_wb #(
 	wire	[31:0]		sdio_debug, emmc_debug;
 	wire			sdio_1p8v, emmc_1p8v;
 	wire			ign_sdio_reset_n, emmc_reset_n;
+
+	wire	[30:0]		sd_ocr;
+	wire			sd_rx_err;
+	wire	[119:0]		sd_cid;
 	// }}}
 
-	wire	[119:0]	sdio_CID;
+	// wire	[119:0]	sdio_CID;
 	wire	[31:0]	sdio_OCR;
 	wire		sdio_rx_err;
 	// }}}
@@ -287,7 +301,6 @@ module	tb_wb #(
 	// {{{
 `ifndef	VERILATOR
 	localparam	realtime CLK_PERIOD = 10.0;	// 100MHz
-	reg	[2:0]		ckcounter;
 
 	initial	begin
 		ckcounter = 0;
@@ -486,7 +499,8 @@ module	tb_wb #(
 		.OPT_CARD_DETECT(1'b1), .LGTIMEOUT(10),
 		.OPT_1P8V(OPT_1P8V),
 		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b0),
-		.HWDELAY(OPT_SERDES ? 9 : 0)
+		.HWDELAY(OPT_SERDES ? 9 : 0),
+		.OPT_BOOTEN(1'b0)
 		// }}}
 	) u_sdio (
 		// {{{
@@ -555,7 +569,11 @@ module	tb_wb #(
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
 		.OPT_CARD_DETECT(0), .LGTIMEOUT(10),
 		.OPT_1P8V(OPT_1P8V),
-		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b1)
+		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b1),
+		.OPT_BOOTEN(OPT_BOOTEN), .OPT_AUTOBOOT(OPT_AUTOBOOT),
+		.BOOT_TOKEN(1'b1), .BOOT_MODE(BOOT_MODE),
+		.BOOT_ADDR(BOOT_ADDR[SWIDE_AW-1:0]),
+		.BOOT_BLOCKS(BOOT_BLOCKS), .BOOT_SPEED(BOOT_SPEED)
 		// }}}
 	) u_emmc (
 		// {{{
@@ -627,7 +645,7 @@ module	tb_wb #(
 	//
 
 	mdl_emmc #(
-		.LGMEMSZ(20),
+		.LGMEMSZ(20), .LGBOOTSZ(EMMC_LGBOOTSZ),
 		.OPT_HIGH_CAPACITY(1'b1)
 	) u_mcchip (
 		.rst_n(emmc_reset_n),
@@ -650,6 +668,7 @@ module	tb_wb #(
 		// {{{
 		reg			slv_reset, slv_reset_pipe;
 		reg			slv_clk;
+		wire	[3:0]		wide_dat;
 
 		// Local Wishbone
 		wire			slv_cyc, slv_stb, slv_we,
@@ -657,8 +676,6 @@ module	tb_wb #(
 		wire	[AW-1:0]	slv_addr;
 		wire	[DW-1:0]	slv_data, slv_idata;
 		wire	[DW/8-1:0]	slv_sel;
-
-		wire			w_sd_ds;
 		// }}}
 
 		// Bus clock and reset
@@ -670,43 +687,37 @@ module	tb_wb #(
 			forever
 				#(SLVCLK_PERIOD/2) slv_clk = (slv_clk === 1'b0);
 		end
-
-		initial	{ slv_reset, slv_reset_pipe } <= 2'b11;
-		always @(posedge slv_clk or posedge reset)
-		if (reset)
-			{ slv_reset, slv_reset_pipe } <= 2'b11;
-		else
-			{ slv_reset, slv_reset_pipe } <= { slv_reset_pipe, 1'b0 };
 		// }}}
 
 		sdslave_top #(
-			.ADDRESS_WIDTH(AW), .DW(DW), .NUMIO(4)
+			.ADDRESS_WIDTH(ADDRESS_WIDTH),
+			.DW(DW)
+			// .OPT_DDR(1'b0), .NUMIO(4), .OPT_EMMC(1'b0)
 			// .OPT_EMMC(1'b0)
 		) u_slave (
 			// {{{
-			.i_clk(slv_clk), .i_reset(slv_reset),
+			.i_bus_clk(slv_clk), .i_aresetn(!reset),
 			// Wishbone master (DMA) interface
 			// {{{
-			.o_dma_cyc(slv_cyc),
-			.o_dma_stb(slv_stb),
-			.o_dma_we(slv_we),
-			.o_dma_addr(slv_addr),
-			.o_dma_data(slv_data),
-			.o_dma_sel(slv_sel),
+			.o_cyc(slv_cyc),
+			.o_stb(slv_stb),
+			.o_we(slv_we),
+			.o_addr(slv_addr),
+			.o_data(slv_data),
+			.o_sel(slv_sel),
 			//
-			.i_dma_stall(slv_stall),
-			.i_dma_ack(  slv_ack),
-			.i_dma_data( slv_idata),
-			.i_dma_err(  slv_err),
+			.i_stall(slv_stall),
+			.i_ack(  slv_ack),
+			.i_data( slv_idata),
+			.i_err(  slv_err),
 			// }}}
 			// SD slave front-end interface
 			// {{{
 			.i_ck(sd_ck),
 			//
-			.io_cmd(sd_cmd),
-			.io_dat(sd_dat),
-			//
-			.o_ds(w_sd_ds)
+			.io_sd_cmd(sd_cmd),
+			.io_sd_dat({ wide_dat, sd_dat })
+			// .o_sd_ds(w_sd_ds)
 			// }}}
 			// }}}
 		);
@@ -749,15 +760,15 @@ module	tb_wb #(
 		);
 		// }}}
 
-		assign	sdio_CID = u_slave.u_sdslave.u_fsm.w_CID;
-		assign	sdio_OCR = 32'h0;
-		assign	sdio_rx_err = 1'b0;
+		assign	sd_ocr = u_slave.u_slave.u_fsm.OCR;
+		assign	sd_cid = u_slave.u_slave.u_fsm.CID[127:8];
+		assign	sd_rx_err = 1'b0;
 
 		// Keep Verilator happy
 		// {{{
 		// Verilator lint_off UNUSED
 		wire	unused_io;
-		assign	unused_io = &{ 1'b0, w_sd_ds };
+		assign	unused_io = &{ 1'b0 };
 		// Verilator lint_on  UNUSED
 		// }}}
 		// }}}
@@ -784,9 +795,9 @@ module	tb_wb #(
 		assign	sds_dma_sel  = {(DW/8){1'b0}};
 		// }}}
 
-		assign	sdio_CID = u_sdcard.CID;
-		assign	sdio_OCR = u_sdcard.ocr;
-		assign	sdio_rx_err = u_sdcard.rx_err;
+		assign	sd_ocr = u_sdcard.ocr[30:0];
+		assign	sd_cid = u_sdcard.CID[119:0];
+		assign	sd_rx_err = u_sdcard.rx_err;
 
 		// Keep Verilator happy
 		// {{{

@@ -19,6 +19,7 @@ wb2axip/axilite2axi.v
 wb2axip/axilupsz.v
 wb2axip/axiram.v
 wb2axip/axixbar.v
+wb2axip/axixclk.v
 wb2axip/memdev.v
 wb2axip/sfifo.v
 wb2axip/skidbuffer.v

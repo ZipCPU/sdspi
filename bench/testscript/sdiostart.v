@@ -88,7 +88,7 @@ $display("Done waiting on initial clock change");
 		sample_shift = { 11'h0, 5'h0c, 16'h0 };
 	else
 		// OPT_SERDES
-		sample_shift = { 11'h0, 5'h03, 16'h0 };
+		sample_shift = { 11'h0, 5'h0a, 16'h0 };
 	// }}}
 
 	// Now set up for the capabilities we will be using

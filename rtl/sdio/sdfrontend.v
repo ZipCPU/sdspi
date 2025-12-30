@@ -59,7 +59,7 @@ module	sdfrontend #(
 		parameter [0:0]	OPT_COLLISION = 1'b0,
 		parameter [0:0]	OPT_CRCTOKEN = 1'b1,
 		parameter 	BUSY_CLOCKS = 4,
-		parameter	HWBIAS = (OPT_SERDES ? 7 : 0),
+		parameter	HWBIAS = (OPT_SERDES ? 2 : 0),
 		parameter	NUMIO = 8
 		// }}}
 	) (
@@ -817,6 +817,7 @@ module	sdfrontend #(
 		// wire	[7:0]	next_ck_sreg, next_ck_psreg;
 		reg	[HWBIAS+24:0]	ck_sreg, ck_psreg;
 		wire	[7:0]	wide_cmd_data;
+		reg	[7:0]	r_wide_cmd_data;
 		reg	[7:0]	sample_ck, sample_pck;
 		reg	[1:0]	r_cmd_data;
 		reg		busy_strb;
@@ -912,7 +913,7 @@ module	sdfrontend #(
 		for(gk=0; gk<NUMIO; gk=gk+1)
 		begin : GEN_WIDE_DATIO
 			// {{{
-			reg	[7:0]	out_pin;
+			reg	[7:0]	out_pin, r_in;
 			wire	[7:0]	in_pin;
 			integer		ik;
 			reg	[1:0]	lcl_data;
@@ -938,17 +939,20 @@ module	sdfrontend #(
 				.o_raw(raw_iodat[gk]), .o_wide(in_pin)
 			);
 
+			always @(posedge i_clk)
+				r_in <= in_pin;
+
 			if (gk == 0)
 			begin : GEN_START_SIGNAL
 				always @(*)
 				begin
 					start_io[1] = (|sample_pck[7:4])
-						&&(0 == (sample_pck[7:4]&in_pin[7:4]));
+						&&(0 == (sample_pck[7:4]&r_in[7:4]));
 					start_io[0] = (|sample_pck[3:0])
-						&&(0 == (sample_pck[3:0]&in_pin[3:0]));
+						&&(0 == (sample_pck[3:0]&r_in[3:0]));
 
-					itok[1] = |(sample_pck[7:4] & in_pin[7:4]);
-					itok[0] = |(sample_pck[3:0] & in_pin[3:0]);
+					itok[1] = |(sample_pck[7:4] & r_in[7:4]);
+					itok[0] = |(sample_pck[3:0] & r_in[3:0]);
 				end
 
 				assign	busy_pin = !in_pin[0];
@@ -956,8 +960,8 @@ module	sdfrontend #(
 
 			always @(*)
 			begin
-				lcl_data[1] = |(sample_ck[7:4]&in_pin[7:4]);
-				lcl_data[0] = |(sample_ck[3:0]&in_pin[3:0]);
+				lcl_data[1] = |(sample_ck[7:4]&r_in[7:4]);
+				lcl_data[0] = |(sample_ck[3:0]&r_in[3:0]);
 			end
 
 			assign	w_rx_data[8+gk] = lcl_data[1];
@@ -1145,6 +1149,8 @@ module	sdfrontend #(
 		else
 			pck_sreg <= wide_cmdedge[HWBIAS+23:0];
 
+		// This delays the clock edge by one cycle.  If you do that,
+		// you also need to delay everything depending upon it.
 		always @(posedge i_clk)
 		if (i_reset || i_cfg_dscmd || i_cmd_en || !r_cmd_tristate)
 					// r_last_cmd_enabled
@@ -1194,13 +1200,16 @@ module	sdfrontend #(
 			// Verilator lint_on  UNUSED
 		end
 
+		always @(posedge i_clk)
+			r_wide_cmd_data <= wide_cmd_data;
+
 		// resp_started
 		// {{{
 		always @(posedge i_clk)
 		if (i_reset || i_cmd_en || i_cfg_dscmd || !r_cmd_tristate)
 			resp_started <= 1'b0;
-		else if (((|cmd_sample_ck[7:4])&&((cmd_sample_ck[7:4] & wide_cmd_data[7:4])==0))
-			||((|cmd_sample_ck[3:0])&&((cmd_sample_ck[3:0] & wide_cmd_data[3:0])==0)))
+		else if (((|cmd_sample_ck[7:4])&&((cmd_sample_ck[7:4] & r_wide_cmd_data[7:4])==0))
+			||((|cmd_sample_ck[3:0])&&((cmd_sample_ck[3:0] & r_wide_cmd_data[3:0])==0)))
 			resp_started <= 1'b1;
 		// }}}
 
@@ -1215,10 +1224,10 @@ module	sdfrontend #(
 			r_cmd_strb[0] <= (|cmd_sample_ck[7:4])
 						&&(|cmd_sample_ck[3:0]);
 		end else begin
-			r_cmd_strb[1] <= (((|cmd_sample_ck[7:4])&&((cmd_sample_ck[7:4] & wide_cmd_data[7:4])==0))
-				||((|cmd_sample_ck[3:0])&&((cmd_sample_ck[3:0] & wide_cmd_data[3:0])==0)));
+			r_cmd_strb[1] <= (((|cmd_sample_ck[7:4])&&((cmd_sample_ck[7:4] & r_wide_cmd_data[7:4])==0))
+				||((|cmd_sample_ck[3:0])&&((cmd_sample_ck[3:0] & r_wide_cmd_data[3:0])==0)));
 			r_cmd_strb[0] <= (|cmd_sample_ck[7:4])
-				&& ((cmd_sample_ck[7:4] & wide_cmd_data[7:4])==0)
+				&& ((cmd_sample_ck[7:4] & r_wide_cmd_data[7:4])==0)
 				&& (|cmd_sample_ck[3:0]);
 		end
 
@@ -1232,15 +1241,15 @@ module	sdfrontend #(
 			if (resp_started)
 			begin
 				if (|cmd_sample_ck[7:4])
-					w_cmd_data[1] = |(cmd_sample_ck[7:4] & wide_cmd_data[7:4]);
+					w_cmd_data[1] = |(cmd_sample_ck[7:4] & r_wide_cmd_data[7:4]);
 				else
-					w_cmd_data[1] = |(cmd_sample_ck[3:0] & wide_cmd_data[3:0]);
+					w_cmd_data[1] = |(cmd_sample_ck[3:0] & r_wide_cmd_data[3:0]);
 			end else begin // if (!resp_started)
 				w_cmd_data[1] = 1'b0;
 			end
 
 			w_cmd_data[0] = |(cmd_sample_ck[3:0]
-						& wide_cmd_data[3:0]);
+						& r_wide_cmd_data[3:0]);
 		end
 
 		always @(posedge i_clk)
@@ -1281,8 +1290,8 @@ module	sdfrontend #(
 						i_cmd_data[0] };
 			if (!i_cmd_en)
 			begin
-				r_debug[26] <= wide_cmd_data[7];
-				r_debug[25] <= wide_cmd_data[0];
+				r_debug[26] <= r_wide_cmd_data[7];
+				r_debug[25] <= r_wide_cmd_data[0];
 			end
 
 			r_debug[24:20] <= { i_data_tristate, i_tx_data[3:0] };

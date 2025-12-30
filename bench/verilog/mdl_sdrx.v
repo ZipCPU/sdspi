@@ -272,10 +272,24 @@ module	mdl_sdrx(
 			o_data <= rx_sreg;
 		else if (i_width[0])
 			// 4b DDR
-			o_data <= {	rx_sreg[15:12], rx_sreg[ 7:4],
-					rx_sreg[11: 8], rx_sreg[ 3:0] };
+			o_data <= {
+					rx_sreg[31:28], rx_sreg[23:20],
+					rx_sreg[27:24], rx_sreg[19:16],
+					rx_sreg[15:12], rx_sreg[ 7: 4],
+					rx_sreg[11: 8], rx_sreg[ 3: 0] };
 		else // 1b DDR
-			o_data <= {	rx_sreg[15], rx_sreg[13],
+			o_data <= {
+					rx_sreg[31], rx_sreg[29],
+					rx_sreg[27], rx_sreg[25],
+					rx_sreg[23], rx_sreg[21],
+					rx_sreg[19], rx_sreg[17],
+					//
+					rx_sreg[30], rx_sreg[28],
+					rx_sreg[26], rx_sreg[24],
+					rx_sreg[22], rx_sreg[20],
+					rx_sreg[18], rx_sreg[16],
+					//
+					rx_sreg[15], rx_sreg[13],
 					rx_sreg[11], rx_sreg[ 9],
 					rx_sreg[ 7], rx_sreg[ 5],
 					rx_sreg[ 3], rx_sreg[ 1],

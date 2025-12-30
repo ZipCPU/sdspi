@@ -72,7 +72,7 @@ module mdl_sdtx #(
 	reg	[79:0]	tx_sreg;
 	reg	[5:0]	r_count;
 	reg		r_crc, r_active, ds;
-	reg		r_ready, r_token;
+	reg		r_ready, r_token, r_ddr_started;
 
 	wire		w_drive;
 	wire	[7:0]	w_dat;
@@ -126,7 +126,7 @@ module mdl_sdtx #(
 	always @(negedge sd_clk or negedge rst_n)
 	if (!rst_n)
 	begin
-		tx_sreg <= 0;
+		tx_sreg <= -1;
 		r_count <= 0;
 		r_crc   <= 0;
 		ds      <= 0;
@@ -144,11 +144,11 @@ module mdl_sdtx #(
 			ds <= #FF_HOLD 1'b1;
 
 		if (i_width[0]) // 4b
-			tx_sreg <= { tx_sreg[75:0], 4'hf };
+			tx_sreg <= #FF_HOLD { tx_sreg[75:0], 4'hf };
 		else if (i_width[1]) // 8b
-			tx_sreg <= { tx_sreg[71:0], 8'hff };
+			tx_sreg <= #FF_HOLD { tx_sreg[71:0], 8'hff };
 		else
-			tx_sreg <= { tx_sreg[78:0], 1'b1 };
+			tx_sreg <= #FF_HOLD { tx_sreg[78:0], 1'b1 };
 		// }}}
 	end else if (i_crcack || i_crcnak)
 	begin // Receive a request to send a token
@@ -162,6 +162,7 @@ module mdl_sdtx #(
 
 		if (i_width[0]) // 4b
 		begin
+			// {{{
 			if (i_ddr)
 				tx_sreg  <= #FF_HOLD { 8'h0,
 					(i_crcnak) ? 4'hf : 4'h0, 4'hx,
@@ -174,8 +175,10 @@ module mdl_sdtx #(
 					(i_crcnak) ? 4'h0 : 4'hf,
 					(i_crcnak) ? 4'hf : 4'h0,
 					4'hf, {(60){1'b1}} };
+			// }}}
 		end else if (i_width[1]) // 8b
 		begin
+			// {{{
 			if (i_ddr)
 				tx_sreg  <= #FF_HOLD { 16'h0,
 					(i_crcnak) ? 8'hff : 8'h00, 8'hx,
@@ -188,25 +191,30 @@ module mdl_sdtx #(
 					(i_crcnak) ? 8'h00 : 8'hff,
 					(i_crcnak) ? 8'hff : 8'h00,
 					8'hff, {(40){1'b1}} };
+			// }}}
 		end else if (i_ddr)
-		begin
+		begin // 1b DDR
+			// {{{
 			tx_sreg  <= #FF_HOLD { 2'h0,
 					(i_crcnak) ? 1'b1 : 1'b0, 1'hx,
 					(i_crcnak) ? 1'b0 : 1'b1, 1'hx,
 					(i_crcnak) ? 1'b1 : 1'b0, 1'hx,
 					1'b1, 1'hx, {(70){1'b1}} };
-		end else begin
+			// }}}
+		end else begin // 1b SDR
+			// {{{
 			tx_sreg  <= #FF_HOLD { 1'h0,
 					(i_crcnak) ? 1'b1 : 1'b0,
 					(i_crcnak) ? 1'b0 : 1'b1,
 					(i_crcnak) ? 1'b1 : 1'b0,
 					1'b1, {(75){1'b1}} };
+			// }}}
 		end
 		// }}}
 	end else if (!i_en)
 	begin
 		// {{{
-		tx_sreg <= 0;
+		tx_sreg <= #FF_HOLD {(80){1'b1}};
 		r_count <= 0;
 		r_crc   <= 0;
 		ds      <= 0;
@@ -299,8 +307,17 @@ module mdl_sdtx #(
 
 	always @(posedge sd_clk)
 	if (!rst_n)
+		r_ddr_started <= 1'b0;
+	else if (!r_active || !i_ddr || !i_en)
+		// No token check here, since DDR doesn't do tokens
+		r_ddr_started <= 1'b0;
+	else if (r_active && w_dat[0] === 1'b0)
+		r_ddr_started <= 1'b1;
+
+	always @(posedge sd_clk)
+	if (!rst_n)
 	begin
-	end else if (i_ddr && (r_active || r_token))
+	end else if (i_ddr && ((r_active && (r_ddr_started || w_dat[0] === 1'b0)) || r_token))
 	begin
 		r_count <= #FF_HOLD r_count - 1;
 		if (i_width[0])
@@ -311,7 +328,8 @@ module mdl_sdtx #(
 			tx_sreg <= #FF_HOLD { tx_sreg[78:0], 1'b1 };
 
 		if (r_crc)
-		begin
+		begin // Insert the CRC
+			// {{{
 			if (i_width[0])
 				tx_sreg <= #FF_HOLD { crc[11][15],
 					crc[10][15], crc[9][15], crc[8][15],
@@ -324,10 +342,12 @@ module mdl_sdtx #(
 			else
 				tx_sreg <= #FF_HOLD { crc[8][15], 7'h7f,
 					40'hff_ffff_ffff, 32'hffff_ffff };
+			// }}}
 		end
 
 		if (r_count <= 1)
-		begin
+		begin // Clear r_token, set r_crc, or clear r_active
+			// {{{
 			if (r_token)
 			begin
 				if (r_count > 1)
@@ -338,6 +358,7 @@ module mdl_sdtx #(
 				r_count <= #FF_HOLD 32;
 			end else
 				r_active <= #FF_HOLD 0;
+			// }}}
 		end
 	end
 	// }}}
@@ -383,7 +404,7 @@ module mdl_sdtx #(
 		always @(negedge sd_clk or negedge rst_n)
 		if (!rst_n)
 			crc[8+gk] <= 0;
-		else if (!i_ddr || !i_en || !i_ddr || r_token)
+		else if (!r_ddr_started || r_token)
 			crc[8+gk] <= 0;
 		else if (!r_crc)
 			crc[8+gk] <= STEPCRC(crc[8+gk], w_dat[gk]);

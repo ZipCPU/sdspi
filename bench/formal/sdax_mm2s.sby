@@ -1,0 +1,51 @@
+[tasks]
+prf
+prf64 prf bus64
+cvr
+
+[options]
+prf: mode prove
+cvr: mode cover
+prf: depth 8
+
+[engines]
+smtbmc
+# Induction requires
+#	prf:	426 hrs
+#	prf64	925 hrs, or about 40 days
+prf: smtbmc boolector
+
+[script]
+read -define F_PEEK
+read -formal sdax_mm2s.v
+read -formal sdfifo.v
+read -formal sddma_rxgears.v
+read -formal faxi_master.v
+read -formal faxi_addr.v
+read -formal faxi_valaddr.v
+read -formal faxi_wstrb.v
+--pycode-begin--
+cmd = "hierarchy -top sdax_mm2s"
+if ("bus64" in tags):
+	cmd += " -chparam BUS_WIDTH 64"
+elif ("bus128" in tags):
+	cmd += " -chparam BUS_WIDTH 128"
+elif ("bus256" in tags):
+	cmd += " -chparam BUS_WIDTH 256"
+elif ("bus512" in tags):
+	cmd += " -chparam BUS_WIDTH 512"
+else:
+	cmd += " -chparam BUS_WIDTH 32"
+output(cmd)
+--pycode-end--
+proc -norom
+prep -top sdax_mm2s
+
+[files]
+faxi_master.v
+faxi_addr.v
+faxi_valaddr.v
+faxi_wstrb.v
+../../rtl/sddma_rxgears.v
+../../rtl/sdio/sdax_mm2s.v
+../../rtl/sdfifo.v

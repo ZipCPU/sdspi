@@ -14,7 +14,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -42,6 +42,9 @@
 // }}}
 module	sddma_txgears #(
 		// {{{
+`ifdef	FORMAL
+		parameter	F_LGCOUNT = 16,
+`endif
 		parameter	BUS_WIDTH = 512,
 		parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,
 		// Abbreviations
@@ -73,6 +76,10 @@ module	sddma_txgears #(
 		output	wire [$clog2(DW/8):0]	M_BYTES,
 		output	wire			M_LAST
 		// }}}
+`ifdef	FORMAL
+		, output wire	[F_LGCOUNT-1:0]	f_rcvd, f_sent, f_fill,
+		output	wire			f_last
+`endif
 		// }}}
 	);
 
@@ -447,10 +454,14 @@ module	sddma_txgears #(
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
-	localparam	F_LGCOUNT = 16;
+`ifdef	TXGEARS
+`define	ASSUME	assume
+`else
+`define	ASSUME	assert
+`endif
 	reg		f_past_valid;
 	(* anyconst *)	reg	[1:0]	f_cfg_size;
-	reg	[F_LGCOUNT-1:0]		f_rcvd, f_sent;
+	reg	[F_LGCOUNT-1:0]		fr_rcvd, fr_sent;
 
 	initial	f_past_valid = 0;
 	always @(posedge i_clk)
@@ -476,13 +487,13 @@ module	sddma_txgears #(
 	// {{{
 	always @(posedge i_clk)
 	if (!f_past_valid || $past(i_reset || i_soft_reset))
-		assume(!S_VALID);
-	else if ($past(S_VALID && !S_READY))
+		`ASSUME(!S_VALID);
+	else if ($past(S_VALID && !S_READY) && !i_reset && !i_soft_reset)
 	begin
-		assume(S_VALID);
-		assume($stable(S_DATA));
-		assume($stable(S_BYTES));
-		assume($stable(S_LAST));
+		`ASSUME(S_VALID);
+		`ASSUME($stable(S_DATA));
+		`ASSUME($stable(S_BYTES));
+		`ASSUME($stable(S_LAST));
 	end
 	// }}}
 
@@ -491,26 +502,27 @@ module	sddma_txgears #(
 	always @(*)
 	if (!i_reset && S_VALID)
 	begin
-		assume(S_BYTES > 0);
-		assume(S_BYTES <= (DW/8));
+		`ASSUME(S_BYTES > 0);
+		`ASSUME(S_BYTES <= (DW/8));
 		if (!S_LAST)
-			assume(S_BYTES == (DW/8));
+			`ASSUME(S_BYTES == (DW/8));
 	end
 	// }}}
 
-	// f_rcvd
+	// fr_rcvd, f_rcvd
 	// {{{
-	initial	f_rcvd = 0;
+	initial	fr_rcvd = 0;
 	always @(posedge i_clk)
 	if (i_reset || i_soft_reset)
-		f_rcvd = 0;
+		fr_rcvd = 0;
 	else if (S_VALID && S_READY)
 	begin
 		if (S_LAST)
-			f_rcvd <= 0;
+			fr_rcvd <= 0;
 		else
-			f_rcvd <= f_rcvd + S_BYTES;
+			fr_rcvd <= fr_rcvd + S_BYTES;
 	end
+	assign	f_rcvd = fr_rcvd;
 
 	always @(*)
 		assume(!f_rcvd[F_LGCOUNT-1]);
@@ -521,6 +533,9 @@ module	sddma_txgears #(
 		assert(f_rcvd == 0);
 	end else
 		assert(f_rcvd > 0);
+
+	assign	f_fill = {{(F_LGCOUNT-(WBLSB+1)){1'b0}}, fill };
+	assign	f_last = m_last || r_last;
 	// }}}
 
 	// }}}
@@ -620,19 +635,21 @@ module	sddma_txgears #(
 	end
 	// }}}
 
-	// f_sent
+	// f_sent, fr_sent
 	// {{{
-	initial	f_sent = 0;
+	initial	fr_sent = 0;
 	always @(posedge i_clk)
 	if (i_reset || i_soft_reset)
-		f_sent <= 0;
+		fr_sent <= 0;
 	else if (M_VALID && M_READY)
 	begin
 		if (M_LAST)
-			f_sent <= 0;
+			fr_sent <= 0;
 		else
-			f_sent <= f_sent + M_BYTES;
+			fr_sent <= fr_sent + M_BYTES;
 	end
+
+	assign	f_sent = fr_sent;
 
 	always @(*)
 	begin
@@ -728,7 +745,7 @@ module	sddma_txgears #(
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
-
+`ifdef	TXGEARS
 	always @(posedge i_clk)
 	if (!i_reset && M_VALID && M_READY && M_LAST)
 	begin
@@ -746,6 +763,7 @@ module	sddma_txgears #(
 		cover(i_size == SZ_BUS  && f_sent > 2*DW/8+3);
 		cover(i_size == SZ_BUS  && f_sent > 2*DW/8+4);
 	end
+`endif
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////

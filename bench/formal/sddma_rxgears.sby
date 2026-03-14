@@ -1,0 +1,28 @@
+[tasks]
+prf
+prfw prf bus64
+cvr
+
+[options]
+prf: mode prove
+prf: depth 4
+cvr: mode cover
+
+[engines]
+smtbmc
+
+[script]
+read -define RXGEARS
+read -formal sddma_rxgears.v
+--pycode-begin--
+cmd = "hierarchy -top sddma_rxgears"
+if ("bus64" in tags):
+	cmd += " -chparam BUS_WIDTH 64"
+else:
+	cmd += " -chparam BUS_WIDTH 32"
+output(cmd)
+--pycode-end--
+prep -top sddma_rxgears
+
+[files]
+../../rtl/sddma_rxgears.v

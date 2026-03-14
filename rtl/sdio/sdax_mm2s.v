@@ -18,7 +18,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -149,9 +149,9 @@ module	sdax_mm2s #(
 	reg	[2:0]	axi_size;
 	reg	[7:0]	maxlen;
 
-	reg	[LGLENGTH-1:0]	rawlen, rawbeats, rawbursts,
+	reg	[LGLENGTH:0]	rawlen, rawbeats, rawbursts,
 				rawfirstln, rawblkln;
-	reg	[LGLENGTH-1:0]	ar_requests_remaining, ar_beats_remaining;
+	reg	[LGLENGTH:0]	ar_requests_remaining, ar_beats_remaining;
 	reg			ar_none_remaining;
 	reg			ar_none_outstanding;
 	reg	[LGLENGTH-1:0]	ar_bursts_outstanding;
@@ -159,7 +159,7 @@ module	sdax_mm2s #(
 	// reg	[LGLENGTH:0]	rd_reads_remaining;
 	reg			w_complete;
 	reg			start_burst, phantom_start;
-	reg	[LGLENGTH-1:0]	ar_next_remaining;
+	reg	[LGLENGTH:0]	ar_next_remaining;
 	reg	[7:0]		axi_arlen;
 	reg	[ADDRESS_WIDTH:0]	nxt_araddr, axi_araddr;
 	reg				axi_arvalid;
@@ -304,18 +304,18 @@ module	sdax_mm2s #(
 		// takes to align ourselves with a truncated word
 		// (not burst) boundary.
 		case(i_size)
-		SZ_BYTE: rawlen = i_transferlen;
+		SZ_BYTE: rawlen = { 1'b0, i_transferlen };
 		// Verilator lint_off WIDTH
 		SZ_16B:  begin
-			rawlen = i_transferlen + i_addr[  0] + 1;
+			rawlen = { 1'b0, i_transferlen } + i_addr[  0] + 1;
 			rawlen[0] = 1'b0;
 			end
 		SZ_32B:  begin
-			rawlen = i_transferlen + i_addr[1:0] + 3;
+			rawlen = { 1'b0, i_transferlen } + i_addr[1:0] + 3;
 			rawlen[1:0] = 2'b00;
 			end
 		SZ_BUS:  begin
-			rawlen = i_transferlen + i_addr[AXILSB-1:0]
+			rawlen = { 1'b0, i_transferlen } + i_addr[AXILSB-1:0]
 				+ (1<<AXILSB)-1;
 			rawlen[AXILSB-1:0] = 0;
 			end
@@ -534,42 +534,47 @@ module	sdax_mm2s #(
 	// {{{
 	always @(*)
 	begin
-		nxt_araddr = 0;
-		case(r_size)
-		// Verilator lint_off WIDTH
-		SZ_BYTE: nxt_araddr = axi_araddr + (M_AXI_ARLEN + 1);
-		SZ_16B: nxt_araddr[ADDRESS_WIDTH:1]
-			= axi_araddr[ADDRESS_WIDTH-1:1]
+		if (r_inc)
+		begin
+			nxt_araddr = 0;
+			case(r_size)
+			// Verilator lint_off WIDTH
+			SZ_BYTE: nxt_araddr = axi_araddr + (M_AXI_ARLEN + 1);
+			SZ_16B: nxt_araddr[ADDRESS_WIDTH:1]
+				= axi_araddr[ADDRESS_WIDTH-1:1]
 						+ (M_AXI_ARLEN + 1);
-		SZ_32B: nxt_araddr[ADDRESS_WIDTH:2]
-			= axi_araddr[ADDRESS_WIDTH-1:2]
-						+ (M_AXI_ARLEN + 1);
-		SZ_BUS: nxt_araddr[ADDRESS_WIDTH:AXILSB]
-			= axi_araddr[ADDRESS_WIDTH-1:AXILSB]
-						+ (M_AXI_ARLEN + 1);
-		// Verilator lint_on  WIDTH
-		endcase
+			SZ_32B: nxt_araddr[ADDRESS_WIDTH:2]
+				= axi_araddr[ADDRESS_WIDTH-1:2]
+							+ (M_AXI_ARLEN + 1);
+			SZ_BUS: nxt_araddr[ADDRESS_WIDTH:AXILSB]
+				= axi_araddr[ADDRESS_WIDTH-1:AXILSB]
+							+ (M_AXI_ARLEN + 1);
+			// Verilator lint_on  WIDTH
+			endcase
+		end else begin
+			nxt_araddr = axi_araddr;
+			case(r_size)
+			// Verilator lint_off WIDTH
+			SZ_BYTE: begin end
+			SZ_16B: nxt_araddr[0] = 1'b0;
+			SZ_32B: nxt_araddr[1:0] = 2'b00;
+			SZ_BUS: nxt_araddr[AXILSB-1:0] = {(AXILSB){1'b0}};
+			endcase
+		end
 
-		if (!r_busy || !r_inc || !M_AXI_ARVALID)
+		if (!r_busy || !M_AXI_ARVALID)
 			nxt_araddr = axi_araddr;
 	end
 
 	initial	axi_araddr = 0;
 	always @(posedge i_clk)
 	begin
-		if (M_AXI_ARVALID && M_AXI_ARREADY && r_inc)
+		if (M_AXI_ARVALID && M_AXI_ARREADY)
 			axi_araddr <= nxt_araddr;
 
 		if (!r_busy)
 		begin
 			axi_araddr <= { 1'b0, i_addr };
-			if (!i_inc)
-			case(i_size)
-			SZ_BYTE: begin end
-			SZ_16B: axi_araddr[0] <= 0;
-			SZ_32B: axi_araddr[1:0] <= 0;
-			SZ_BUS: axi_araddr[AXILSB-1:0] <= 0;
-			endcase
 
 			if (OPT_LOWPOWER && !i_request)
 				axi_araddr <= 0;
@@ -805,6 +810,11 @@ module	sdax_mm2s #(
 	2'b11: rd_uncommitted <= rd_uncommitted + (BUS_WIDTH/8)
 						- nxt_commitment;
 	endcase
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset)
+		assert(rd_uncommitted <= FIFO_BYTES);
+`endif
 	// Verilator lint_on  WIDTH
 	// }}}
 
@@ -985,9 +995,9 @@ module	sdax_mm2s #(
 			assert(cmd_abort || (ar_none_remaining && axi_araddr == 0) || axi_araddr >= fc_addr);
 		else case(r_size)
 		SZ_BYTE: assert(axi_araddr == fc_addr);
-		SZ_16B: assert(axi_araddr == { fc_addr[ADDRESS_WIDTH-1:1], 1'b0 });
-		SZ_32B: assert(axi_araddr == { fc_addr[ADDRESS_WIDTH-1:2], 2'b00 });
-		SZ_BUS: assert(axi_araddr == { fc_addr[ADDRESS_WIDTH-1:AXILSB], {(AXILSB){1'b0}} });
+		SZ_16B: assert(axi_araddr[ADDRESS_WIDTH-1:1] == fc_addr[ADDRESS_WIDTH-1:1]);
+		SZ_32B: assert(axi_araddr[ADDRESS_WIDTH-1:2] == fc_addr[ADDRESS_WIDTH-1:2]);
+		SZ_BUS: assert(axi_araddr[ADDRESS_WIDTH-1:AXILSB] == fc_addr[ADDRESS_WIDTH-1:AXILSB]);
 		endcase
 
 		case(r_size)
@@ -1316,7 +1326,6 @@ module	sdax_mm2s #(
 				+((M_AXI_ARVALID && !phantom_start) ? (M_AXI_ARLEN+1):0)
 				+ faxi_rd_outstanding + (rx_valid ? 1 : 0)
 				+ ((faxis_beats+ign_fifo_fill) << (AXILSB-1));
-
 
 			if (fgbox_rcvd_valid)
 			begin
@@ -1849,15 +1858,15 @@ module	sdax_mm2s #(
 	always @(*)
 	if (!i_reset && r_busy && (M_AXI_ARVALID || !ar_none_remaining))
 	begin
-		if (ar_requests_remaining == ftot_bursts)
+		if (ar_requests_remaining + ((M_AXI_ARVALID && !phantom_start) ? 1:0) == ftot_bursts)
 		begin
 			if (!fc_inc)
 			begin
 				case(fc_size)
 				SZ_BYTE: assert(M_AXI_ARADDR == fc_addr);
-				SZ_16B: assert(M_AXI_ARADDR == { fc_addr[ADDRESS_WIDTH-1:1], 1'b0 });
-				SZ_32B: assert(M_AXI_ARADDR == { fc_addr[ADDRESS_WIDTH-1:2], 2'b00 });
-				SZ_BUS: assert(M_AXI_ARADDR == { fc_addr[ADDRESS_WIDTH-1:AXILSB], {(AXILSB){1'b0}} });
+				SZ_16B: assert(M_AXI_ARADDR[ADDRESS_WIDTH-1:1] == fc_addr[ADDRESS_WIDTH-1:1]);
+				SZ_32B: assert(M_AXI_ARADDR[ADDRESS_WIDTH-1:2] == fc_addr[ADDRESS_WIDTH-1:2]);
+				SZ_BUS: assert(M_AXI_ARADDR[ADDRESS_WIDTH-1:AXILSB] == fc_addr[ADDRESS_WIDTH-1:AXILSB]);
 				endcase
 			end else
 				assert(M_AXI_ARADDR == fc_addr);
@@ -2127,7 +2136,7 @@ module	sdax_mm2s #(
 
 		assert(faxi_rd_ckaddr == f_ckaddr);
 		// if (first_burst && first_beat)
-		//	assert(faxi_rd_ckaddr ==
+		//	assert(faxi_rd_ckaddr == 
 		// .f_axi_rd_ckincr(faxi_rd_ckincr),
 
 		// Increment v fixed
@@ -2357,9 +2366,9 @@ module	sdax_mm2s #(
 				&& !$past(cmd_abort))
 	begin
 		cover(o_busy);
-		cover(M_AXI_ARVALID);		// !!!
-		cover(M_AXI_RVALID);		// !!!
-		cover($fell(o_busy));		// !!!
+		cover(M_AXI_ARVALID);
+		cover(M_AXI_RVALID);
+		cover($fell(o_busy));
 	end
 
 	// }}}
@@ -2377,6 +2386,25 @@ module	sdax_mm2s #(
 	// always @(*) assume(!fifo_full);
 	always @(*)
 		assume(!cmd_abort);
+
+	always @(*)
+	if (!fc_inc)
+	case(fc_size)
+	SZ_BYTE: begin end
+	SZ_16B: assume(0 == fc_addr[0]);
+	SZ_32B: assume(0 == fc_addr[1:0]);
+	SZ_BUS: assume(0 == fc_addr[AXILSB-1:0]);
+	endcase
+
+	always @(*)
+	if (f_past_valid && !fc_inc && r_busy)
+	case(fc_size)
+	SZ_BYTE: begin end
+	SZ_16B: assert(0 == M_AXI_ARADDR[0]);
+	SZ_32B: assert(0 == M_AXI_ARADDR[1:0]);
+	SZ_BUS: assert(0 == M_AXI_ARADDR[AXILSB-1:0]);
+	endcase
+
 	// always @(*) assume(M_AXI_ARREADY);
 	// always @(*) assume(fc_inc);
 	// always @(*) if (!fc_inc) assume(!fifo_full);

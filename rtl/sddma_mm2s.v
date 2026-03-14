@@ -14,7 +14,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -47,7 +47,6 @@ module	sddma_mm2s #(
 		parameter	LGLENGTH = 10,
 		parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,
 		parameter [0:0]	OPT_LOWPOWER = 1'b0,
-		parameter [0:0] OPT_FIRSTBEAT_TRIM = 1'b0,
 		// Abbreviations
 		localparam	DW = BUS_WIDTH,
 		localparam	AW = ADDRESS_WIDTH-$clog2(DW/8)
@@ -112,15 +111,14 @@ module	sddma_mm2s #(
 	reg	[ADDRESS_WIDTH:0]	next_addr;
 	reg	[ADDRESS_WIDTH-1:0]	last_request_addr;
 	reg	[WBLSB-1:0]	subaddr, rdack_subaddr;
-	reg	[DW/8-1:0]	nxtstb_sel, first_sel, first_sel_no_shift,
-				base_sel, ibase_sel;
+	reg	[DW/8-1:0]	nxtstb_sel, first_sel, base_sel, ibase_sel;
 	reg	[LGLENGTH:0]	wb_outstanding;
 
 	reg	[WBLSB+1:0]	fill, next_fill;
 
-	reg			m_valid, m_last;
+	reg			rx_valid, rx_last;
 	reg	[DW-1:0]	sreg;
-	reg	[WBLSB:0]	m_bytes;
+	reg	[WBLSB:0]	rx_bytes;
 
 	reg	[LGLENGTH:0]	rdstb_len, rdack_len;
 
@@ -131,6 +129,10 @@ module	sddma_mm2s #(
 	reg	[1:0]		r_size;
 	reg	[LGLENGTH:0]	r_transferlen;
 	reg	[ADDRESS_WIDTH-1:0]	r_addr;
+
+	reg	[WBLSB-1:0]	i_lastaddr;
+	reg	[DW/8-1:0]	i_last_sel_mask, r_last_sel_mask,
+				first_shift_sel;
 	// }}}
 
 	assign	o_rd_we = 1'b0;
@@ -353,7 +355,7 @@ module	sddma_mm2s #(
 		if (wb_outstanding == (i_rd_ack ? 1:0) && !o_rd_stb)
 			o_rd_cyc <= 1'b0;
 
-		if (m_valid && m_last)
+		if (rx_valid && rx_last)
 			o_busy <= 0;
 	end
 
@@ -365,10 +367,10 @@ module	sddma_mm2s #(
 		r_wrap <= next_addr[ADDRESS_WIDTH];
 `ifdef	FORMAL
 	always @(*)
-	if (o_busy && m_valid && m_last)
+	if (o_busy && rx_valid && rx_last)
 	begin
 		assert(rdack_len == 0);
-		assert(fill == m_bytes);
+		assert(fill == rx_bytes);
 	end
 `endif
 	// }}}
@@ -434,17 +436,89 @@ module	sddma_mm2s #(
 		// }}}
 	end endgenerate
 
+	// i_lastaddr
+	// {{{
+	generate if (DW == 32)
+	begin : GEN_LASTADDR_SHORT
+		always @(*)
+		begin
+			i_lastaddr = (i_transferlen[WBLSB-1:0] + i_addr[WBLSB-1:0]);
+
+			if (!i_inc)
+			case(i_size)
+			SZ_BYTE: begin end
+			SZ_16B: i_lastaddr[WBLSB-1:1] = 0;
+			SZ_32B: begin end
+			SZ_BUS: begin end
+			endcase
+		end
+	end else begin : GEN_LASTADDR
+		always @(*)
+		begin
+			i_lastaddr = (i_transferlen[WBLSB-1:0] + i_addr[WBLSB-1:0]);
+
+			if (!i_inc)
+			case(i_size)
+			SZ_BYTE: begin end
+			SZ_16B: i_lastaddr[WBLSB-1:1] = 0;
+			SZ_32B: i_lastaddr[WBLSB-1:2] = 0;
+			SZ_BUS: begin end
+			endcase
+		end
+	end endgenerate
+	// }}}
+
+	// last_sel_mask
+	// {{{
+	generate if (DW == 32)
+	begin : GEN_LASTSEL_SHORT
+		always @(*)
+		case(i_size)
+		SZ_BYTE: i_last_sel_mask = {(DW/8){1'b1}};
+		SZ_16B : begin
+			if (i_lastaddr[0])
+				i_last_sel_mask = {(DW/16){2'b10}};
+			else
+				i_last_sel_mask = {(DW/16){2'b11}};
+			end
+		default: begin
+			// SZ_BUS, any inc
+			i_last_sel_mask = ~({(DW/8){1'b1}} >> i_lastaddr[WBLSB-1:0]);
+			if (i_lastaddr[WBLSB-1:0] == 0)
+				i_last_sel_mask = {(DW/8){1'b1}};
+			end
+		endcase
+	end else begin : GEN_LASTSEL_FULL
+		always @(*)
+		case(i_size)
+		SZ_BYTE: i_last_sel_mask = {(DW/8){1'b1}};
+		SZ_16B : begin
+			if (i_lastaddr[0])
+				i_last_sel_mask = {(DW/16){2'b10}};
+			else
+				i_last_sel_mask = {(DW/16){2'b11}};
+			end
+		SZ_32B : begin
+			if (2'b00 != i_lastaddr[1:0])
+			begin
+				i_last_sel_mask[3:0] = ~(4'hf >> i_lastaddr[1:0]);
+				i_last_sel_mask = {(DW/32){i_last_sel_mask[3:0]}};
+			end else
+				i_last_sel_mask = {(DW/8){1'b1}};
+			end
+		default: begin
+			// SZ_BUS, any inc
+			i_last_sel_mask = ~({(DW/8){1'b1}} >> i_lastaddr[WBLSB-1:0]);
+			if (i_lastaddr[WBLSB-1:0] == 0)
+				i_last_sel_mask = {(DW/8){1'b1}};
+			end
+		endcase
+	end endgenerate
+
 	always @(posedge i_clk)
-	if (i_reset || (o_rd_cyc && i_rd_err))
-	begin
-		base_sel <= 0;
-	end else if (!o_busy)
-	begin
-		base_sel <= 0;
-		if (i_request || !OPT_LOWPOWER)
-			base_sel <= ibase_sel;
-	end else if (o_rd_stb && !i_rd_stall)
-		base_sel <= nxtstb_sel;
+	if (!o_busy && (i_request || !OPT_LOWPOWER))
+		r_last_sel_mask <= i_last_sel_mask;
+	// }}}
 
 	// nxtstb_sel
 	// {{{
@@ -505,109 +579,80 @@ module	sddma_mm2s #(
 	end endgenerate
 	// }}}
 
+	always @(posedge i_clk)
+	if (i_reset || (o_rd_cyc && i_rd_err))
+	begin
+		base_sel <= 0;
+	end else if (!o_busy)
+	begin
+		base_sel <= 0;
+		if (i_request || !OPT_LOWPOWER)
+			base_sel <= ibase_sel;
+	end else if (o_rd_stb && !i_rd_stall)
+		base_sel <= nxtstb_sel;
+
 	// first_sel
-	generate if (BUS_WIDTH > 32)
-	begin : GEN_FIRST_SEL
-		// {{{
-		always @(*)
-		begin
-			first_sel_no_shift = 0;
-			first_sel = 0;
+	// {{{
 
+	// first_shift_sel
+	// {{{
+	always @(*)
+	if (OPT_LITTLE_ENDIAN)
+	begin
+		case(i_size)
+		SZ_BYTE: first_shift_sel = {(DW/8){1'b1}};
+		SZ_16B: begin
+			first_shift_sel[1:0] = { 1'b1, !i_addr[0] };
+			first_shift_sel = {(DW/16){first_shift_sel[1:0]}};
+			end
+		SZ_32B: begin
+			first_shift_sel[3:0] = 4'hf << i_addr[1:0];
+			first_shift_sel = {(DW/32){first_shift_sel[3:0]}};
+			end
+		SZ_BUS:  first_shift_sel = {(DW/8){1'b1}} << i_addr[WBLSB-1:0];
+		endcase
+	end else begin
+		case(i_size)
+		SZ_BYTE: first_shift_sel = {(DW/8){1'b1}};
+		SZ_16B:  begin
+			first_shift_sel[1:0] = {!i_addr[0], 1'b1};
+			first_shift_sel = {(DW/16){first_shift_sel[1:0]}};
+			end
+		SZ_32B:  begin
+			first_shift_sel[3:0] = 4'hf >> i_addr[1:0];
+			first_shift_sel = {(DW/32){first_shift_sel[3:0]}};
+			end
+		SZ_BUS:  first_shift_sel = {(DW/8){1'b1}} >> i_addr[WBLSB-1:0];
+		endcase
+	end
+	// }}}
+
+	always @(*)
+	begin
+		first_sel = ibase_sel & first_shift_sel;
+		case(i_size)
+		SZ_BYTE: begin end
+		SZ_16B: begin
 			// Verilator lint_off WIDTH
-			if (!OPT_FIRSTBEAT_TRIM || i_transferlen >= DW/8)
-				first_sel_no_shift = -1;
-			else if (OPT_LITTLE_ENDIAN)
-				first_sel_no_shift = (1 << i_transferlen) - 1;
-			else
-				first_sel_no_shift = ({(DW/8){1'b1}} << (DW/8 - i_transferlen));
-			// Verilator lint_on  WIDTH
-
-			if (OPT_LITTLE_ENDIAN)
-			begin
-				// {{{
-				// Verilator coverage_off
-				case(i_size)
-				SZ_BYTE: first_sel = {{(DW/8-1){1'b0}}, 1'b1} << i_addr[WBLSB-1:0];
-				SZ_16B: begin
-					first_sel_no_shift = first_sel_no_shift << i_addr[0];
-					first_sel_no_shift[DW/8-1:2] = 0;
-					first_sel = first_sel_no_shift << {i_addr[WBLSB-1:1], 1'b0 };
-					end
-				SZ_32B: begin
-					first_sel_no_shift = first_sel_no_shift << i_addr[1:0];
-					first_sel_no_shift[DW/8-1:4] = 0;
-					first_sel = first_sel_no_shift << {i_addr[WBLSB-1:2], 2'b00 };
-					end
-				SZ_BUS: first_sel = first_sel_no_shift << i_addr[WBLSB-1:0];
-				endcase
-				// Verilator coverage_on
-				// }}}
-			end else begin
-				// {{{
-				case(i_size)
-				SZ_BYTE: first_sel = {1'b1, {(DW/8-1){1'b0}} } >> i_addr[WBLSB-1:0];
-				SZ_16B: begin
-					first_sel_no_shift = first_sel_no_shift >> i_addr[0];
-					first_sel_no_shift[DW/8-3:0] = 0;
-					first_sel = first_sel_no_shift >> {i_addr[WBLSB-1:1], 1'b0 };
-					end
-				SZ_32B: begin
-					first_sel_no_shift = first_sel_no_shift >> i_addr[1:0];
-					first_sel_no_shift[DW/8-5:0] = 0;
-					first_sel = first_sel_no_shift >> {i_addr[WBLSB-1:2], 2'b00 };
-					end
-				SZ_BUS: first_sel = first_sel_no_shift >> i_addr[WBLSB-1:0];
-				endcase
-				// }}}
+			if (i_transferlen + i_addr[WBLSB-1:0] < 2)
+				// Verilator lint_on  WIDTH
+				first_sel = first_sel & i_last_sel_mask;
 			end
-		end
-		// }}}
-	end else begin : MIN_FIRST_SEL
-		// {{{
-		always @(*)
-		begin
-			first_sel_no_shift = 0;
-			first_sel = 0;
-
-			if (!OPT_FIRSTBEAT_TRIM || i_transferlen >= DW/8)
-				first_sel_no_shift = -1;
-			else if (OPT_LITTLE_ENDIAN)
-				first_sel_no_shift = (1 << i_transferlen) - 1;
-			else
-				first_sel_no_shift = ({(DW/8){1'b1}} << (DW/8 - i_transferlen));
-
-			if (OPT_LITTLE_ENDIAN)
-			begin
-				// {{{
-				// Verilator coverage_off
-				case(i_size)
-				SZ_BYTE: first_sel = {{(DW/8-1){1'b0}}, 1'b1} << i_addr[WBLSB-1:0];
-				SZ_16B: begin
-					first_sel_no_shift = first_sel_no_shift << i_addr[0];
-					first_sel_no_shift[DW/8-1:2] = 0;
-					first_sel = first_sel_no_shift << {i_addr[WBLSB-1:1], 1'b0 };
-					end
-				default: first_sel = first_sel_no_shift << i_addr[WBLSB-1:0];
-				endcase
-				// Verilator coverage_on
-				// }}}
-			end else begin
-				// {{{
-				case(i_size)
-				SZ_BYTE: first_sel = {1'b1, {(DW/8-1){1'b0}} } >> i_addr[WBLSB-1:0];
-				SZ_16B: begin
-					first_sel_no_shift = first_sel_no_shift >> i_addr[0];
-					first_sel_no_shift[DW/8-3:0] = 0;
-					first_sel = first_sel_no_shift >> {i_addr[WBLSB-1:1], 1'b0 };
-					end
-				default: first_sel = first_sel_no_shift >> i_addr[WBLSB-1:0];
-				endcase
-				// }}}
+		SZ_32B: begin
+			// Verilator lint_off WIDTH
+			if (i_transferlen + i_addr[WBLSB-1:0] < 4)
+				// Verilator lint_on  WIDTH
+				first_sel = first_sel & i_last_sel_mask;
 			end
-		end
-		// }}}
-	end endgenerate
+		SZ_BUS: begin
+			// Verilator lint_off WIDTH
+			if (i_transferlen + i_addr[WBLSB-1:0] < DW/8)
+				// Verilator lint_on  WIDTH
+				first_sel = first_sel & i_last_sel_mask;
+			end
+		endcase
+	end
+	// }}}
 
 	// o_rd_sel
 	always @(posedge i_clk)
@@ -616,14 +661,25 @@ module	sddma_mm2s #(
 		o_rd_sel   <= 0;
 	end else if (!o_busy)
 	begin
-		// {{{
 		o_rd_sel <= {(DW/8){1'b0}};
 
 		if (!OPT_LOWPOWER || i_request)
 			o_rd_sel <= first_sel;
-		// }}}
 	end else if (o_rd_stb && !i_rd_stall)
+	begin
 		o_rd_sel <= nxtstb_sel;
+		case(r_size)
+		// Verilator lint_off WIDTHEXPAND
+		SZ_BYTE: begin end // if LEN - SIZE < WORDSZ
+		SZ_16B: if (rdstb_size + 2 > rdstb_len)
+			o_rd_sel <= nxtstb_sel & r_last_sel_mask;
+		SZ_32B: if (rdstb_size + 4 > + rdstb_len)
+			o_rd_sel <= nxtstb_sel & r_last_sel_mask;
+		SZ_BUS: if (rdstb_size + DW/8 > rdstb_len)
+			o_rd_sel <= nxtstb_sel & r_last_sel_mask;
+		// Verilator lint_on  WIDTHEXPAND
+		endcase
+	end
 	// }}}
 
 	// wb_outstanding
@@ -713,7 +769,9 @@ module	sddma_mm2s #(
 	// {{{
 	always @(*)
 	begin
-		next_fill = (M_VALID) ? 0 : fill;
+		next_fill = fill;
+		if (M_VALID)
+			next_fill = fill - {1'b0,M_BYTES };
 		if (i_rd_ack)
 			next_fill = next_fill + { 1'b0, rdack_size };
 	end
@@ -725,18 +783,18 @@ module	sddma_mm2s #(
 		fill <= next_fill;
 	// }}}
 
-	// m_valid
+	// rx_valid
 	// {{{
-	initial	m_valid = 0;
+	initial	rx_valid = 0;
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
-		m_valid <= 1'b0;
+		rx_valid <= 1'b0;
 	else begin
-		m_valid <= 0;
-		if ((!m_valid || !m_last) && rdack_len == 0 && fill > 0)
-			m_valid <= 1;
+		rx_valid <= 0;
+		if ((!rx_valid || !rx_last) && rdack_len == 0 && fill > 0)
+			rx_valid <= 1;
 		else if (o_rd_cyc && i_rd_ack)
-			m_valid <= 1'b1;
+			rx_valid <= 1'b1;
 	end
 	// }}}
 
@@ -788,7 +846,7 @@ module	sddma_mm2s #(
 		sreg <= pre_shifted_data;
 		// Verilator lint_on  WIDTH
 		// }}}
-	end else if (m_valid)
+	end else if (rx_valid)
 	begin
 		// {{{
 		sreg <= {(DW){1'b0}};
@@ -796,63 +854,63 @@ module	sddma_mm2s #(
 	end
 	// }}}
 
-	// m_bytes
+	// rx_bytes
 	// {{{
-	initial	m_bytes = 0;
+	initial	rx_bytes = 0;
 	always @(posedge i_clk)
 	if (!o_busy)
 	begin
-		m_bytes <= 0;
+		rx_bytes <= 0;
 	end else if (i_rd_ack)
 	begin
 		if (|next_fill[WBLSB+1:WBLSB]) // if next_fill >= DW/8)
 			// Verilator lint_off WIDTH
-			m_bytes <= DW/8;
+			rx_bytes <= DW/8;
 			// Verilator lint_on  WIDTH
 		else
-			m_bytes <= { 1'b0, next_fill[WBLSB-1:0] };
+			rx_bytes <= { 1'b0, next_fill[WBLSB-1:0] };
 	end else if (rdack_len == 0)
-		m_bytes <= next_fill[WBLSB:0];
+		rx_bytes <= next_fill[WBLSB:0];
 	// }}}
 
-	// m_last
+	// rx_last
 	// {{{
 	always @(*)
 	begin
 		last_request_addr = i_addr;
-		if (r_inc)
+		if (i_inc)
 			// Verilator lint_off WIDTH
 			last_request_addr = i_addr + i_transferlen - 1;
 			// Verilator lint_on  WIDTH
 	end
 
-	initial	m_last = 0;
+	initial	rx_last = 0;
 	always @(posedge i_clk)
 	if (i_reset)
-		m_last <= 1'b0;
+		rx_last <= 1'b0;
 	else if (!o_busy)
 	begin
-		m_last <= 1'b0;
+		rx_last <= 1'b0;
 		if (!OPT_LOWPOWER || i_request)
 		case(i_size)
-		SZ_BYTE: m_last <= (i_transferlen <= 1);
-		SZ_16B: m_last <= (last_request_addr[ADDRESS_WIDTH-1:1] != i_addr[ADDRESS_WIDTH-1:1]);
-		SZ_32B: m_last <= (last_request_addr[ADDRESS_WIDTH-1:2] != i_addr[ADDRESS_WIDTH-1:2]);
-		SZ_BUS: m_last <= (last_request_addr[ADDRESS_WIDTH-1:WBLSB] != i_addr[ADDRESS_WIDTH-1:WBLSB]);
+		SZ_BYTE: rx_last <= (i_transferlen <= 1);
+		SZ_16B: rx_last <= (last_request_addr[ADDRESS_WIDTH-1:1] != i_addr[ADDRESS_WIDTH-1:1]);
+		SZ_32B: rx_last <= (last_request_addr[ADDRESS_WIDTH-1:2] != i_addr[ADDRESS_WIDTH-1:2]);
+		SZ_BUS: rx_last <= (last_request_addr[ADDRESS_WIDTH-1:WBLSB] != i_addr[ADDRESS_WIDTH-1:WBLSB]);
 		endcase
 	end else if (i_rd_ack)
 	begin
 		// Verilator lint_off WIDTH
-		m_last <= (rdack_len <= rdack_size) && (next_fill <= DW/8);
+		rx_last <= (rdack_len <= rdack_size) && (next_fill <= DW/8);
 		// Verilator lint_on  WIDTH
 	end else if (rdack_len == 0)
-		m_last <= 1;
+		rx_last <= 1;
 	// }}}
 
-	assign	M_VALID = m_valid;
+	assign	M_VALID = rx_valid;
 	assign	M_DATA = sreg;
-	assign	M_BYTES= m_bytes;
-	assign	M_LAST = m_last;
+	assign	M_BYTES= rx_bytes;
+	assign	M_LAST = rx_last;
 
 	// Keep Verilator happy
 	// {{{
@@ -953,12 +1011,12 @@ module	sddma_mm2s #(
 
 	always @(*)
 	if (rdstb_len == 0)
-		f_stb_last <= 1'b0;
+		f_stb_last = 1'b0;
 	else case(r_size)
-	SZ_BYTE: f_stb_last <= (rdstb_len == 1);
-	SZ_16B:  f_stb_last <= (rdstb_len + f_excess_last_return[0] == 2);
-	SZ_32B:  f_stb_last <= (rdstb_len + f_excess_last_return[1:0] == 4);
-	SZ_BUS:  f_stb_last <= (rdstb_len + f_excess_last_return[WBLSB-1:0] == DW/8);
+	SZ_BYTE: f_stb_last = (rdstb_len == 1);
+	SZ_16B:  f_stb_last = (rdstb_len + f_excess_last_return[0] == 2);
+	SZ_32B:  f_stb_last = (rdstb_len + f_excess_last_return[1:0] == 4);
+	SZ_BUS:  f_stb_last = (rdstb_len + f_excess_last_return[WBLSB-1:0] == DW/8);
 	endcase
 
 	always @(*)
@@ -966,12 +1024,12 @@ module	sddma_mm2s #(
 
 	always @(*)
 	if (rdack_len == 0)
-		f_ack_last <= 1'b0;
+		f_ack_last = 1'b0;
 	else case(r_size)
-	SZ_BYTE: f_ack_last <= (rdack_len == 1);
-	SZ_16B:  f_ack_last <= (rdack_len + f_excess_last_return[0] == 2);
-	SZ_32B:  f_ack_last <= (rdack_len + f_excess_last_return[1:0] == 4);
-	SZ_BUS:  f_ack_last <= (rdack_len + f_excess_last_return[WBLSB-1:0] == DW/8);
+	SZ_BYTE: f_ack_last = (rdack_len == 1);
+	SZ_16B:  f_ack_last = (rdack_len + f_excess_last_return[0] == 2);
+	SZ_32B:  f_ack_last = (rdack_len + f_excess_last_return[1:0] == 4);
+	SZ_BUS:  f_ack_last = (rdack_len + f_excess_last_return[WBLSB-1:0] == DW/8);
 	endcase
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -1012,9 +1070,27 @@ module	sddma_mm2s #(
 	begin
 		case(r_size)
 		SZ_BYTE: assert(first_size == 1);
-		SZ_16B:  assert(first_size == (f_cfg_addr[0]) ? 1 : 2);
-		SZ_32B:  assert(first_size == 4 - f_cfg_addr[1:0]);
-		SZ_BUS:  assert(first_size == (DW/8) - f_cfg_addr[WBLSB-1:0]);
+		SZ_16B: begin
+			if (r_transferlen >= (f_cfg_addr[0]) ? 1 : 2)
+			begin
+				assert(first_size == (f_cfg_addr[0]) ? 1 : 2);
+			end else
+				assert(first_size == r_transferlen);
+			end
+		SZ_32B:	begin
+			if (r_transferlen >= 4 - f_cfg_addr[1:0])
+			begin
+				assert(first_size == 4 - f_cfg_addr[1:0]);
+			end else
+				assert(first_size == r_transferlen);
+			end
+		SZ_BUS: begin
+			if (r_transferlen >= (DW/8) - f_cfg_addr[WBLSB-1:0])
+			begin
+				assert(first_size == (DW/8) - f_cfg_addr[WBLSB-1:0]);
+			end else
+				assert(first_size == r_transferlen);
+			end
 		endcase
 
 		if (first_size > f_cfg_len)
@@ -1129,6 +1205,94 @@ module	sddma_mm2s #(
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
+	// f_lastaddr, f_last_sel_mask
+	// {{{
+	reg	[WBLSB-1:0]	f_lastaddr;
+	reg	[DW/8-1:0]	f_last_sel_mask;
+
+	// f_lastaddr
+	// {{{
+	generate if (DW == 32)
+	begin : F_GEN_LASTADDR_SHORT
+		always @(*)
+		begin
+			f_lastaddr = (f_cfg_len[WBLSB-1:0] + f_cfg_addr[WBLSB-1:0]);
+
+			if (!f_cfg_inc)
+			case(f_cfg_size)
+			SZ_BYTE: begin end
+			SZ_16B: f_lastaddr[WBLSB-1:1] = 0;
+			SZ_32B: begin end
+			SZ_BUS: begin end
+			endcase
+		end
+	end else begin : F_GEN_LASTADDR
+		always @(*)
+		begin
+			f_lastaddr = (f_cfg_len[WBLSB-1:0] + f_cfg_addr[WBLSB-1:0]);
+
+			if (!f_cfg_inc)
+			case(f_cfg_size)
+			SZ_BYTE: begin end
+			SZ_16B: f_lastaddr[WBLSB-1:1] = 0;
+			SZ_32B: f_lastaddr[WBLSB-1:2] = 0;
+			SZ_BUS: begin end
+			endcase
+		end
+	end endgenerate
+	// }}}
+
+	generate if (DW == 32)
+	begin : GEN_LASTSEL_SHORT
+		always @(*)
+		case(f_cfg_size)
+		SZ_BYTE: f_last_sel_mask = {(DW/8){1'b1}};
+		SZ_16B : begin
+			if (f_lastaddr[0])
+				f_last_sel_mask = {(DW/16){2'b10}};
+			else
+				f_last_sel_mask = {(DW/16){2'b11}};
+			end
+		default: begin
+			// SZ_BUS, any inc
+			f_last_sel_mask = ~({(DW/8){1'b1}} >> f_lastaddr[WBLSB-1:0]);
+			if (f_lastaddr[WBLSB-1:0] == 0)
+				f_last_sel_mask = {(DW/8){1'b1}};
+			end
+		endcase
+	end else begin : GEN_LASTSEL_FULL
+		always @(*)
+		case(f_cfg_size)
+		SZ_BYTE: f_last_sel_mask = {(DW/8){1'b1}};
+		SZ_16B : begin
+			if (f_lastaddr[0])
+				f_last_sel_mask = {(DW/16){2'b10}};
+			else
+				f_last_sel_mask = {(DW/16){2'b11}};
+			end
+		SZ_32B : begin
+			if (2'b00 != f_lastaddr[1:0])
+			begin
+				f_last_sel_mask[3:0] = ~(4'hf >> f_lastaddr[1:0]);
+				f_last_sel_mask = {(DW/32){f_last_sel_mask[3:0]}};
+			end else
+				f_last_sel_mask = {(DW/8){1'b1}};
+			end
+		default: begin
+			// SZ_BUS, any inc
+			f_last_sel_mask = ~({(DW/8){1'b1}} >> f_lastaddr[WBLSB-1:0]);
+			if (f_lastaddr[WBLSB-1:0] == 0)
+				f_last_sel_mask = {(DW/8){1'b1}};
+			end
+		endcase
+	end endgenerate
+
+	always @(posedge i_clk)
+	if (o_busy)
+		assert(r_last_sel_mask == f_last_sel_mask);
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
 	// base_sel
 	// {{{
 	////////////////////////////////////////////////////////////////////////
@@ -1186,16 +1350,21 @@ module	sddma_mm2s #(
 	if (!i_reset && o_busy && !o_err)
 	begin
 		assert(fill < (DW/8) + (M_VALID ? DW/8 : 0));
-		if (rdstb_len != 0 || rdstb_len != rdstb_size)
+		if (rdstb_len == 0)
+		begin
+			// assert(rdstb_size <= $countones(o_rd_sel));
+			assert(!o_rd_stb);
+			// o_rd_sel is a don't care
+		end else if (rdstb_len >= rdstb_size)
+		begin
+			assert(rdstb_size == $countones(o_rd_sel));
+		end else // if (rdstb_len < rdstb_size)
+		begin
 			assert(rdstb_size <= $countones(o_rd_sel));
+		end
 
-		if (!r_inc)
-		case(r_size)
-		SZ_BYTE: assert(o_rd_sel == base_sel);
-		SZ_16B:  assert(o_rd_sel == (f_cfg_len < 2) ? first_sel : base_sel);
-		SZ_32B:  assert(o_rd_sel == (f_cfg_len < 4) ? first_sel : base_sel);
-		SZ_BUS:  assert(o_rd_sel == (f_cfg_len < DW/8) ? first_sel : base_sel);
-		endcase
+		if (!r_inc && !f_stb_first && !f_stb_last && (rdstb_len > 0))
+			assert(o_rd_sel == base_sel);
 	end
 
 	always @(*)
@@ -1205,17 +1374,18 @@ module	sddma_mm2s #(
 
 		if (OPT_LITTLE_ENDIAN)
 		begin
+			// {{{
 			case(r_size)
 			SZ_BYTE:assert(o_rd_sel == { {(DW/8-1){1'b0}}, 1'b1 } << subaddr);
 			SZ_16B: if (f_cfg_len < 2)
 				begin
-					if (i_addr[0])
+					if (r_addr[0])
 					begin
 						assert(o_rd_sel == { {(DW/8-2){1'b0}}, 2'b01 } << { subaddr[WBLSB-1:1], 1'b0 });
 					end else begin
 						assert(o_rd_sel == { {(DW/8-2){1'b0}}, 2'b10 } << { subaddr[WBLSB-1:1], 1'b0 });
 					end
-				end else if (i_addr[0])
+				end else if (r_addr[0])
 				begin
 					assert(o_rd_sel == { {(DW/8-2){1'b0}}, 2'b01 } << { subaddr[WBLSB-1:1], 1'b0 });
 				end else begin
@@ -1237,11 +1407,12 @@ module	sddma_mm2s #(
 						assert(o_rd_sel == { (DW/8){1'b1} });
 				end
 			endcase
-		end else case(r_size)
+			// }}}
+		end else case(r_size)	// *BIG* ENDIAN
 		SZ_BYTE:assert(o_rd_sel == { 1'b1, {(DW/8-1){1'b0}} } >> subaddr);
 		SZ_16B: if (f_cfg_len < 2)
 			begin
-				if (i_addr[0])
+				if (r_addr[0])
 				begin
 					assert(o_rd_sel == { 2'b01, {(DW/8-2){1'b0}} } >> { subaddr[WBLSB-1:1], 1'b0 });
 				end else begin
@@ -1255,7 +1426,7 @@ module	sddma_mm2s #(
 			end
 		SZ_32B: if (f_cfg_len < 4)
 			begin
-				if (i_addr[1:0] == 2'b00)
+				if (r_addr[1:0] == 2'b00)
 				begin
 					assert(o_rd_sel == {(4'b1111 >> (4 - f_cfg_len)), {(DW/8-4){1'b0}} }
 						>> { subaddr[WBLSB-1:2], 2'b00 });
@@ -1275,7 +1446,7 @@ module	sddma_mm2s #(
 			end
 		SZ_BUS: if (f_cfg_len < DW/8)
 			begin
-				if (i_addr[WBLSB-1:0] == 0)
+				if (r_addr[WBLSB-1:0] == 0)
 				begin
 					assert(o_rd_sel == { (DW/8){1'b1} } >> (DW/8 - f_cfg_len - subaddr));
 				end else if (f_cfg_len[WBLSB-1:0] < (DW/8 - subaddr))
@@ -1527,7 +1698,12 @@ module	sddma_mm2s #(
 
 	always @(*)
 	if (!i_reset && o_busy && !o_err && !M_VALID)
+	begin
 		assert(fill == 0);
+	end else if (!i_reset && M_VALID)
+	begin
+		assert(fill <= (DW/8));
+	end
 
 	always @(*)
 	if (!i_reset && o_busy && M_VALID)
@@ -1549,9 +1725,8 @@ module	sddma_mm2s #(
 		if (!M_VALID)
 		begin
 			assert(f_rcvd == f_sent);
-		end else begin
+		end else
 			assert(f_rcvd == f_sent + M_BYTES);
-		end
 	end
 
 	always @(*)
@@ -1686,16 +1861,14 @@ module	sddma_mm2s #(
 	// is always high when we need it to be.
 
 	always @(*)
-	if (!OPT_FIRSTBEAT_TRIM)
-	case(f_cfg_size)
-	SZ_16B: assume(f_cfg_len + f_cfg_addr[0] >= 2);
-	SZ_32B: assume(f_cfg_len + f_cfg_addr[1:0] >= 4);
-	SZ_BUS: assume(f_cfg_len + f_cfg_addr[WBLSB-1:0] >= BUS_WIDTH/8);
-	endcase
-
-	always @(*)
 	if (!i_reset && M_VALID)
 		assume(M_READY);
+
+	always @(*)
+	if (!i_reset && o_busy && !o_err)
+		assume(r_transferlen >= DW/8);
+
+	// always @(*) if (!i_reset && o_busy) assume(!i_request);
 
 	always @(*)
 	if (!i_reset && o_busy && !o_err)

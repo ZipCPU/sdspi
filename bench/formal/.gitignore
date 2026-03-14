@@ -12,5 +12,18 @@ sdckgen*/
 sdcmd*/
 sdrxframe*/
 sdtxframe*/
+## DMA
+sddma_txgears*/
+sddma_rxgears*/
+sddma_s2mm*/
+sddma_mm2s*/
+sdax_s2mm*/
+sdax_mm2s*/
 ## SDIO Slave
 sdsfsm*/
+## AXI Property (sets)
+faxi_slave.v
+faxi_master.v
+faxi_wstrb.v
+faxi_valaddr.v
+faxi_addr.v

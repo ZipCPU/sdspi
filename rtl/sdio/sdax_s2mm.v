@@ -44,12 +44,28 @@
 //		always the "first" byte in any stream.
 //	M_* -- AXI (full) memory mapped master bus control signals
 //
+// Known issues:
+//	DOES NOT WORK for unaligned FIX addressing.  FIX addressing requires
+//	that 16b transfers start on an address aligned by 16b, 32b transfers
+//	begin on an address aligned by 32b, and bus-width transfers must begin
+//	on an address that is bus width aligned.
+//
+//	Why not?
+//	1. The ZipDMA approach to fixed addresses is to accomplish the first
+//	   beat unaligned, and all other beats aligned--backing up if
+//	   necessary.  This approach violates the AXI standard.
+//	2. In order to work using the AXI standard, the first AXI address is
+//	   forced to be aligned, and only the first beat is unaligned.  This
+//	   breaks the uncommitted data counter, which can't see that the first
+//	   burst has an offset.  Any attempt to do an offset fixed address
+//	   will therefore lock up the IP, although not the bus.
+//
 // Creator:	Dan Gisselquist, Ph.D.
 //		Gisselquist Technology, LLC
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -138,7 +154,7 @@ module	sdax_s2mm #(
 		output	wire			M_AWVALID,
 		input	wire			M_AWREADY,
 		output	wire	[IW-1:0]	M_AWID,
-		output wire [AW-1:0]	M_AWADDR,
+		output	wire	[AW-1:0]	M_AWADDR,
 		output	wire	[7:0]		M_AWLEN,
 		output	wire	[2:0]		M_AWSIZE,
 		output	wire	[1:0]		M_AWBURST,
@@ -197,7 +213,18 @@ module	sdax_s2mm #(
 	localparam	FULL_BEAT_BYTES = (BUS_WIDTH/8),
 			FULL_FIFO_BYTES = (1<<LGFIFO) * FULL_BEAT_BYTES,
 			LGMAX_FIFO_BYTES= $clog2(FULL_FIFO_BYTES+1);
-
+	localparam	LGTAIL = AXILSB+9;
+`ifdef	FORMAL
+	initial begin
+		assert(LGMAX_FIXED_BURST <= LGMAXBURST);
+		assert(LGMAX_FIXED_BURST <= 4);
+		assert(LCLMAXBURST_SUB <= LGMAXBURST);
+		assert(LCLMAXBURST_SUB <= 8);
+		assert(LCLMAXBURST <= LGMAXBURST_LIMIT);
+		assert(LCLMAXBURST <= 8);
+		assert(LCLMAXBURST <= LGMAXBURST);
+	end
+`endif
 	//
 	// Configuration
 	reg				r_inc;
@@ -231,23 +258,21 @@ module	sdax_s2mm #(
 	// reg	[AXILSB:0]	sr_step; // sr_bytes;
 	reg	[1:0]		sr_last;
 
-	reg	[AXILSB+8:0]		burst_bytes;
+	reg	[AXILSB+8:0]		burst_bytes, raw_burst_bytes;
 	reg	[LGMAX_FIFO_BYTES:0]	awbytes_uncommitted;
-	reg	[1:0]			aw_bursts_available;
+	reg	[2:0]			aw_bursts_available;
 	reg	[LGMAX_FIFO_BYTES:0]	beats_committed;
 
 	// AW*
 	reg				w_start_aw, phantom_aw, axi_awvalid;
-	// Verilator lint_off UNUSED
 	reg	[AW:0]			nxt_awaddr;
-	// Verilator lint_on  UNUSED
-	reg	[AW-1:0]		axi_awaddr;
-	reg	[AW-1:0]		bursts_outstanding;
+	reg	[AW-1:0]		axi_awaddr, bursts_outstanding;
+	reg	[LGTAIL-1:0]		tail_bytes;
 
 	// W*
-	reg	w_start_w, phantom_w, axi_wvalid, axi_wlast;
-	reg	[AW:0]	nxt_waddr;
-	reg	[AW-1:0]	axi_waddr;
+	reg				w_start_w, phantom_w,
+					axi_wvalid, axi_wlast;
+	reg	[AW-1:0]		axi_waddr, nxt_waddr;
 	reg	[BUS_WIDTH-1:0]		axi_wdata, nxt_wdata;
 	reg	[BUS_WIDTH/8-1:0]	axi_wstrb, base_wstrb, nxt_wstrb;
 	reg	[AXILSB-1:0]		last_count;
@@ -257,13 +282,18 @@ module	sdax_s2mm #(
 
 	reg	[7:0]	r_max_burst;
 	reg	[7:0]	axi_awlen;
-	reg	[LGMAX_FIXED_BURST-1:0]	wfix_burst_count;
+	reg	[LGMAX_FIXED_BURST:0]	wfix_burst_count;
 
 	reg		r_initial_burst;
-	reg	[7:0]	r_max_initial;
+	reg	[7:0]	r_max_initial, r_initial_beats;
+	reg	[8:0]	initial_beats;
+	reg	[9+AXILSB-1:0]	initial_bytes;
 	wire	[7:0]	w_max_burst;
-
-
+`ifdef	FORMAL
+	(* anyconst *)	reg	[AW-1:0]	f_cfg_addr;
+	(* anyconst *)	reg	[1:0]	f_cfg_size;
+	(* anyconst *)	reg		f_cfg_inc;
+`endif
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -293,9 +323,19 @@ module	sdax_s2mm #(
 		SZ_BUS:  axi_size <= AXILSB[2:0];
 		endcase
 	end
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset && o_busy)
+	case(r_size)
+	SZ_BYTE: assert(axi_size == 3'h0);
+	SZ_16B:  assert(axi_size == 3'h1);
+	SZ_32B:  assert(axi_size == 3'h2);
+	SZ_BUS:  assert(axi_size == AXILSB[2:0]);
+	endcase
+`endif
 	// }}}
 
-	assign	w_overflow = r_overflow && aw_bursts_available[0]
+	assign	w_overflow = r_overflow && |aw_bursts_available[1:0]
 				&& bursts_outstanding == 0 && !phantom_aw;
 
 	// cmd_abort
@@ -451,9 +491,10 @@ module	sdax_s2mm #(
 	// Resizing gearbox (txgears)
 	// {{{
 `ifdef	FORMAL
-	localparam	F_LGCOUNT = 16;
+	localparam	F_LGCOUNT = 8 + LGMAX_FIFO_BYTES;
 
-	wire	[F_LGCOUNT-1:0]	f_gears_rcvd, f_gears_sent;
+	wire	[F_LGCOUNT-1:0]	f_gears_rcvd, f_gears_sent, f_gears_fill;
+	wire			f_gears_last;
 `endif
 
 	sddma_txgears #(
@@ -473,7 +514,8 @@ module	sdax_s2mm #(
 			.M_DATA( gears_data), .M_BYTES(gears_bytes),
 			.M_LAST( gears_last)
 `ifdef	FORMAL
-		, .f_rcvd(f_gears_rcvd), .f_sent(f_gears_sent)
+		, .f_rcvd(f_gears_rcvd), .f_sent(f_gears_sent),
+		.f_fill(f_gears_fill), .f_last(f_gears_last)
 `endif
 	);
 
@@ -490,8 +532,15 @@ module	sdax_s2mm #(
 		sr_valid <= 0;
 	else if (!sr_valid || sr_ready)
 		sr_valid <= gears_valid || sr_last[1];
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset && M_WVALID && !M_WLAST)
+		assert(sr_valid || cmd_abort);
+`endif
 	// }}}
 
+	// sr_offset
+	// {{{
 	initial	sr_offset = 0;
 	always @(posedge i_clk)
 	if (OPT_LOWPOWER && (i_reset || (!o_busy && !i_request)))
@@ -506,7 +555,21 @@ module	sdax_s2mm #(
 		SZ_BUS:  sr_offset <= i_addr[AXILSB-1:0];
 		endcase
 	end
+`ifdef	FORMAL
+	always @(posedge i_clk)
+	if (!i_reset && o_busy)
+	case(f_cfg_size)
+	SZ_BYTE: assert(sr_offset == 0);
+	SZ_16B: assert(sr_offset == { {(AXILSB-1){1'b0}}, f_cfg_addr[0] });
+	SZ_32B: assert({ 1'b0, sr_offset }
+				== { { (AXILSB+1-2){1'b0}}, f_cfg_addr[1:0] });
+	SZ_BUS: assert(sr_offset == f_cfg_addr[AXILSB-1:0]);
+	endcase
+`endif
+	// }}}
 
+	// pre_shift, sr_data
+	// {{{
 	always @(*)
 	case(r_size)
 	SZ_BYTE: pre_shift = { {(2*DW-16){1'b0}}, gears_data[7:0] };
@@ -538,10 +601,13 @@ module	sdax_s2mm #(
 	else if ((gears_valid && gears_ready)
 			|| (sr_valid && sr_ready && |sr_last))
 		sr_data <= pre_shift;
+	// }}}
 
+	// sr_last
+	// {{{
 	initial	sr_last = 0;
 	always @(posedge i_clk)
-	if (!o_busy)
+	if (i_reset || !o_busy)
 		sr_last <= 0;
 	else if (gears_valid && gears_ready)
 	begin
@@ -571,6 +637,7 @@ module	sdax_s2mm #(
 		end
 	end else if (sr_ready && |sr_last)
 		sr_last <= 2'b01;
+	// }}}
 
 	// Output
 	//	sr_valid, sr_ready, sr_data, sr_last
@@ -605,15 +672,17 @@ module	sdax_s2mm #(
 	begin
 		// Verilator lint_off WIDTH
 		case(r_size)
-		SZ_BYTE: burst_bytes =  M_AWLEN + 1;
-		SZ_16B:  burst_bytes = ((M_AWLEN + 1)<<1);// - M_AWADDR[  0];
-		SZ_32B:  burst_bytes = ((M_AWLEN + 1)<<2);// - M_AWADDR[1:0];
-		SZ_BUS:  burst_bytes = ((M_AWLEN + 1) << AXILSB);
-						// - M_AWADDR[AXILSB-1:0];
+		SZ_BYTE: raw_burst_bytes =  M_AWLEN + 1;
+		SZ_16B:  raw_burst_bytes = ((M_AWLEN + 1)<<1) - M_AWADDR[  0];
+		SZ_32B:  raw_burst_bytes = ((M_AWLEN + 1)<<2) - M_AWADDR[1:0];
+		SZ_BUS:  raw_burst_bytes = ((M_AWLEN + 1) << AXILSB)
+						- M_AWADDR[AXILSB-1:0];
 		endcase
 
-		if (burst_bytes > awbytes_uncommitted)
+		if (raw_burst_bytes > awbytes_uncommitted)
 			burst_bytes = awbytes_uncommitted;
+		else
+			burst_bytes = raw_burst_bytes;
 		// Verilator lint_on  WIDTH
 
 		if (!M_AWVALID)
@@ -633,6 +702,7 @@ module	sdax_s2mm #(
 	else if (!r_busy)
 	begin
 		awbytes_uncommitted <= 0;
+		/*
 		if (!OPT_LOWPOWER || i_request)
 		begin
 			case(i_size)
@@ -642,6 +712,7 @@ module	sdax_s2mm #(
 			SZ_BUS:  awbytes_uncommitted[AXILSB-1:0] <= i_addr[AXILSB-1:0];
 			endcase
 		end
+		*/
 	end else case({ S_VALID && S_READY, phantom_aw })
 	2'b00: begin end
 	// Verilator lint_off WIDTH
@@ -656,31 +727,68 @@ module	sdax_s2mm #(
 	// {{{
 	always @(posedge i_clk)
 	if (i_reset || !o_busy)
-		aw_bursts_available <= 2'b00;
+		aw_bursts_available <= 3'b00;
 	else begin
 		case(r_size)
 		SZ_BYTE: aw_bursts_available <= {
-			awbytes_uncommitted >= (2<<LCLMAXBURST_SUB),
-			(last_rcvd && awbytes_uncommitted > 0)
-			 	||(awbytes_uncommitted>= (1<<LCLMAXBURST_SUB))};
+				awbytes_uncommitted >= (2<<LCLMAXBURST_SUB),
+				awbytes_uncommitted>= (1<<LCLMAXBURST_SUB),
+				(last_rcvd && awbytes_uncommitted > 0)};
 		SZ_16B: aw_bursts_available <= {
 			awbytes_uncommitted >= (4<<LCLMAXBURST_SUB),
-			(last_rcvd && awbytes_uncommitted > 0)
-				||(awbytes_uncommitted>= (2<<LCLMAXBURST_SUB))};
+				awbytes_uncommitted>= (2<<LCLMAXBURST_SUB),
+				(last_rcvd && awbytes_uncommitted > 0)};
 		SZ_32B: aw_bursts_available <= {
-			awbytes_uncommitted >= (8<<LCLMAXBURST_SUB),
-			(last_rcvd && awbytes_uncommitted > 0)
-				||(awbytes_uncommitted>= (4<<LCLMAXBURST_SUB))};
+				awbytes_uncommitted >= (8<<LCLMAXBURST_SUB),
+				awbytes_uncommitted >= (4<<LCLMAXBURST_SUB),
+				(last_rcvd && awbytes_uncommitted > 0)};
 		SZ_BUS: aw_bursts_available <= {
 			awbytes_uncommitted >= (2<<(AXILSB+LCLMAXBURST)),
-			(last_rcvd && awbytes_uncommitted > 0)
-				||(awbytes_uncommitted
-						>= (1<<(AXILSB+LCLMAXBURST)))};
+			awbytes_uncommitted >= (1<<(AXILSB+LCLMAXBURST)),
+			(last_rcvd && awbytes_uncommitted > 0)};
+		endcase
+
+		if (!r_inc)
+		case(r_size)
+		SZ_BYTE: aw_bursts_available[2:1] <= {
+				awbytes_uncommitted >= (2<<LGMAX_FIXED_BURST),
+				awbytes_uncommitted >= (1<<LGMAX_FIXED_BURST) };
+		SZ_16B: aw_bursts_available[2:1] <= {
+				awbytes_uncommitted >= (4<<LGMAX_FIXED_BURST),
+				awbytes_uncommitted >= (2<<LGMAX_FIXED_BURST) };
+		SZ_32B: aw_bursts_available[2:1] <= {
+				awbytes_uncommitted >= (8<<LGMAX_FIXED_BURST),
+				awbytes_uncommitted >= (4<<LGMAX_FIXED_BURST) };
+		SZ_BUS: aw_bursts_available[2:1] <= {
+			awbytes_uncommitted >= (2<<(AXILSB+LGMAX_FIXED_BURST)),
+			awbytes_uncommitted >= (1<<(AXILSB+LGMAX_FIXED_BURST)) };
 		endcase
 
 		if (phantom_aw)
-			aw_bursts_available[0] <= 1'b0;
+			aw_bursts_available[1:0] <= 2'b0;
 	end
+	// }}}
+
+	// aw_beats
+	// {{{
+	//	aw_beats = awbytes_uncommitted;
+	//	if (r_initial_burst)
+	//	begin
+	//		case(r_size)
+	//		SZ_BYTE: begin end
+	//		SZ_16B: awbeats = awbeats + awaddr[0];
+	//		SZ_32B: awbeats = awbeats + awaddr[1:0];
+	//		SZ_BUS: awbeats = awbeats + awaddr[AXILSB-1:0];
+	//		endcase
+	//	end
+	//
+	//	case(r_size)
+	//	SZ_BYTE: begin end
+	//	SZ_16B:  awbeats = awbeats[8:1] + awbeats[0];
+	//	SZ_32B:  awbeats = awbeats[9:2] + (|awbeats[1:0]);
+	//	SZ_BUS:  awbeats = awbeats[AXILSB +: 8]+ (|awbeats[AXILSB-1:0]);
+	//	endcase
+	//
 	// }}}
 
 	// w_start_aw
@@ -688,11 +796,11 @@ module	sdax_s2mm #(
 	always @(*)
 	begin
 		w_start_aw = |aw_bursts_available;
-		if (phantom_aw && !aw_bursts_available[1])
+		if (phantom_aw && !aw_bursts_available[2])
 			w_start_aw = 1'b0;
 		if (!r_busy || !sr_valid || cmd_abort || i_soft_reset)
 			w_start_aw = 0;
-		if (r_overflow || (nxt_awaddr[AW] && r_inc))
+		if (r_overflow || (phantom_aw && nxt_awaddr[AW] && r_inc))
 			w_start_aw = 0;
 `ifdef	FORMAL
 		if (M_WVALID && (!M_WREADY || !M_WLAST))
@@ -721,6 +829,14 @@ module	sdax_s2mm #(
 		// This is really a *would* overflow signal.  We haven't
 		// overflowed yet, but we will if we start any more bursts.
 		r_overflow <= 1'b1;
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset && o_busy && M_AWVALID && !phantom_aw)
+		assert(r_overflow || !nxt_awaddr[AW] || !r_inc);
+	always @(*)
+	if (!i_reset && o_busy && !r_inc)
+		assert(!r_overflow);
+`endif
 	// }}}
 
 	// axi_awvalid
@@ -763,6 +879,7 @@ module	sdax_s2mm #(
 		axi_awaddr <= 0;
 	else if (!o_busy)
 	begin
+		// {{{
 		axi_awaddr <= i_addr;
 
 		if (!i_inc)
@@ -779,6 +896,7 @@ module	sdax_s2mm #(
 			SZ_BUS: axi_awaddr[AXILSB-1:0] <= 0;
 			endcase
 		end
+		// }}}
 	end else if (M_AWVALID && M_AWREADY && r_inc)
 		// We only need to worry about incrementing/adjusting the
 		// address if r_inc is set.  Otherwise, the address remains
@@ -798,48 +916,157 @@ module	sdax_s2mm #(
 		else
 			r_max_burst <= (1<<LCLMAXBURST_SUB)-1;
 	end
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset && r_busy)
+	begin
+		if (!f_cfg_inc)
+			assert(r_max_burst == MAX_FIXED_BURST-1);
+		else if (f_cfg_size == SZ_BUS)
+			assert(r_max_burst == (1<<LCLMAXBURST)-1);
+		else
+			assert(r_max_burst == (1<<LCLMAXBURST_SUB)-1);
+	end
+`endif
 
 	initial	r_initial_burst = 1'b1;
 	always @(posedge i_clk)
 	if (i_reset || !r_busy)
-		r_initial_burst <= (!i_request || i_inc);
+		r_initial_burst <= 1;
 	else if (w_start_aw)
 		r_initial_burst <= 1'b0;
+
+	always @(*)
+	begin
+		// Verilator lint_off WIDTH
+		initial_bytes = awbytes_uncommitted;
+		if (S_VALID && S_READY)
+			initial_bytes = initial_bytes + S_BYTES;
+
+		if (r_inc)
+		case(r_size)
+		SZ_BYTE: begin end
+		SZ_16B: initial_bytes = initial_bytes + axi_awaddr[0];
+		SZ_32B: initial_bytes = initial_bytes + axi_awaddr[1:0];
+		SZ_BUS: initial_bytes = initial_bytes + axi_awaddr[AXILSB-1:0];
+		endcase
+
+		case(r_size)
+		SZ_BYTE: initial_beats = initial_bytes;
+		SZ_16B: initial_beats = (initial_bytes >> 1) + initial_bytes[0];
+		SZ_32B: initial_beats = (initial_bytes >> 2) + (|initial_bytes[1:0]);
+		SZ_BUS: initial_beats = (initial_bytes >> AXILSB) + (|initial_bytes[AXILSB-1:0]);
+		endcase
+
+		if (initial_bytes > 0)
+			initial_beats = initial_beats - 1;
+
+		if (initial_beats > w_max_burst)
+			initial_beats = w_max_burst;
+		// Verilator lint_on  WIDTH
+	end
+
+	always @(posedge i_clk)
+	if (i_reset || !o_busy)
+		r_initial_beats <= 0;
+	else if (r_initial_burst && r_initial_beats < w_max_burst)
+		r_initial_beats <= initial_beats[7:0];
+`ifdef	FORMAL
+	always @(*)
+	if (o_busy && r_initial_burst)
+		assert(r_initial_beats <= initial_beats);
+`endif
 
 	always @(posedge i_clk)
 	if (OPT_LOWPOWER && (i_reset || (!o_busy && !i_request)))
 		r_max_initial <= 0;
-	else if (!o_busy && i_inc)
+	else if (!o_busy)
 	begin
 		// Verilator lint_off WIDTH
 		case(i_size)
-		SZ_BYTE: if (i_addr[0 +: LCLMAXBURST_SUB] != 0)
-			begin
-				r_max_initial <= -i_addr[0+: LCLMAXBURST_SUB]-1;
-			end else
-				r_max_initial <= (9'h1 << LCLMAXBURST_SUB)-1;
-		SZ_16B: if (i_addr[1 +: LCLMAXBURST_SUB] != 0)
-			begin
-				r_max_initial <= -i_addr[1+: LCLMAXBURST_SUB]-1;
-			end else
-				r_max_initial <= (9'h1 << LCLMAXBURST_SUB)-1;
-		SZ_32B: if (i_addr[2 +: LCLMAXBURST_SUB] != 0)
-			begin
-				r_max_initial <= -i_addr[2+: LCLMAXBURST_SUB]-1;
-			end else
-				r_max_initial <= (9'h1 << LCLMAXBURST_SUB)-1;
-		SZ_BUS: if (i_addr[AXILSB +: LCLMAXBURST] != 0)
-			begin
-				r_max_initial <= (1<<LCLMAXBURST)-1
-						- i_addr[AXILSB +: LCLMAXBURST];
-			end else
-				r_max_initial <= (9'h1 << LCLMAXBURST)-1;
+		SZ_BYTE:
+			r_max_initial <= (9'h1 << LCLMAXBURST_SUB)
+					-i_addr[0+: LCLMAXBURST_SUB]-1;
+		SZ_16B:
+			r_max_initial <= (9'h1 << LCLMAXBURST_SUB)
+					-i_addr[1+: LCLMAXBURST_SUB]-1;
+		SZ_32B: r_max_initial <= (9'h1 << LCLMAXBURST_SUB)
+					-i_addr[2+: LCLMAXBURST_SUB]-1;
+		SZ_BUS: r_max_initial <= (9'h1<<LCLMAXBURST)-1
+					- i_addr[AXILSB +: LCLMAXBURST];
 		endcase
 		// Verilator lint_on  WIDTH
 	end
 
-	assign	w_max_burst = (r_initial_burst) ? r_max_initial : r_max_burst;
+	assign	w_max_burst = (r_initial_burst && r_inc) ? r_max_initial
+						: r_max_burst;
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset && r_busy)
+		assert(r_initial_beats <= w_max_burst);
+
+	always @(*)
+	if (!i_reset && r_busy)
+	begin
+		case(f_cfg_size)
+		SZ_BYTE: assert(r_max_initial == (9'h1 << LCLMAXBURST_SUB)
+					-f_cfg_addr[0+: LCLMAXBURST_SUB]-1);
+		SZ_16B: assert(r_max_initial == (9'h1 << LCLMAXBURST_SUB)
+					-f_cfg_addr[1+: LCLMAXBURST_SUB]-1);
+		SZ_32B: assert(r_max_initial == (9'h1 << LCLMAXBURST_SUB)
+					-f_cfg_addr[2+: LCLMAXBURST_SUB]-1);
+		SZ_BUS: assert(r_max_initial == (9'h1<<LCLMAXBURST)-1
+					- f_cfg_addr[AXILSB +: LCLMAXBURST]);
+		endcase
+	end
+`endif
 	// }}}
+
+	always @(posedge i_clk)
+	if (!o_busy)
+	begin
+		tail_bytes <= { {(LGTAIL-LCLMAXBURST-AXILSB){1'b0}},
+				i_addr[LCLMAXBURST+AXILSB-1:0] };
+		if (!i_inc || (OPT_LOWPOWER && !i_request))
+			tail_bytes <= 0;
+	end else if (S_VALID && S_READY)
+	begin
+		// Verilator lint_off WIDTH
+		tail_bytes <= tail_bytes + S_BYTES;
+		// Verilator lint_on  WIDTH
+		if (!r_inc)
+		begin
+			case(r_size)
+			SZ_BYTE:tail_bytes[LGTAIL-1:LGMAX_FIXED_BURST] <= 0;
+			SZ_16B: tail_bytes[LGTAIL-1:LGMAX_FIXED_BURST+1] <= 0;
+			SZ_32B: tail_bytes[LGTAIL-1:LGMAX_FIXED_BURST+2] <= 0;
+			SZ_BUS:tail_bytes[LGTAIL-1:LGMAX_FIXED_BURST+AXILSB]<=0;
+			endcase
+		end else begin
+			case(r_size)
+			SZ_BYTE: tail_bytes[LGTAIL-1:LCLMAXBURST_SUB  ]<= 0;
+			SZ_16B:  tail_bytes[LGTAIL-1:LCLMAXBURST_SUB+1]<= 0;
+			SZ_32B:  tail_bytes[LGTAIL-1:LCLMAXBURST_SUB+2]<= 0;
+			SZ_BUS:  tail_bytes[LGTAIL-1:LCLMAXBURST+AXILSB] <= 0;
+			endcase
+		end
+	end
+
+	//
+	//	MAX length, bytes
+	//		!INC	(MAX_FIXED_BURST) << (8*SZ)
+	//		SZ<BUS	(1<<LCLMAXBURST_SUB) << (8*SZ)
+	//			(1<<LCLMAXBURST ) << (8*SZ)
+	//
+	//	tail_bytes = cfg_addr[LSB-1:0] + S_BYTES
+	//	case(sz)
+	//	SZ_BYTE:
+	//	SZ_16B:   tail_bytes[MAX:LCLMAXBURST_SUB+1] <= 0;
+	//	SZ_32B:   tail_bytes[MAX:LCLMAXBURST_SUB+2] <= 0;
+	//	SZ_BUS:   tail_bytes[MAX:LCLMAXBURST+AXILSB] <= 0;
+	//	endcase
+	//
+	//
 
 	// axi_awlen
 	// {{{
@@ -850,22 +1077,27 @@ module	sdax_s2mm #(
 	else if (!M_AWVALID || M_AWREADY)
 	begin
 		axi_awlen <= w_max_burst;
-		if (last_rcvd) case(r_size)
+		// if (last_rcvd && w_max_burst > awbeats)
+		//	axi_awlen <= awbeats;
+		if (last_rcvd && r_initial_burst)
+			axi_awlen <= r_initial_beats;
+		else if (last_rcvd && aw_bursts_available[2:1]==2'b00)
+		case(r_size)
 		// Verilator lint_off WIDTH
-		SZ_BYTE: if ((w_max_burst + 1) > awbytes_uncommitted)
-			axi_awlen <= awbytes_uncommitted-1;
-		SZ_16B: if ((w_max_burst + 1) > awbytes_uncommitted[LGMAX_FIFO_BYTES:1]
-				+ awbytes_uncommitted[0])
-			axi_awlen <= awbytes_uncommitted[LGMAX_FIFO_BYTES:1]
-					+ awbytes_uncommitted[0] - 1;
-		SZ_32B: if ((w_max_burst + 1) > awbytes_uncommitted[LGMAX_FIFO_BYTES:2]
-				+ (|awbytes_uncommitted[1:0]))
-			axi_awlen <= awbytes_uncommitted[LGMAX_FIFO_BYTES:2]
-					+ (|awbytes_uncommitted[1:0]) - 1;
-		SZ_BUS: if ((w_max_burst + 1) > awbytes_uncommitted[LGMAX_FIFO_BYTES:AXILSB]
-				+ (|awbytes_uncommitted[AXILSB-1:0]))
-			axi_awlen <= awbytes_uncommitted[LGMAX_FIFO_BYTES:AXILSB]
-					+ (|awbytes_uncommitted[AXILSB-1:0])-1;
+		SZ_BYTE: if (w_max_burst >= tail_bytes)
+			axi_awlen <= tail_bytes[7:0]-1;
+		SZ_16B: if (w_max_burst >= tail_bytes[LGTAIL-1:1]
+					+ tail_bytes[0])
+			axi_awlen <= tail_bytes[1 +: 8]
+					+ tail_bytes[0] - 1;
+		SZ_32B: if (w_max_burst >= tail_bytes[LGTAIL-1:2]
+					+ (|tail_bytes[1:0]))
+			axi_awlen <= tail_bytes[2 +: 8]
+					+ (|tail_bytes[1:0]) - 1;
+		SZ_BUS: if (w_max_burst >= tail_bytes[LGTAIL-1:AXILSB]
+					+ (|tail_bytes[AXILSB-1:0]))
+			axi_awlen <= tail_bytes[LGTAIL-1:AXILSB]
+					+ (|tail_bytes[AXILSB-1:0])-1;
 		// Verilator lint_on  WIDTH
 		endcase
 	end
@@ -937,15 +1169,19 @@ module	sdax_s2mm #(
 	always @(*)
 	begin
 		nxt_waddr = 0;
-		case(r_size)
-		SZ_BYTE: nxt_waddr = axi_waddr + 1;
-		SZ_16B:  nxt_waddr[AW:1] = axi_waddr[AW-1:1] + 1;
-		SZ_32B:  nxt_waddr[AW:2] = axi_waddr[AW-1:2] + 1;
-		SZ_BUS:  nxt_waddr[AW:AXILSB] = axi_waddr[AW-1:AXILSB] + 1;
-		endcase
+		if (r_inc)
+		begin
+			case(r_size)
+			SZ_BYTE: nxt_waddr = axi_waddr + 1;
+			SZ_16B:  nxt_waddr[AW-1:1] = axi_waddr[AW-1:1] + 1;
+			SZ_32B:  nxt_waddr[AW-1:2] = axi_waddr[AW-1:2] + 1;
+			SZ_BUS:  nxt_waddr[AW-1:AXILSB] = axi_waddr[AW-1:AXILSB] + 1;
+			endcase
+		end else
+			nxt_waddr = axi_waddr;
 
 		if (!M_WVALID || !M_WREADY)
-			nxt_waddr = { 1'b0, axi_waddr };
+			nxt_waddr = axi_waddr;
 	end
 
 	initial	axi_waddr = 0;
@@ -993,8 +1229,7 @@ module	sdax_s2mm #(
 	else if (!M_WVALID || M_WREADY)
 	begin
 		axi_wdata <= nxt_wdata;
-		if(OPT_LOWPOWER && (!r_busy || cmd_abort
-				|| !sr_valid || (r_inc && nxt_waddr[AW])))
+		if(OPT_LOWPOWER && (!r_busy || cmd_abort || !sr_valid))
 			axi_wdata <= 0;
 	end
 	// }}}
@@ -1054,12 +1289,19 @@ module	sdax_s2mm #(
 	end
 
 	always @(posedge i_clk)
-	if (!r_busy || (S_VALID && !S_LAST))
+	if (!r_busy)
 		wpipe <= 2'b00;
 	else if (S_VALID && S_READY && S_LAST)
 		wpipe <= 2'b10;
+	else if (!last_rcvd)
+		wpipe <= 2'b00;
 	else
 		wpipe <= wpipe >> 1;
+`ifdef	FORMAL
+	always @(posedge i_clk)
+	if (r_busy && !last_rcvd)
+		assert(wpipe == 0);
+`endif
 
 	always @(*)
 	begin
@@ -1076,10 +1318,15 @@ module	sdax_s2mm #(
 		endcase
 		end
 	end
-	
+
 	always @(posedge i_clk)
 	if (wpipe == 2'b10)
 		last_mask <= w_last_mask;
+`ifdef	FORMAL
+	always @(posedge i_clk)
+	if (o_busy && last_rcvd && wpipe == 0)
+		assert(last_mask == w_last_mask);
+`endif
 
 	always @(*)
 	begin
@@ -1094,7 +1341,7 @@ module	sdax_s2mm #(
 	else if (!M_WVALID || M_WREADY)
 	begin
 		axi_wstrb <= nxt_wstrb;
-		if (cmd_abort || (r_inc && nxt_waddr[AW]))
+		if (cmd_abort)
 			axi_wstrb <= 0;
 	end
 	// }}}
@@ -1109,6 +1356,24 @@ module	sdax_s2mm #(
 		wfix_burst_count <= 1;
 	else if (M_WVALID && M_WREADY)
 		wfix_burst_count <= wfix_burst_count + 1;
+`ifdef	FORMAL
+	always @(*)
+	if (i_reset || !r_busy)
+	begin
+	end else if (r_inc)
+	begin
+		assert(wfix_burst_count == 1);
+	end else begin
+		assert(wfix_burst_count <= MAX_FIXED_BURST);
+		assert(wfix_burst_count  > 0);
+		if (phantom_w && M_WLAST)
+			assert(last_rcvd || wfix_burst_count == MAX_FIXED_BURST);
+		else if (M_WLAST)
+			assert(wfix_burst_count == 1);
+		else
+			assert(wfix_burst_count <  MAX_FIXED_BURST);
+	end
+`endif
 	// }}}
 
 	// axi_wlast
@@ -1127,9 +1392,11 @@ module	sdax_s2mm #(
 			SZ_BUS:  axi_wlast <= (&nxt_waddr[AXILSB +: LCLMAXBURST]);
 			endcase
 		end else
-			axi_wlast <= &wfix_burst_count;
+			axi_wlast <= &wfix_burst_count[LGMAX_FIXED_BURST-1:0];
 
 		if ((sr_valid || !OPT_LOWPOWER) && sr_last[0])
+			axi_wlast <= 1'b1;
+		if (r_initial_burst && r_inc && r_initial_beats == 0)
 			axi_wlast <= 1'b1;
 		// Verilator lint_off WIDTH
 		if (cmd_abort && beats_committed == 1 + phantom_w)
@@ -1157,6 +1424,32 @@ module	sdax_s2mm #(
 	end else if (cmd_abort && (!M_AWVALID || M_AWREADY)
 			&&(!M_WVALID || (M_WREADY && M_WLAST)))
 		data_sent <= 1'b1;
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset && !last_rcvd && !cmd_abort)
+	begin
+		assert(data_sent == 1'b0);
+		assert(sr_last == 2'b0);
+	end
+
+	always @(*)
+	if (!i_reset && sr_last != 2'b00)
+	begin
+		assert(ign_fif_fill == 0);
+		assert(f_gears_fill == 0);
+		assert(last_rcvd);
+	end
+
+	always @(*)
+	if (!i_reset && r_busy && !cmd_abort && data_sent)
+	begin
+		assert(beats_committed + ((phantom_aw && axi_awlen == 0) ? 1:0)
+						== (phantom_w ? 1:0));
+		assert(beats_committed < (phantom_w ? 2:1));
+		assert(!M_WVALID || M_WLAST);
+		assert(phantom_aw || awbytes_uncommitted == 0);
+	end
+`endif
 	// }}}
 
 	// bursts_outstanding -- how many BVALIDs left to expect
@@ -1212,18 +1505,16 @@ module	sdax_s2mm #(
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
-	localparam	F_LGDEPTH = LCLMAXBURST+1;
+	localparam	F_LGDEPTH = ((LCLMAXBURST+1) > 8) ? (LCLMAXBURST+1) : 9;
 			reg		f_past_valid;
-	(* anyconst *)	reg	[AW-1:0]	f_cfg_addr;
-	(* anyconst *)	reg	[1:0]	f_cfg_size;
-	(* anyconst *)	reg		f_cfg_inc;
 	// wire	[F_LGDEPTH-1:0]		fwb_nreqs, fwb_nacks, fwb_outstanding;
-	reg	[ADDRESS_WIDTH:0]	f_posn, f_waddr, faxi_wposn,
-					f_fifo_bytes, faxi_awposn;
+	reg	[ADDRESS_WIDTH:0]	f_posn, f_waddr, faxi_endposn,
+					faxi_eob_addr, faxi_wposn, faxi_awposn,
+					f_tmp_last, f_fifo_bytes;
 	reg	[AXILSB-1:0]	fr_sel_count, fr_sel_count_past;
 	reg	[AXILSB:0]	ffif_last_bytes, f_sr_bytes;
 	wire	[AXILSB:0]	f_gears_bytes;
-	reg	[AXILSB-1:0]	f_last_count;
+	reg	[AXILSB:0]	f_last_count;
 
 	wire			faxi_ckvalid, faxi_arckvalid, faxi_lockd;
 	wire	[F_LGDEPTH-1:0]	faxi_nbursts, faxi_wrid_nbursts,
@@ -1231,10 +1522,22 @@ module	sdax_s2mm #(
 	wire	[9-1:0]		faxi_pending;
 	wire	[IW-1:0]	faxi_checkid;
 	wire	[AW-1:0]	faxi_waddr;
+	reg	[AW:0]		faxi_wnext;
 	wire	[7:0]		faxi_incr;
 	wire	[1:0]		faxi_burst;
 	wire	[2:0]		faxi_size;
 	wire	[7:0]		faxi_len;
+	(* keep *)
+	reg	[F_LGCOUNT-1:0]	f_bytes_uncommitted, f_s1, f_s2, f_s3,
+				f_s4, f_s5;
+	reg	[AW:0]			f_expected_aw;
+	reg	[AXILSB-1:0]		f_sum;
+	reg	[AW-1:0]		f_end_addr;
+	reg				f_end_aligned;
+	reg	[DW/8-1:0]		f_base_wstrb;
+	reg	[LGTAIL-1:0]		f_tail;
+	reg	[LGMAX_FIXED_BURST-1:0]	f_wfix_burst_count;
+	reg				f_wfirst_burst, f_wlast_burst;
 
 	initial	f_past_valid = 0;
 	always @(posedge i_clk)
@@ -1322,14 +1625,7 @@ module	sdax_s2mm #(
 		assume(S_BYTES > 0);
 
 		if (!S_LAST)
-		begin
 			assume(S_BYTES == (DW/8));
-		end else case(f_cfg_size)
-		2'b11: assume(S_BYTES == 1);
-		2'b10: assume(S_BYTES <= 2);
-		2'b01: assume(S_BYTES <= 4);
-		2'b00: assume(S_BYTES <= (DW/8));
-		endcase
 	end
 
 	always @(*)
@@ -1341,11 +1637,7 @@ module	sdax_s2mm #(
 		f_fifo_bytes = ((ign_fif_fill-1) << AXILSB) + ffif_last_bytes;
 
 	always @(*)
-	if (!last_rcvd)
-		assert(f_fifo_bytes == (ign_fif_fill << AXILSB));
-
-	always @(*)
-	if (!fif_empty)
+	if (!i_reset && !fif_empty)
 	begin
 		if (!last_rcvd || ign_fif_fill > 1)
 		begin
@@ -1368,6 +1660,18 @@ module	sdax_s2mm #(
 		ffif_last_bytes <= S_BYTES;
 
 	always @(*)
+	if (!i_reset && r_busy)
+	begin
+		if (last_rcvd)
+		begin
+			assert(ffif_last_bytes[AXILSB-1:0] == f_posn[AXILSB-1:0]);
+			assert(ffif_last_bytes[AXILSB]
+				== (ffif_last_bytes[AXILSB-1:0] == 0));
+		end else
+			assert(ffif_last_bytes == DW/8);
+	end
+
+	always @(*)
 	begin
 		assert(ffif_last_bytes > 0);
 		assert(ffif_last_bytes <= DW/8);
@@ -1378,20 +1682,18 @@ module	sdax_s2mm #(
 		SZ_BYTE: f_last_count = 1;
 		SZ_16B:  begin
 			f_last_count = f_cfg_addr[0] + ffif_last_bytes[0];
-			f_last_count[AXILSB-1:1] = 0;
+			f_last_count[AXILSB:1] = 0;
 			end
 		SZ_32B:  begin
 			f_last_count = f_cfg_addr[1:0] + ffif_last_bytes[1:0];
-			f_last_count[AXILSB-1:2] = 0;
+			f_last_count[AXILSB:2] = 0;
 			end
 		SZ_BUS:  begin
 			f_last_count = f_cfg_addr[AXILSB-1:0]
 						+ ffif_last_bytes[AXILSB-1:0];
 			end
 		endcase
-
-		if (r_busy && (last_rcvd || f_cfg_size != SZ_BYTE))
-			assert(f_last_count == last_count);
+		f_last_count[AXILSB] = 1'b0;
 	end
 
 	always @(posedge i_clk)
@@ -1400,25 +1702,20 @@ module	sdax_s2mm #(
 	else if (S_VALID && S_READY)
 		f_posn <= f_posn + S_BYTES;
 
-	always @(*)
+	always @(posedge i_clk)
 	if (o_busy)
-		assume(!f_posn[ADDRESS_WIDTH] || f_posn[ADDRESS_WIDTH-1:0]==0);
+	case(f_cfg_size)
+	SZ_BYTE: assert(last_count == (f_posn > 0) ? 1:0);
+	SZ_16B:
+		assert(last_count == { {(AXILSB-1){1'b0}}, f_tmp_last[0] });
+	SZ_32B: assert({ 1'b0, last_count } == { {(AXILSB+1-2){1'b0}},
+							f_tmp_last[1:0] });
+	SZ_BUS: assert(last_count == f_tmp_last[AXILSB-1:0]);
+	endcase
 
-	/*
 	always @(*)
-	if (!i_reset && o_busy)
-	begin
-		if (r_last)
-		begin
-		end else case(f_cfg_size)
-		2'b11: begin end
-		2'b10: assert(f_posn[0] == 1'b0);
-		2'b01: assert(f_posn[1:0] == 2'b0);
-		2'b00: assert(f_posn[AXILSB-1:0] == 0);
-		endcase
-	end
-	*/
-
+	if (r_busy && !last_rcvd)
+		assert(f_posn[AXILSB-1:0] == 0);
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -1554,6 +1851,64 @@ module	sdax_s2mm #(
 
 	always @(*)
 	begin
+		faxi_eob_addr = faxi_waddr;
+		if (f_cfg_inc)
+		begin
+			case(f_cfg_size)
+			SZ_BYTE: faxi_eob_addr = faxi_eob_addr + faxi_pending;
+			SZ_16B: begin
+				faxi_eob_addr = faxi_eob_addr + (faxi_pending << 1);
+				faxi_eob_addr[0] = 1'b0;
+				end
+			SZ_32B: begin
+				faxi_eob_addr = faxi_eob_addr + (faxi_pending << 2);
+				faxi_eob_addr[1:0] = 2'b0;
+				end
+			SZ_BUS: begin
+				faxi_eob_addr = faxi_eob_addr + (faxi_pending << AXILSB);
+				faxi_eob_addr[AXILSB-1:0] = 0;
+				end
+			endcase
+		end
+	end
+
+	always @(*)
+	begin
+		f_wfirst_burst = 1'b0;
+		if (r_initial_burst)
+			f_wfirst_burst = 1'b1;
+		else if (f_cfg_inc && M_AWADDR == f_cfg_addr)
+			f_wfirst_burst = 1'b1;
+		else if (faxi_pending > 0)
+		case(f_cfg_size)
+		SZ_BYTE: if ( faxi_wposn       <= faxi_len + 1 - faxi_pending) f_wfirst_burst = 1'b1;
+		SZ_16B:  if ((faxi_wposn[0] ? 1:0)+(faxi_wposn >> 1) <= faxi_len + 1 - faxi_pending) f_wfirst_burst = 1'b1;
+		SZ_32B:  if (((|faxi_wposn[1:0]) ? 1:0) + (faxi_wposn >> 2) <= faxi_len + 1 - faxi_pending) f_wfirst_burst = 1'b1;
+		SZ_BUS:  if (((|faxi_wposn[AXILSB-1:0]) ? 1:0) + (faxi_wposn >> AXILSB) <= faxi_len + 1 - faxi_pending) f_wfirst_burst = 1'b1;
+		endcase
+
+		f_wlast_burst = 1'b0;
+		if (last_rcvd && awbytes_uncommitted == 0 && faxi_pending > 0)
+			f_wlast_burst = 1'b1;
+	end
+
+	always @(*)
+	if (r_busy && f_wfirst_burst && faxi_pending > 0)
+	begin
+		case(f_cfg_size)
+		SZ_BYTE: assert(faxi_pending + faxi_wposn == faxi_len + 1);
+		SZ_16B:  assert(faxi_pending + (faxi_wposn >> 1)
+				+ (faxi_wposn[0] ? 1:0) == faxi_len + 1);
+		SZ_32B:  assert(faxi_pending + (faxi_wposn >> 2)
+				+ ((|faxi_wposn[1:0]) ? 1:0) == faxi_len + 1);
+		SZ_BUS:  assert(faxi_pending + (faxi_wposn >> AXILSB)
+			+ ((|faxi_wposn[AXILSB-1:0]) ? 1:0) == faxi_len + 1);
+		default: begin end
+		endcase
+	end
+
+	always @(*)
+	begin
 		assert(faxi_arckvalid == 1'b0);
 		assert(faxi_rd_nbursts == 0);
 		assert(faxi_rd_outstanding == 0);
@@ -1562,16 +1917,49 @@ module	sdax_s2mm #(
 		assert(faxi_wrid_nbursts == faxi_nbursts);
 		assert(bursts_outstanding == faxi_nbursts
 				+ ((M_AWVALID && !phantom_aw) ? 1:0));
+		assert(faxi_pending == 0 || M_WVALID);
+		if (r_inc && (f_cfg_addr == M_AWADDR) && !M_AWVALID && !data_sent)
+			assert(r_initial_burst);
+		if (r_busy && !r_initial_burst && !data_sent)
+		begin
+			if (f_cfg_addr != M_AWADDR || !r_inc)
+			case(f_cfg_size)
+			SZ_BYTE: begin end
+			SZ_16B: assert(M_AWADDR[0] == 1'b0);
+			SZ_32B: assert(M_AWADDR[1:0] == 2'b0);
+			SZ_BUS: assert(M_AWADDR[AXILSB-1:0] == 0);
+			endcase
+		end
+
+		if (!r_inc && faxi_pending > 0 && !M_WLAST && !last_rcvd)
+		begin
+			assert({ 5'h0, wfix_burst_count }
+				+ faxi_pending == MAX_FIXED_BURST + 9'h1);
+		end
+
+		if (!i_reset && faxi_pending == 0)
+			assert(wfix_burst_count == 1);
+
+		if (!i_reset)
+			assert(wfix_burst_count <= MAX_FIXED_BURST);
+
 		if (faxi_ckvalid)
 		begin
 			assert(r_busy);
-			assert(cmd_abort || faxi_waddr == f_waddr);
+			assert(cmd_abort || faxi_waddr == f_waddr || data_sent);
 			// assert(faxi_incr  == f_waddr);
 			assert(faxi_burst  == { 1'b0, r_inc });
 			assert(faxi_size   == axi_size);
 			// assert(faxi_wlen   == ?);
 			assert(faxi_lockd  == 1'b0);
+			if (!r_inc && !last_rcvd)
+				assert(faxi_len == MAX_FIXED_BURST-1);
 
+			if (!r_inc && faxi_pending > 0 && !M_WLAST)
+			begin
+				assert({ 5'h0, wfix_burst_count }
+					+ faxi_pending == { 1'b0, faxi_len } + 9'h2);
+			end
 			if (phantom_aw || !M_AWVALID)
 			begin
 				assert(beats_committed == faxi_pending
@@ -1581,6 +1969,125 @@ module	sdax_s2mm #(
 					+ (M_AWLEN+1)
 					- ((M_WVALID && !phantom_w) ? 1:0));
 			end
+
+			if (!f_wlast_burst && !f_wfirst_burst)
+			begin
+				if (!f_cfg_inc)
+					assert(faxi_len == MAX_FIXED_BURST-1);
+				else if (f_cfg_size == SZ_BUS)
+					assert(faxi_len == (1<<LCLMAXBURST_SUB)-1);
+				else
+					assert(faxi_len == (1<<LCLMAXBURST)-1);
+			end else begin
+				if (!f_cfg_inc)
+					assert(faxi_len < MAX_FIXED_BURST);
+				else if (f_cfg_size == SZ_BUS)
+					assert(faxi_len < (1<<LCLMAXBURST));
+				else
+					assert(faxi_len < (1<<LCLMAXBURST_SUB));
+			end
+		end
+	end
+
+	always @(*)
+	if (f_past_valid && r_busy && f_cfg_inc && faxi_wposn>0)
+	begin
+		if (f_wlast_burst && f_wfirst_burst)
+		begin
+			case(f_cfg_size)
+			SZ_BYTE: assert(faxi_eob_addr[LCLMAXBURST_SUB-1:0] == 0
+				|| (faxi_eob_addr[LCLMAXBURST_SUB-1:0] == faxi_len + f_cfg_addr[LCLMAXBURST_SUB-1:0]+1));
+			SZ_16B: assert(faxi_eob_addr[LCLMAXBURST_SUB:0] == 0
+				|| (faxi_eob_addr[LCLMAXBURST_SUB:1] == faxi_len + f_cfg_addr[LCLMAXBURST_SUB:1]+1));
+			SZ_32B: assert(faxi_eob_addr[LCLMAXBURST_SUB+1:0] == 0
+				|| (faxi_eob_addr[LCLMAXBURST_SUB+1:2] == faxi_len + f_cfg_addr[LCLMAXBURST_SUB+1:2]+1));
+			SZ_BUS: assert(faxi_eob_addr[LCLMAXBURST+AXILSB-1:0] == 0
+				|| (faxi_eob_addr[LCLMAXBURST+AXILSB-1:AXILSB] == faxi_len + f_cfg_addr[LCLMAXBURST+AXILSB-1:AXILSB]+1));
+			endcase
+		end else if (f_wlast_burst)
+		begin
+			case(f_cfg_size)
+			SZ_BYTE: assert(faxi_eob_addr[LCLMAXBURST_SUB-1:0] == 0
+					|| (faxi_eob_addr[LCLMAXBURST_SUB-1:0] == faxi_len+1));
+			SZ_16B:  assert(faxi_eob_addr[LCLMAXBURST_SUB  :0] == 0
+					|| (faxi_eob_addr[LCLMAXBURST_SUB:1] + (faxi_eob_addr[0] ? 1:0) == faxi_len+1));
+			SZ_32B:  assert(faxi_eob_addr[LCLMAXBURST_SUB+1:0] == 0
+					|| (faxi_eob_addr[LCLMAXBURST_SUB+1:2] + ((|faxi_eob_addr[1:0]) ? 1:0) == faxi_len+1));
+			SZ_BUS:  assert(faxi_eob_addr[LCLMAXBURST+AXILSB-1:0] == 0
+					|| (faxi_eob_addr[LCLMAXBURST+AXILSB-1:0]
+						+ ((|faxi_eob_addr[AXILSB-1:0]) ? 1:0) == faxi_len+1));
+			endcase
+		end else begin
+			case(f_cfg_size)
+			SZ_BYTE: assert(faxi_eob_addr[LCLMAXBURST_SUB-1:0] == 0);
+			SZ_16B:  assert(faxi_eob_addr[LCLMAXBURST_SUB  :0] == 0);
+			SZ_32B:  assert(faxi_eob_addr[LCLMAXBURST_SUB+1:0] == 0);
+			SZ_BUS:  assert(faxi_eob_addr[LCLMAXBURST+AXILSB-1:0] == 0);
+			endcase
+		end
+
+		assert(f_wlast_burst || M_AWADDR == faxi_eob_addr[AW-1:0]);
+		if (f_wlast_burst)
+			assert(!M_AWVALID);
+	end
+
+	always @(*)
+	if (i_reset || !r_busy)
+	begin
+	end else
+	begin
+		// Not the first burst, should be aligned
+		if (M_AWADDR != f_cfg_addr)
+		begin
+			assert(r_inc);
+			case(f_cfg_size)
+			SZ_BYTE: assert(M_AWADDR[LGMAXBURST-1:0] == 0);
+			SZ_16B: assert(M_AWADDR[LGMAXBURST:0] == 0);
+			SZ_32B: assert(M_AWADDR[LGMAXBURST+1:0] == 0);
+			SZ_BUS: assert(M_AWADDR[LGMAXBURST+AXILSB-1:0] == 0);
+			endcase
+		end
+
+		if (M_AWVALID && faxi_awposn != 0 && (!last_rcvd
+				|| (!phantom_aw && awbytes_uncommitted > 0)))
+		begin
+			if (r_inc)
+			begin
+				if (f_cfg_size == SZ_BUS)
+				begin
+					assert(M_AWLEN==(1<<LCLMAXBURST_SUB)-1);
+				end else
+					assert(M_AWLEN == (1<<LCLMAXBURST)-1);
+			end else if (!last_rcvd || awbytes_uncommitted >= raw_burst_bytes)
+			begin
+				assert(M_AWLEN == (1<<LGMAX_FIXED_BURST)-1);
+			end
+		end
+	end
+
+	always @(*)
+	begin
+		faxi_wnext = M_AWADDR;
+		if(faxi_pending > 0 && faxi_burst == 2'b01) // && r_inc
+		begin
+			case(f_cfg_size)
+			SZ_BYTE: faxi_wnext = M_AWADDR - faxi_pending;
+			SZ_16B:  faxi_wnext = M_AWADDR - { 4'h0, faxi_pending, 1'b0 };
+			SZ_32B:  faxi_wnext = M_AWADDR - { 4'h0, faxi_pending, 2'b00 };
+			SZ_BUS:  faxi_wnext = M_AWADDR - { 4'h0, faxi_pending, {(AXILSB){1'b0}} };
+			endcase
+		end
+	end
+
+	always @(*)
+	if (i_reset || !r_busy || last_rcvd)
+	begin
+	end else begin
+		if (r_inc && faxi_wposn > 0)
+		begin
+			assert(faxi_waddr == faxi_wnext || r_overflow);
+		end else begin
+			assert(cmd_abort || faxi_waddr == f_cfg_addr);
 		end
 	end
 
@@ -1621,30 +2128,65 @@ module	sdax_s2mm #(
 	if (i_reset || !o_busy)
 		faxi_wposn <= 0;
 	else if (M_WVALID && M_WREADY)
-		faxi_wposn <= faxi_wposn + $countones(M_WSTRB);
+	begin
+		if (cmd_abort)
+		begin
+			case(r_size)
+			SZ_BYTE: faxi_wposn <= faxi_wposn + 1;
+			SZ_16B:  faxi_wposn <= faxi_wposn + 2;
+			SZ_32B:  faxi_wposn <= faxi_wposn + 4;
+			SZ_BUS:  faxi_wposn <= faxi_wposn + (1<<AXILSB);
+			endcase
+		end else
+			faxi_wposn <= faxi_wposn + $countones(M_WSTRB);
+	end
 
 	always @(*)
-	if (!f_past_valid || !r_busy || r_initial_burst)
-		faxi_awposn = 0;
-	else begin
-		case(r_size)
-		SZ_BYTE: faxi_awposn = faxi_wposn -  beats_committed
-			+ ((M_AWVALID && !phantom_aw) ? (M_AWLEN+1) : 0);
-		SZ_16B:  faxi_awposn = faxi_wposn - (beats_committed<<1) - f_cfg_addr[0]
-			+ ((M_AWVALID && !phantom_aw) ? ((M_AWLEN+1)<<1) : 0);
-		SZ_32B:  faxi_awposn = faxi_wposn - (beats_committed<<2) - f_cfg_addr[1:0]
-			+ ((M_AWVALID && !phantom_aw) ? ((M_AWLEN+1)<<2) : 0);
-		SZ_BUS:  faxi_awposn = faxi_wposn - (beats_committed<<AXILSB)
-				- f_cfg_addr[AXILSB-1:0]
-			+ ((M_AWVALID && !phantom_aw) ? ((M_AWLEN+1)<<AXILSB) : 0);
+	begin
+		faxi_endposn = faxi_wposn;
+		case(f_cfg_size)
+		SZ_BYTE:faxi_endposn = faxi_wposn + faxi_pending;
+		SZ_16B:	faxi_endposn = faxi_wposn + (faxi_pending << 1);
+		SZ_32B:	faxi_endposn = faxi_wposn + (faxi_pending << 2);
+		SZ_BUS:	faxi_endposn = faxi_wposn + (faxi_pending << AXILSB);
 		endcase
 	end
 
 	always @(*)
-	if (!i_reset && r_busy)
+	if (!f_past_valid || !r_busy || r_initial_burst
+					|| (r_inc && M_AWADDR == f_cfg_addr))
+		faxi_awposn = 0;
+	else begin
+		case(f_cfg_size)
+		SZ_BYTE: faxi_awposn = faxi_wposn +  beats_committed
+			+ ((M_AWVALID && !phantom_aw) ? (M_AWLEN+1) : 0);
+		SZ_16B:  faxi_awposn = faxi_wposn + (beats_committed<<1)
+			+ ((M_AWVALID && !phantom_aw) ? ((M_AWLEN+1)<<1) : 0);
+		SZ_32B:  faxi_awposn = faxi_wposn + (beats_committed<<2)
+			+ ((M_AWVALID && !phantom_aw) ? ((M_AWLEN+1)<<2) : 0);
+		SZ_BUS:  faxi_awposn = faxi_wposn + (beats_committed<<AXILSB)
+			+ ((M_AWVALID && !phantom_aw) ? ((M_AWLEN+1)<<AXILSB) : 0);
+		endcase
+
+		if (faxi_awposn > 0 && faxi_wposn == 0)
+		case(r_size)
+		SZ_BYTE: begin end
+		SZ_16B: faxi_awposn = faxi_awposn - f_cfg_addr[0];
+		SZ_32B: faxi_awposn = faxi_awposn - f_cfg_addr[1:0];
+		SZ_BUS: faxi_awposn = faxi_awposn - f_cfg_addr[AXILSB-1:0];
+		endcase
+	end
+
+
+	always @(*)
+		f_expected_aw = f_cfg_addr + faxi_awposn;
+	always @(*)
+	if (!i_reset && r_busy && !cmd_abort)
 	begin
-		if (r_inc && !last_rcvd)
-			assert(M_AWADDR == f_cfg_addr + faxi_awposn);
+		if (r_inc && !last_rcvd && (!M_WVALID || phantom_w) && !r_overflow)
+			assert(M_AWADDR
+				+ ((M_AWVALID && !phantom_aw) ? burst_bytes : 0)
+				== f_expected_aw);
 		// The following *should* be true, but needs to be modified
 		// to fit the last number of bytes in the last beat
 		// assert(f_awposn <= f_posn);
@@ -1655,19 +2197,29 @@ module	sdax_s2mm #(
 	//	f_gears_last = (ffif_last_bytes % WIDTH)?
 	// if (sr_last[0])
 	always @(*)
-	if (!sr_valid && (|sr_last || r_initial_burst))
+	if (!sr_valid && |sr_last)
 		f_sr_bytes = 0;
 	else if (sr_valid)
 	begin
-		case(f_cfg_size)
+		if (r_initial_burst)
+		begin
+			case(f_cfg_size)
+			SZ_BYTE: f_sr_bytes = 1;
+			SZ_16B:  f_sr_bytes = 2;
+			SZ_32B:  f_sr_bytes = 4;
+			SZ_BUS:  f_sr_bytes = (DW/8);
+			endcase
+		end else case(f_cfg_size)
 		SZ_BYTE: f_sr_bytes = 1;
-		SZ_16B: f_sr_bytes = 2 + (r_initial_burst ? 0 : f_cfg_addr[0]);
-		SZ_32B: f_sr_bytes = 4 + (r_initial_burst ? 0 : f_cfg_addr[1:0]);
-		SZ_BUS:  f_sr_bytes = (DW/8) + (r_initial_burst ? 0 : f_cfg_addr[AXILSB-1:0]);
+		SZ_16B:  f_sr_bytes = 2 + f_cfg_addr[0];
+		SZ_32B:  f_sr_bytes = 4 + f_cfg_addr[1:0];
+		SZ_BUS:  f_sr_bytes = (DW/8) + f_cfg_addr[AXILSB-1:0];
 		endcase
 	end else if (!sr_valid)
 	begin
-		case(f_cfg_size)
+		if (r_initial_burst)
+			f_sr_bytes = 0;
+		else case(f_cfg_size)
 		SZ_BYTE: f_sr_bytes = 0;
 		SZ_16B:  f_sr_bytes = f_cfg_addr[0];
 		SZ_32B:  f_sr_bytes = f_cfg_addr[1:0];
@@ -1676,16 +2228,30 @@ module	sdax_s2mm #(
 	end
 
 	assign	f_gears_bytes = (gears_valid && gears_last) ? gears_bytes
-			: (f_gears_rcvd - f_gears_sent);
+			: (f_gears_fill);
 
 	always @(*)
 	if (!i_reset)
 	begin
 		assert(f_gears_rcvd <= f_posn);
 		if (!gears_valid || !gears_last)
-			assert(f_gears_rcvd >= f_gears_sent);
+			assert((last_rcvd && f_gears_rcvd == 0)
+				|| (f_gears_rcvd >= f_gears_sent));
 		if (gears_valid && gears_last)
 			assert(last_rcvd && fif_empty);
+
+		if (!last_rcvd || !fif_empty)
+			assert(!f_gears_last);
+		else if (gears_valid)
+		begin
+			assert(f_gears_last);
+			assert(gears_last == (gears_bytes == f_gears_bytes));
+		end else if(!cmd_abort)
+		begin
+			assert(f_gears_rcvd == 0);
+			assert(f_gears_sent == 0);
+			// assert(f_gears_last);
+		end
 	end
 
 	always @(*)
@@ -1693,13 +2259,14 @@ module	sdax_s2mm #(
 	begin
 		if (sr_last == 0 && (!gears_valid || !gears_last))
 		begin
-			assert(f_posn == f_gears_rcvd + f_fifo_bytes);
+			assert(f_posn == f_gears_sent + f_gears_fill
+						+ f_fifo_bytes);
 		end else
 			assert(f_gears_rcvd == 0);
 	end
 
 	always @(*)
-	if (!i_reset && o_busy && !o_err && !cmd_abort
+	if (!i_reset && o_busy && !o_err && !cmd_abort && !data_sent
 					&& (sr_last == 0 || !sr_valid))
 		assert(f_posn == faxi_wposn + f_fifo_bytes
 			+ f_gears_bytes + f_sr_bytes
@@ -1710,11 +2277,11 @@ module	sdax_s2mm #(
 	begin
 		f_waddr = f_cfg_addr + faxi_wposn;
 
-		if (faxi_wposn > 0)
+		if (faxi_wposn > 0 && !data_sent)
 		case(r_size)
-		SZ_16B: f_waddr[  0] = 0;
-		SZ_32B: f_waddr[1:0] = 0;
-		SZ_BUS: f_waddr[AXILSB-1:0] = 0;
+		SZ_16B: assert(f_waddr[  0] == 1'b0);
+		SZ_32B: assert(f_waddr[1:0] == 2'b0);
+		SZ_BUS: assert(f_waddr[AXILSB-1:0] == 0);
 		default: begin end
 		endcase
 	end else begin
@@ -1729,135 +2296,132 @@ module	sdax_s2mm #(
 		endcase
 	end
 
-	/*
 	always @(*)
-	if (!i_reset && o_busy && !r_last && !o_err)
+	if (!i_reset && f_gears_fill > 0)
 	begin
-		assert({ 1'b0, axi_waddr } == f_waddr[ADDRESS_WIDTH:AXILSB]);
-		case(r_size)
-		SZ_BUS: assert(subaddr == f_cfg_addr[AXILSB-1:0]);
-		SZ_16B: assert(subaddr == { f_waddr[AXILSB-1:1], f_cfg_addr[0] });
-		SZ_32B: assert(subaddr == { f_waddr[AXILSB-1:2], f_cfg_addr[1:0] });
-		default:
-			assert(subaddr == f_waddr[AXILSB-1:0]);
-		endcase
-	end
-
-	always @(*)
-	if (o_busy && faxi_waddr[ADDRESS_WIDTH] && !r_last)
-	begin
-		assert(o_err);
-		// assert(faxi_waddr[ADDRESS_WIDTH-1:0] <= DW/8);
-	end
-
-	always @(*)
-	if (!i_reset && o_busy)
-	begin
-		if (!r_inc)
-		case(r_size)
-		SZ_BYTE: begin end
-		SZ_16B: assert(subaddr[0] == 1'b0);
-		SZ_32B: assert(subaddr[1:0] == 2'b00);
-		SZ_BUS: assert(subaddr == 0);
-		endcase else case(r_size)
-		SZ_BYTE: begin end
-		SZ_16B: assert(subaddr[0]   == f_cfg_addr[0]);
-		SZ_32B: assert(subaddr[1:0] == f_cfg_addr[1:0]);
-		SZ_BUS: assert(subaddr      == f_cfg_addr[AXILSB-1:0]);
-		endcase
-	end
-
-	always @(*)
-		fr_sel_count = $countones(r_sel);
-
-	// always @(posedge i_clk)
-	// if (!o_wr_sel || !i_wr_stall)
-	//	fr_sel_count_past <= fr_sel_count;
-
-	always @(posedge i_clk)
-	if(!i_reset && o_busy && !o_err && !r_last && $past(S_VALID && S_READY))
-	begin
-		assert(M_WVALID);
-		assert($countones({ r_sel, M_WSTRB })
-					== $past(S_BYTES + fr_sel_count));
-	end
-	*/
-
-	/*
-	always @(*)
-	if (!i_reset && o_busy)
-	begin
-		if (f_posn == 0)
-		begin
-			assert(r_sel == 0);
-		end else
-		case(r_size)
-		SZ_BYTE: assert(r_sel == 0);
-		SZ_16B: begin
-			assert(r_sel[DW/8-1:1] == 0);
-
-			if (!M_WVALID) begin end
-			else if (subaddr + 2 <= DW/8)
-			begin
-				assert(r_sel == 0);
-			end else if (!r_last)
-			begin
-				assert(r_sel[0] == (subaddr+2 > DW/8));
-			end else begin
-				assert(r_sel[0] <= (subaddr+2 > DW/8));
-			end end
-		SZ_32B: begin
-			assert(r_sel[DW/8-1:3] == 0);
-
-			if (!M_WVALID) begin end
-			else if (subaddr + 4 <= DW/8)
-			begin
-				assert(r_sel == 0);
-			end end
-		SZ_BUS: begin
-			assert(!(&r_sel));
-			if (subaddr == 0)
-				assert(r_sel == 0);
-			end
-		default: begin end
-		endcase
-
-		if (!M_WSTRB[DW/8-1])
-			assert(!r_sel[0]);
-
-		for(ik=0; ik<DW/8; ik=ik+1)
+		if (!last_rcvd)
 		begin
 			case(r_size)
-			SZ_32B: if (ik > 2)
-				assert(!r_sel[ik]);
-			SZ_BUS: if (ik >= f_cfg_addr[DW/8-1:0])
-				assert(!r_sel[ik]);
-			default: begin end
+			SZ_BYTE: assert(f_gears_fill <= (1<<AXILSB));
+			SZ_16B:  assert(f_gears_fill <= (1<<AXILSB) && f_gears_fill >= 1);
+			SZ_32B:  assert(f_gears_fill <= (1<<AXILSB) && f_gears_fill >= 2);
+			SZ_BUS:  assert(f_gears_fill == (1<<AXILSB));
 			endcase
 		end
 	end
-	*/
 
-	reg	[AXILSB-1:0]	f_sum;
+	always @(*)
+	begin
+		f_bytes_uncommitted = f_fifo_bytes + f_gears_fill;//+f_sr_bytes;
+		f_s1 = f_bytes_uncommitted;
+
+		if (sr_valid || !r_initial_burst)
+		begin
+			f_bytes_uncommitted = f_bytes_uncommitted + f_sr_bytes;
+		end
+
+		// case(r_size)
+		// SZ_BYTE: f_bytes_uncommitted = f_bytes_uncommitted + 1;
+		// SZ_16B: f_bytes_uncommitted = f_bytes_uncommitted + 2;
+		// SZ_32B: f_bytes_uncommitted = f_bytes_uncommitted + 4;
+		// SZ_BUS: f_bytes_uncommitted = f_bytes_uncommitted+(BUS_WIDTH/8);
+		// endcase
+		f_s2 = f_bytes_uncommitted;
+
+		if (faxi_pending > 0)
+		begin
+			case(r_size)
+			SZ_BYTE:f_bytes_uncommitted = f_bytes_uncommitted - faxi_pending;
+			SZ_16B: f_bytes_uncommitted = f_bytes_uncommitted - { 4'h0, faxi_pending, 1'b0 };
+			SZ_32B: f_bytes_uncommitted = f_bytes_uncommitted - { 4'h0, faxi_pending, 2'b0 };
+			SZ_BUS: f_bytes_uncommitted = f_bytes_uncommitted - { faxi_pending, {(AXILSB){1'b0}} };
+			endcase
+
+			if (M_WVALID)
+			case(f_cfg_size)
+			SZ_BYTE: begin end
+			SZ_16B:  f_bytes_uncommitted = f_bytes_uncommitted + 2 - $countones(M_WSTRB);
+			SZ_32B:  f_bytes_uncommitted = f_bytes_uncommitted + 4 - $countones(M_WSTRB);
+			SZ_BUS:  f_bytes_uncommitted = f_bytes_uncommitted + (DW/8) - $countones(M_WSTRB);
+			endcase
+
+			f_s3 = f_bytes_uncommitted;
+		end if (M_WVALID)
+		begin
+			f_bytes_uncommitted = f_bytes_uncommitted + $countones(M_WSTRB);
+
+			f_s3 = f_bytes_uncommitted;
+		end else
+			f_s3 = f_bytes_uncommitted;
+
+		f_s4 = f_bytes_uncommitted;
+		if (M_AWVALID && !phantom_aw)
+		begin
+			case(f_cfg_size)
+			SZ_BYTE: f_bytes_uncommitted = f_bytes_uncommitted - (M_AWLEN + 1);
+			SZ_16B:  begin
+				f_bytes_uncommitted = f_bytes_uncommitted - ((M_AWLEN + 1) << 1);
+				f_bytes_uncommitted = f_bytes_uncommitted + M_AWADDR[0];
+				end
+			SZ_32B:  begin
+				f_bytes_uncommitted = f_bytes_uncommitted - ((M_AWLEN + 1) << 2);
+				f_bytes_uncommitted = f_bytes_uncommitted + M_AWADDR[1:0];
+				end
+			SZ_BUS:  begin
+				f_bytes_uncommitted = f_bytes_uncommitted - ((M_AWLEN + 1) << AXILSB);
+				f_bytes_uncommitted = f_bytes_uncommitted + M_AWADDR[AXILSB-1:0];
+				end
+			endcase
+		end
+
+		if (last_rcvd && awbytes_uncommitted == 0)
+		begin
+			case(f_cfg_size)
+			SZ_BYTE: begin end
+			SZ_16B: if (f_tmp_last[0])
+				f_bytes_uncommitted = f_bytes_uncommitted
+					+ f_tmp_last[0];
+			SZ_32B: if (|f_tmp_last[1:0])
+				f_bytes_uncommitted = f_bytes_uncommitted
+					+ 4 - f_tmp_last[1:0];
+			SZ_BUS: if (|f_tmp_last[AXILSB-1:0])
+				f_bytes_uncommitted = f_bytes_uncommitted
+					+ (1<<AXILSB)-f_tmp_last[AXILSB-1:0];
+			endcase
+		end
+
+		f_s5 = f_bytes_uncommitted;
+	end
+
+	always @(posedge i_clk)
+	if (!i_reset)
+	begin
+		cover(w_start_aw);
+		cover(phantom_aw);
+		cover(phantom_aw && M_AWADDR[0]);
+		cover($past(phantom_aw && M_AWADDR[0]));
+		cover($past(phantom_aw && M_AWADDR[0]) && !M_AWVALID);
+	end
+
+	always @(*)
+	if (!i_reset && r_busy && !cmd_abort)
+	begin
+		if (sr_last != 0)
+		begin
+			assert(last_rcvd && f_fifo_bytes == 0 && f_gears_fill == 0);
+		end else // if (!phantom_aw)
+			assert(f_bytes_uncommitted == awbytes_uncommitted);
+	end
+
+	always @(*)
+	if (!i_reset && M_WVALID && !cmd_abort)
+		assert(M_WSTRB != 0);
 
 	always @(*)
 	if (r_inc)
 		f_sum = faxi_wposn[AXILSB-1:0] + f_cfg_addr[AXILSB-1:0];
 	else
 		f_sum = faxi_wposn[AXILSB-1:0];
-
-	/*
-	always @(*)
-	if (!i_reset && o_busy && faxi_wposn > 0)
-	begin
-		if (!r_last) case(r_size)
-		SZ_16B: assert(f_sum[  0] == 0);
-		SZ_32B: assert(f_sum[1:0] == 0);
-		SZ_BUS: assert(f_sum[AXILSB-1:0] == 0);
-		default: begin end
-		endcase
-	end
-	*/
 
 	always @(*)
 		f_tmp_last = f_posn + f_cfg_addr;
@@ -1868,19 +2432,370 @@ module	sdax_s2mm #(
 		if (!last_rcvd)
 		begin
 			case(r_size)
-			SZ_BYTE: assert(0 == last_count);
+			SZ_BYTE: assert(last_count == (f_posn > 0 ? 1:0));
 			SZ_16B:  assert(last_count == { {(AW-1){1'b0}}, f_cfg_addr[  0] });
 			SZ_32B:  assert(last_count == { {(AW-2){1'b0}}, f_cfg_addr[1:0] });
 			SZ_BUS:  assert(last_count == { {(AW-AXILSB){1'b0}}, f_cfg_addr[AXILSB-1:0] });
+			endcase
 		end else begin
 			case(r_size)
 			SZ_BYTE: assert(last_count == 1);
-			SZ_16B:  assert(last_count == { f_tmp_last[AXILSB-1:1], 1'b0 });
-			SZ_32B:  assert(last_count == { f_tmp_last[AXILSB-1:2], 2'b0 });
+			SZ_16B:  assert(last_count == { {(AXILSB-1){1'b0}}, f_tmp_last[0] });
+			SZ_32B:  assert({ 1'b0, last_count } == { {(AXILSB-1){1'b0}}, f_tmp_last[1:0] });
+			SZ_BUS:  assert(last_count == f_tmp_last[AXILSB-1:0]);
 			endcase
 		end
 	end
 
+	always @(*)
+	if (!i_reset && beats_committed > 0)
+		assert(M_WVALID);
+
+	// r_max_initial
+
+	always @(*)
+	begin
+		f_end_addr = M_AWADDR;
+		if (f_cfg_inc)
+		case(f_cfg_size)
+		SZ_BYTE: f_end_addr = f_end_addr + M_AWLEN + 1;
+		SZ_16B:  begin
+			f_end_addr = f_end_addr + ((M_AWLEN + 1)<<1);
+			f_end_addr[0] = 1'b0;
+			end
+		SZ_32B: begin
+			f_end_addr = f_end_addr + ((M_AWLEN + 1)<<2);
+			f_end_addr[1:0] = 1'b0;
+			end
+		SZ_BUS: begin
+			f_end_addr = f_end_addr + ((M_AWLEN + 1)<<AXILSB);
+			f_end_addr[AXILSB-1:0] = 1'b0;
+			end
+		endcase
+	end
+
+	always @(*)
+	if (f_cfg_inc)
+	begin
+		case(f_cfg_size)
+		SZ_BYTE: f_end_aligned =(f_end_addr[LCLMAXBURST_SUB-1:0] == 0);
+		SZ_16B:  f_end_aligned =(f_end_addr[LCLMAXBURST_SUB  :0] == 0);
+		SZ_32B:  f_end_aligned =(f_end_addr[LCLMAXBURST_SUB+1:0] == 0);
+		SZ_BUS:  f_end_aligned =(f_end_addr[LCLMAXBURST+AXILSB-1:0]==0);
+		endcase
+	end else
+		f_end_aligned = 1;
+
+	always @(*)
+	if (!i_reset && r_busy)
+	begin
+		// r_max_initial
+		if (!r_inc)
+		begin
+			// assert(r_max_initial == MAX_FIXED_BURST-1);
+			assert(r_max_burst   == MAX_FIXED_BURST-1);
+		end else if (r_inc && !last_rcvd
+			&& (M_AWVALID || (w_max_burst == M_AWLEN)))
+		begin
+			assert(f_end_aligned);
+		end else if (r_inc && last_rcvd)
+		begin
+			// if (!phantom_aw)
+			//	assert(awbytes_uncommitted == 0||f_end_aligned);
+		end
+	end
+
+	always @(*)
+	if (!i_reset && r_busy && (phantom_aw || r_initial_burst))
+	begin
+		assert(!r_overflow);
+	end
+
+	always @(*)
+	if (!i_reset && r_busy)
+	begin
+		if (M_AWADDR != f_cfg_addr)
+		begin
+			if (f_waddr != f_cfg_addr)
+				assert(f_waddr[AW-1:0] == axi_waddr || data_sent);
+			if (faxi_pending == 0)
+				assert(axi_waddr == M_AWADDR || (last_rcvd && awbytes_uncommitted == 0));
+		end else case(f_cfg_size)
+		SZ_BYTE: assert(axi_waddr == f_cfg_addr);
+		SZ_16B:  assert(axi_waddr == { f_cfg_addr[AW-1:1], 1'b0 });
+		SZ_32B:  assert(axi_waddr == { f_cfg_addr[AW-1:2], 2'b0 });
+		SZ_BUS:  assert(axi_waddr == { f_cfg_addr[AW-1:AXILSB], {(AXILSB){1'b0}} });
+		endcase
+	end
+
+	always @(*)
+	if (f_past_valid && r_initial_burst)
+	begin
+		assert(bursts_outstanding == 0);
+	end
+
+	always @(*)
+	if (f_cfg_inc)
+		f_tail = f_posn + f_cfg_addr;
+	else
+		f_tail = f_posn;
+
+	always @(*)
+	begin
+		f_wfix_burst_count = 1+MAX_FIXED_BURST;
+		// if (last_rcvd && awbytes_uncommitted == 0)
+		//	... what should this be?
+		//	f_wfix_burst_count = faxi_pending (?)
+		// if (last_rcvd && awbytes_uncommitted != 0)
+		//	if (AWLEN < LGMAX_FIXED_BURST-1)
+		//		f_wfix_burst_count = awbytes_uncommitted >> SZ	??
+		//
+		case(f_cfg_size)
+		SZ_BYTE: f_wfix_burst_count = // f_wfix_burst_count -
+					1 + faxi_wposn[LGMAX_FIXED_BURST-1:0];
+		SZ_16B: f_wfix_burst_count = // f_wfix_burst_count
+					1 + faxi_wposn[LGMAX_FIXED_BURST:1];
+		SZ_32B: f_wfix_burst_count = // f_wfix_burst_count
+					1 + faxi_wposn[2+:LGMAX_FIXED_BURST];
+		SZ_BUS: f_wfix_burst_count = // f_wfix_burst_count
+					1 + faxi_wposn[AXILSB+:LGMAX_FIXED_BURST];
+		endcase
+
+		if (last_rcvd)
+			f_wfix_burst_count = faxi_len + 2 - faxi_pending;
+		if (faxi_pending == 1 && M_WVALID && M_WLAST && !phantom_w)
+			f_wfix_burst_count = 1;
+	end
+
+	always @(posedge i_clk)
+	if (!f_past_valid || !data_sent)
+	begin
+	end else if (M_WVALID)
+	begin
+		assert(M_WLAST);
+	end else // if (!M_WVALID)
+	begin
+		assert(faxi_pending == 0);
+		// assert(!M_WVALID);
+		assert(!M_AWVALID);
+		assert(awbytes_uncommitted == 0);
+	end
+
+	always @(posedge i_clk)
+	if (i_reset || !o_busy)
+	begin
+	end else if (f_posn == 0)
+	begin
+		if (f_cfg_inc)
+		begin
+			assert(tail_bytes == f_cfg_addr[LCLMAXBURST+AXILSB-1:0]);
+		end else begin
+			assert(tail_bytes == 0);
+		end
+	end else if (f_cfg_inc)
+	begin
+		case(f_cfg_size)
+		SZ_BYTE: assert(tail_bytes == {{(LGTAIL-LCLMAXBURST_SUB){1'b0}},
+					f_tail[LCLMAXBURST_SUB-1:0] });
+		SZ_16B: assert(tail_bytes =={{(LGTAIL-LCLMAXBURST_SUB-1){1'b0}},
+					f_tail[LCLMAXBURST_SUB:0] });
+		SZ_32B: assert(tail_bytes =={{(LGTAIL-LCLMAXBURST_SUB-2){1'b0}},
+					f_tail[LCLMAXBURST_SUB+1:0] });
+		SZ_BUS: assert(tail_bytes[LCLMAXBURST+AXILSB-1:0] == f_tail[LCLMAXBURST+AXILSB-1:0]);
+		endcase
+	end else // if (!data_sent)
+	begin
+		case(f_cfg_size)
+		SZ_BYTE: begin
+			assert(tail_bytes == { {(LGTAIL-LGMAX_FIXED_BURST){1'b0}}, f_tail[LGMAX_FIXED_BURST-1:0]} );
+			if (faxi_pending == 0)
+			begin
+				if (!last_rcvd || awbytes_uncommitted != 0)
+					assert(faxi_wposn[LGMAX_FIXED_BURST-1:0]
+							== 0);
+			end else if (!last_rcvd || awbytes_uncommitted != 0)
+			begin
+				assert(faxi_endposn[LGMAX_FIXED_BURST-1:0]==0);
+				assert(wfix_burst_count[LGMAX_FIXED_BURST-1:0]
+							== f_wfix_burst_count);
+			end end
+		SZ_16B: begin
+			assert(tail_bytes == { {(LGTAIL-LGMAX_FIXED_BURST-1){1'b0}}, f_tail[LGMAX_FIXED_BURST:0]} );
+			assert(faxi_wposn[0] == 1'b0 || data_sent);
+			if (faxi_pending == 0)
+			begin
+				assert((last_rcvd && awbytes_uncommitted == 0)
+					|| faxi_wposn[LGMAX_FIXED_BURST:0] == 0);
+			end else if (!last_rcvd || awbytes_uncommitted != 0)
+			begin
+				assert(faxi_endposn[LGMAX_FIXED_BURST:0]==0);
+				assert(last_rcvd
+					|| wfix_burst_count[LGMAX_FIXED_BURST-1:0] == f_wfix_burst_count);
+			end end
+		SZ_32B:begin
+			assert(tail_bytes == { {(LGTAIL-LGMAX_FIXED_BURST-2){1'b0}}, f_tail[LGMAX_FIXED_BURST+1:0]} );
+			assert(faxi_wposn[1:0] == 2'b0 || data_sent);
+			if (faxi_pending == 0)
+			begin
+				assert((last_rcvd && awbytes_uncommitted == 0)
+					|| faxi_wposn[LGMAX_FIXED_BURST+1:2] == 0);
+			end else if (!last_rcvd || awbytes_uncommitted != 0)
+			begin
+				assert(faxi_endposn[LGMAX_FIXED_BURST+1:0]==0);
+				assert(last_rcvd
+					|| wfix_burst_count[LGMAX_FIXED_BURST-1:0] == f_wfix_burst_count);
+			end end
+		SZ_BUS: begin
+			assert(tail_bytes == { {(LGTAIL-LGMAX_FIXED_BURST-AXILSB){1'b0}}, f_tail[LGMAX_FIXED_BURST+AXILSB-1:0]} );
+			assert(faxi_wposn[AXILSB-1:0] == 0 || data_sent);
+			if (faxi_pending == 0)
+			begin
+				assert((last_rcvd && awbytes_uncommitted == 0)
+					|| faxi_wposn[AXILSB +: LGMAX_FIXED_BURST] == 0);
+			end else if (!last_rcvd || awbytes_uncommitted != 0)
+			begin
+				assert(faxi_endposn[LGMAX_FIXED_BURST+AXILSB-1:0]==0);
+				assert(last_rcvd
+					|| wfix_burst_count[LGMAX_FIXED_BURST-1:0] == f_wfix_burst_count);
+			end end
+		endcase
+	end
+
+	always @(*)
+	if (f_past_valid && f_posn > 0)
+	begin
+		if (!r_inc)
+		begin // Fixed sized bursts
+			case(r_size)
+			SZ_BYTE: assert(tail_bytes[LGTAIL-1:LGMAX_FIXED_BURST] == 0);
+			SZ_16B:  assert(tail_bytes[LGTAIL-1:LGMAX_FIXED_BURST+1] == 0);
+			SZ_32B:  assert(tail_bytes[LGTAIL-1:LGMAX_FIXED_BURST+2] == 0);
+			SZ_BUS: assert(tail_bytes[LGTAIL-1:LGMAX_FIXED_BURST+AXILSB]==0);
+			endcase
+		end else begin // Full sized bursts
+			case(r_size)
+			SZ_BYTE:  assert(tail_bytes[LGTAIL-1:LCLMAXBURST_SUB  ]== 0);
+			SZ_16B:   assert(tail_bytes[LGTAIL-1:LCLMAXBURST_SUB+1]== 0);
+			SZ_32B:   assert(tail_bytes[LGTAIL-1:LCLMAXBURST_SUB+2]== 0);
+			SZ_BUS:   assert(tail_bytes[LGTAIL-1:LCLMAXBURST+AXILSB] == 0);
+			endcase
+		end
+	end
+
+	// }}}
+	////////////////////////////////////////////////////////////////////////
+	//
+	// FIFO data properties
+	// {{{
+
+	localparam	FF_LAST_POSN = FIFO_WIDTH-1;
+	localparam	FF_BYTES_POSN = BUS_WIDTH;
+	wire	[$clog2(BUS_WIDTH/8):0]	ffif_first_bytes, ffif_second_bytes;
+
+	assign	ffif_first_bytes = ffif_first_data[FF_BYTES_POSN +: $clog2(DW/8)+1];
+	assign	ffif_second_bytes = ffif_second_data[FF_BYTES_POSN +: $clog2(DW/8)+1];
+
+	always @(*)
+	if (i_reset || !r_busy)
+	begin
+	end else begin
+		// assert(ffif_last_bytes <= DW/8);
+		if (ffif_first_in_fifo)
+		begin
+			if (!last_rcvd)
+			begin
+				assert(!ffif_first_data[FIFO_WIDTH-1]);
+			end else if (ign_fif_fill == ffif_distance_to_first+1)
+			begin
+				assert(ffif_first_data[FIFO_WIDTH-1]);
+			end else begin
+				assert(!ffif_first_data[FIFO_WIDTH-1]);
+			end
+
+			if (!ffif_first_data[FIFO_WIDTH-1])
+			begin
+				assert(ffif_first_bytes == (DW/8));
+			end else begin
+				assert(ffif_first_bytes == ffif_last_bytes);
+				assert(ign_fif_fill == ffif_distance_to_first+1);
+			end
+		end
+
+		if (ffif_second_in_fifo)
+		begin
+			if (!last_rcvd)
+			begin
+				assert(!ffif_second_data[FIFO_WIDTH-1]);
+			end else if (ign_fif_fill == ffif_distance_to_second+1)
+			begin
+				assert(ffif_second_data[FIFO_WIDTH-1]);
+			end else begin
+				assert(!ffif_second_data[FIFO_WIDTH-1]);
+			end
+
+			if (!ffif_second_data[FIFO_WIDTH-1])
+			begin
+				assert(ffif_second_bytes == (DW/8));
+			end else begin
+				assert(ffif_second_bytes == ffif_last_bytes);
+				assert(ign_fif_fill == ffif_distance_to_second+1);
+				if (ffif_first_in_fifo)
+					assert(!ffif_first_data[FIFO_WIDTH-1]);
+			end
+		end
+
+		if (!fif_empty
+			&& (!ffif_first_in_fifo || ffif_distance_to_first > 0)
+			&& (!ffif_second_in_fifo || ffif_distance_to_second > 0))
+		begin
+			// Assumed properties
+			if (!last_rcvd)
+			begin
+				assume(!fif_last);
+			end
+
+			if (!fif_last)
+			begin
+				assume(fif_bytes == (DW/8));
+				if (last_rcvd)
+					assume(ign_fif_fill > 1);
+			end else begin
+				assume(fif_bytes == ffif_last_bytes);
+				assume(ign_fif_fill == 1);
+				assume(fif_bytes <= (DW/8));
+				assume(fif_bytes > 0);
+			end
+		end
+	end
+
+	always @(*)
+	if (r_initial_burst || (faxi_wposn == 0 && !M_WVALID))
+	begin
+		case(f_cfg_size)
+		SZ_BYTE: f_base_wstrb = 1;
+		SZ_16B : begin
+			f_base_wstrb = { {(DW/8-2){1'b0}}, 2'h3 } << f_cfg_addr[0];
+			f_base_wstrb[DW/8-1:2] = 0;
+			end
+		SZ_32B : begin
+			f_base_wstrb = { {(DW/8-4){1'b0}}, 4'hf }<< f_cfg_addr[1:0];
+			if (DW > 32)
+				f_base_wstrb[DW/8-1:(DW > 32 ? 4:0)] = 0;
+			end
+		SZ_BUS: f_base_wstrb = {(DW/8){1'b1}} << f_cfg_addr[AXILSB-1:0];
+		endcase
+	end else begin
+		case(f_cfg_size)
+		SZ_BYTE: f_base_wstrb = { {(DW/8-1){1'b0}},  1'b1 };
+		SZ_16B:  f_base_wstrb = { {(DW/8-2){1'b0}}, 2'b11 };
+		SZ_32B:  f_base_wstrb = 15;
+		SZ_BUS:  f_base_wstrb = {(DW/8){1'b1}};
+		endcase
+	end
+
+	always @(*)
+	if (!i_reset && r_busy)
+		assert(base_wstrb == f_base_wstrb);
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -1889,7 +2804,7 @@ module	sdax_s2mm #(
 	////////////////////////////////////////////////////////////////////////
 	//
 	//
-
+`ifdef	CONTRACT
 	(* anyconst *)	reg				fc_check;
 	(* anyconst *)	reg	[ADDRESS_WIDTH:0]	fc_posn;
 	(* anyconst *)	reg	[7:0]			fc_byte;
@@ -1945,16 +2860,15 @@ module	sdax_s2mm #(
 	end
 
 	always @(*)
-	if (o_busy)
-		assert(faxi_wposn <= f_posn);
-
-	always @(*)
 	if (fax_check)
 	begin
 		assert(fc_partial_axi[7:0] == fc_byte);
 		assert(fc_partial_sel[0]);
 	end
-
+`endif
+	always @(*)
+	if (o_busy && !cmd_abort && !data_sent)
+		assert(faxi_wposn <= f_posn);
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -2001,6 +2915,59 @@ module	sdax_s2mm #(
 	//
 	//
 
+	// Assume we always go over at the S* front end *exactly* if at all
+	//   Realistically, this is an error condition that should be detected,
+	//   not something that we assume will never happen--so let's call this
+	//   a "careless" assumption and come back to deal with it properly
+	//   later.
+	//
+	always @(*)
+	if (o_busy)
+		assume(!f_posn[ADDRESS_WIDTH] || f_posn[ADDRESS_WIDTH-1:0]==0);
+
+	always @(*)
+	if (f_past_valid && r_busy && axi_awaddr < f_cfg_addr)
+	begin
+		assert(f_cfg_inc);
+		assert(r_overflow);
+	end
+
+	always @(*)
+	if (r_busy && (M_AWVALID || axi_awaddr == nxt_awaddr[AW-1:0]) && !data_sent)
+	begin
+		assert(f_waddr <= M_AWADDR);
+		assert(f_waddr >= f_cfg_addr);
+	end
+
+	// always @(*) if (r_busy) assume(!cmd_abort);
+	// always @(*) if (r_busy) assume(!last_rcvd);
+	// always @(*) assume(f_cfg_inc);
+	// always @(*) assume(f_cfg_size == SZ_BYTE);
+
+	always @(*) assert(beats_committed <= 256);
+
+	// always @(*) if (M_AWVALID) assume(M_AWREADY);
+	// always @(*) if (M_WVALID) assume(M_WREADY);
+
+	// always @(*) if (M_AWVALID || M_WVALID) assume(!S_VALID);
+	// always @(*) assume(f_cfg_size >= SZ_16B
+	//			|| f_cfg_addr[AXILSB-1:0] == 0);
+
+	// We *PASS* w/ !last_rcvd regardless of our alignment or abort status
+	// CONTRACT test not (yet) enabled
+	//
+	// Passes, in 5 minutex
+	// always @(*) assume(f_cfg_addr[AXILSB-1:0] == 0 && f_cfg_size[1]);
+	// Still going after 49min ...
+	// always @(*) assume(f_cfg_addr[AXILSB-1:0] == 0);
+	// Then I started rewriting AXI AWLEN via tail_bytes, and ... everything
+	//   broke.
+	//
+	//
+	// always @(*) if (o_busy && r_initial_burst) assume(!last_rcvd);
+	always @(*) assume(f_cfg_size == SZ_BYTE || f_cfg_size == SZ_16B);
+	// always @(*) assume(f_cfg_inc);
+	always @(*) assume(!cmd_abort);
 	// }}}
 `endif
 // }}}

@@ -56,6 +56,11 @@ $dir = ".";
 	"sdtxframe",
 	"sdrxframe",
 	##
+	"sddma_rxgears",
+	"sddma_txgears",
+	"sddma_mm2s",
+	"sddma_s2mm",
+	##
 	"sdsfsm"
 	);
 
@@ -73,6 +78,11 @@ $dir = ".";
 	"sdckgen"	=> "SDIO Divided clock generator",
 	"sdtxframe"	=> "SDIO transmit data controller",
 	"sdrxframe"	=> "SDIO receive data handler",
+	"sddma_rxgears" => "DMA Receiving gears (to wide)",
+	"sddma_txgears" => "DMA Receiving gears (from wide)",
+	"sddma_mm2s"	=> "DMA (WB) Memory copy to stream",
+	"sddma_s2mm"	=> "DMA (WB) Stream copy to memory DMA",
+	##
 	##
 	"sdsfsm"	=> "SDIO Slave FSM control driver"
 	);

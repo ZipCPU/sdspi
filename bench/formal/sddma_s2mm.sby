@@ -1,0 +1,24 @@
+[tasks]
+prf
+cvr
+
+[options]
+prf: mode prove
+prf: depth 8
+cvr: mode cover
+
+[engines]
+smtbmc
+
+[script]
+read -formal sddma_s2mm.v
+read -formal fwb_master.v
+--pycode-begin--
+cmd = "hierarchy -top sddma_s2mm"
+output(cmd)
+--pycode-end--
+prep -top sddma_s2mm
+
+[files]
+fwb_master.v
+../../rtl/sddma_s2mm.v

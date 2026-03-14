@@ -584,6 +584,7 @@ module	sdio #(
 		// {{{
 		.OPT_SERDES(OPT_SERDES || OPT_DDR),
 		.OPT_CRCTOKEN(OPT_CRCTOKEN),
+		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN),
 		.NUMIO(NUMIO)
 		// .MW(MW)
 		// }}}
@@ -616,6 +617,7 @@ module	sdio #(
 	sdrxframe #(
 		// {{{
 		.OPT_DS(OPT_SERDES), .NUMIO(NUMIO),
+		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN),
 		.LGLEN(LGFIFO),
 		.MW(MW),
 		.LGTIMEOUT(LGTIMEOUT)

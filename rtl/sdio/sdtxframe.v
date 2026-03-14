@@ -52,6 +52,7 @@ module	sdtxframe #(
 		// cycle.  This is in an attempt to match Xilinx's 8x SERDES.
 		parameter [0:0]		OPT_SERDES = 1'b0,
 		parameter [0:0]		OPT_CRCTOKEN = 1'b0,
+		parameter [0:0]		OPT_LITTLE_ENDIAN = 1'b0,
 		parameter [NCRC-1:0]	CRC_POLYNOMIAL  = 16'h1021,
 		parameter		NUMIO = 8
 		// }}}
@@ -105,6 +106,7 @@ module	sdtxframe #(
 
 	reg		cfg_ddr, cfg_pp;
 	reg	[1:0]	cfg_width, cfg_period;
+	wire	[31:0]	bigend_data;
 
 
 	wire		start_packet;
@@ -177,6 +179,19 @@ module	sdtxframe #(
 		cfg_ddr <= 1'b0;
 	else if (pstate == P_IDLE)
 		cfg_ddr <= i_cfg_ddr;
+
+	generate if (OPT_LITTLE_ENDIAN)
+	begin : GEN_BYTE_SWAP
+		// The SDTXFRAME algorithm below assumes the incoming data is
+		// big endian.  Bits[31:24] come "first".  But ... what if it's
+		// not?  In that case, we need to swap byte order from little
+		// endian to big endian.  Everything else should be identical.
+		// We do that byte swap here.
+		assign	bigend_data = { S_DATA[7:0], S_DATA[15:8],
+					S_DATA[23:16], S_DATA[31:24] };
+	end else begin : NO_BYTE_SWAP
+		assign	bigend_data = S_DATA;
+	end endgenerate
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -200,35 +215,35 @@ module	sdtxframe #(
 		// {{{
 		pstate <= P_IDLE;
 		pre_valid <= 0;
-		// pre_data <= (S_VALID) ? S_DATA : {(32){1'b1}};
+		// pre_data <= (S_VALID) ? bigend_data : {(32){1'b1}};
 		if (!S_VALID)
 			pre_data <= {(32){1'b1}};
 		else if (!i_cfg_ddr || (NUMIO >= 8 && i_cfg_width == WIDTH_8W))
-			pre_data <= S_DATA;
+			pre_data <= bigend_data;
 		else if (i_cfg_width == WIDTH_4W && (NUMIO >= 4))
 			pre_data <= {
-				S_DATA[31:28], S_DATA[23:20],
-				S_DATA[27:24], S_DATA[19:16],
-				S_DATA[15:12], S_DATA[ 7: 4],
-				S_DATA[11: 8], S_DATA[ 3: 0] };
+				bigend_data[31:28], bigend_data[23:20],
+				bigend_data[27:24], bigend_data[19:16],
+				bigend_data[15:12], bigend_data[ 7: 4],
+				bigend_data[11: 8], bigend_data[ 3: 0] };
 		else
 			pre_data <= {
-				S_DATA[31], S_DATA[23],
-				S_DATA[30], S_DATA[22],
-				S_DATA[29], S_DATA[21],
-				S_DATA[28], S_DATA[20],
-				S_DATA[27], S_DATA[19],
-				S_DATA[26], S_DATA[18],
-				S_DATA[25], S_DATA[17],
-				S_DATA[24], S_DATA[16],
-				S_DATA[15], S_DATA[ 7],
-				S_DATA[14], S_DATA[ 6],
-				S_DATA[13], S_DATA[ 5],
-				S_DATA[12], S_DATA[ 4],
-				S_DATA[11], S_DATA[ 3],
-				S_DATA[10], S_DATA[ 2],
-				S_DATA[ 9], S_DATA[ 1],
-				S_DATA[ 8], S_DATA[ 0] };
+				bigend_data[31], bigend_data[23],
+				bigend_data[30], bigend_data[22],
+				bigend_data[29], bigend_data[21],
+				bigend_data[28], bigend_data[20],
+				bigend_data[27], bigend_data[19],
+				bigend_data[26], bigend_data[18],
+				bigend_data[25], bigend_data[17],
+				bigend_data[24], bigend_data[16],
+				bigend_data[15], bigend_data[ 7],
+				bigend_data[14], bigend_data[ 6],
+				bigend_data[13], bigend_data[ 5],
+				bigend_data[12], bigend_data[ 4],
+				bigend_data[11], bigend_data[ 3],
+				bigend_data[10], bigend_data[ 2],
+				bigend_data[ 9], bigend_data[ 1],
+				bigend_data[ 8], bigend_data[ 0] };
 
 		if (start_packet)
 		begin
@@ -243,32 +258,32 @@ module	sdtxframe #(
 			pre_valid <= 1;
 
 			if (!cfg_ddr || cfg_width == WIDTH_8W)
-				pre_data <= S_DATA;
+				pre_data <= bigend_data;
 			else if (cfg_width == WIDTH_4W)
 			begin
 				pre_data <= {
-					S_DATA[31:28], S_DATA[23:20],
-					S_DATA[27:24], S_DATA[19:16],
-					S_DATA[15:12], S_DATA[ 7: 4],
-					S_DATA[11: 8], S_DATA[ 3: 0] };
+					bigend_data[31:28], bigend_data[23:20],
+					bigend_data[27:24], bigend_data[19:16],
+					bigend_data[15:12], bigend_data[ 7: 4],
+					bigend_data[11: 8], bigend_data[ 3: 0] };
 			end else begin
 				pre_data <= {
-					S_DATA[31], S_DATA[23],
-					S_DATA[30], S_DATA[22],
-					S_DATA[29], S_DATA[21],
-					S_DATA[28], S_DATA[20],
-					S_DATA[27], S_DATA[19],
-					S_DATA[26], S_DATA[18],
-					S_DATA[25], S_DATA[17],
-					S_DATA[24], S_DATA[16],
-					S_DATA[15], S_DATA[ 7],
-					S_DATA[14], S_DATA[ 6],
-					S_DATA[13], S_DATA[ 5],
-					S_DATA[12], S_DATA[ 4],
-					S_DATA[11], S_DATA[ 3],
-					S_DATA[10], S_DATA[ 2],
-					S_DATA[ 9], S_DATA[ 1],
-					S_DATA[ 8], S_DATA[ 0] };
+					bigend_data[31], bigend_data[23],
+					bigend_data[30], bigend_data[22],
+					bigend_data[29], bigend_data[21],
+					bigend_data[28], bigend_data[20],
+					bigend_data[27], bigend_data[19],
+					bigend_data[26], bigend_data[18],
+					bigend_data[25], bigend_data[17],
+					bigend_data[24], bigend_data[16],
+					bigend_data[15], bigend_data[ 7],
+					bigend_data[14], bigend_data[ 6],
+					bigend_data[13], bigend_data[ 5],
+					bigend_data[12], bigend_data[ 4],
+					bigend_data[11], bigend_data[ 3],
+					bigend_data[10], bigend_data[ 2],
+					bigend_data[ 9], bigend_data[ 1],
+					bigend_data[ 8], bigend_data[ 0] };
 			end
 
 			if (S_LAST)
@@ -385,66 +400,66 @@ module	sdtxframe #(
 		end
 		// }}}
 
-		// Advance the CRCs based on S_DATA
+		// Advance the CRCs based on bigend_data
 		// {{{
 		new_crc_2w[1*NCRC +: NCRC] =
 			APPLYCRC16(di_crc_2w[1*NCRC +: NCRC],
-				{ S_DATA[31],S_DATA[30],
-					S_DATA[29],S_DATA[28],
-					S_DATA[27],S_DATA[26],
-					S_DATA[25],S_DATA[24],
-					S_DATA[15],S_DATA[14],
-					S_DATA[13],S_DATA[12],
-					S_DATA[11],S_DATA[10],
-					S_DATA[ 9],S_DATA[ 8] });
+				{ bigend_data[31],bigend_data[30],
+					bigend_data[29],bigend_data[28],
+					bigend_data[27],bigend_data[26],
+					bigend_data[25],bigend_data[24],
+					bigend_data[15],bigend_data[14],
+					bigend_data[13],bigend_data[12],
+					bigend_data[11],bigend_data[10],
+					bigend_data[ 9],bigend_data[ 8] });
 
 		new_crc_2w[0*NCRC +: NCRC] =
 			APPLYCRC16(di_crc_2w[0*NCRC +: NCRC],
-				{ S_DATA[23],S_DATA[22],
-					S_DATA[21],S_DATA[20],
-					S_DATA[19],S_DATA[18],
-					S_DATA[17],S_DATA[16],
-					S_DATA[ 7],S_DATA[ 6],
-					S_DATA[ 5],S_DATA[ 4],
-					S_DATA[ 3],S_DATA[ 2],
-					S_DATA[ 1],S_DATA[ 0] });
+				{ bigend_data[23],bigend_data[22],
+					bigend_data[21],bigend_data[20],
+					bigend_data[19],bigend_data[18],
+					bigend_data[17],bigend_data[16],
+					bigend_data[ 7],bigend_data[ 6],
+					bigend_data[ 5],bigend_data[ 4],
+					bigend_data[ 3],bigend_data[ 2],
+					bigend_data[ 1],bigend_data[ 0] });
 
 		for(ik=0; ik<4; ik=ik+1)
 		begin
 			new_crc_4w[ik*NCRC +: NCRC] =
 				APPLYCRC8(di_crc_4w[ik*NCRC +: NCRC],
-					{ S_DATA[28+ik],S_DATA[24+ik],
-						S_DATA[20+ik],S_DATA[16+ik],
-						S_DATA[12+ik],S_DATA[ 8+ik],
-						S_DATA[ 4+ik],S_DATA[   ik] });
+					{ bigend_data[28+ik],bigend_data[24+ik],
+						bigend_data[20+ik],bigend_data[16+ik],
+						bigend_data[12+ik],bigend_data[ 8+ik],
+						bigend_data[ 4+ik],bigend_data[   ik] });
 		end
 
 		for(ik=0; ik<4; ik=ik+1)
 		begin
 			new_crc_4d[(2*ik+1)*NCRC +: NCRC] =
 				APPLYCRC4(di_crc_4d[(2*ik+1)*NCRC +: NCRC],
-					{ S_DATA[28+ik], S_DATA[24+ik],
-					  S_DATA[12+ik], S_DATA[ 8+ik] });
+					{ bigend_data[28+ik], bigend_data[24+ik],
+					  bigend_data[12+ik], bigend_data[ 8+ik] });
 
 			new_crc_4d[2*ik*NCRC +: NCRC] =
 				APPLYCRC4(di_crc_4d[2*ik*NCRC +: NCRC],
-					{ S_DATA[20+ik], S_DATA[16+ik],
-					  S_DATA[ 4+ik], S_DATA[   ik] });
+					{ bigend_data[20+ik], bigend_data[16+ik],
+					  bigend_data[ 4+ik], bigend_data[   ik] });
 		end
 
 		for(ik=0; ik<8; ik=ik+1)
 		begin
 			new_crc_8w[ik*NCRC +: NCRC] =
 				APPLYCRC4(di_crc_8w[ik*NCRC +: NCRC],
-					{ S_DATA[24+ik], S_DATA[16+ik],
-						S_DATA[8+ik], S_DATA[ik] });
+					{ bigend_data[24+ik], bigend_data[16+ik],
+						bigend_data[8+ik], bigend_data[ik] });
 		end
 
 		for(ik=0; ik<16; ik=ik+1)
 		begin
 			new_crc_8d[ik*NCRC +: NCRC] =
 				APPLYCRC2(di_crc_8d[ik*NCRC +: NCRC],
-					{ S_DATA[16+ik], S_DATA[ik] });
+					{ bigend_data[16+ik], bigend_data[ik] });
 		end
 		// }}}
 
@@ -494,7 +509,7 @@ module	sdtxframe #(
 		WIDTH_1W: if (cfg_ddr)
 				crc_2w_reg <= nxt_crc_2w;
 			else
-				crc_1w_reg <= APPLYCRC32(crc_1w_reg, S_DATA);
+				crc_1w_reg <= APPLYCRC32(crc_1w_reg, bigend_data);
 		WIDTH_4W: if (cfg_ddr)
 				crc_4d_reg <= nxt_crc_4d;
 			else

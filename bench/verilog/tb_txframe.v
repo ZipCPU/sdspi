@@ -42,6 +42,7 @@ module	tb_txframe;
 	// Local declarations
 	// {{{
 	parameter [0:0]	OPT_SERDES = 1'b1;
+	parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0;
 	reg		clk, reset;
 	reg	[7:0]	cfg_spd;
 	reg	[1:0]	cfg_width;
@@ -85,7 +86,8 @@ module	tb_txframe;
 	// {{{
 
 	sdtxframe #(
-		.OPT_SERDES(OPT_SERDES)
+		.OPT_SERDES(OPT_SERDES),
+		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN)
 	) u_txframe (
 		// {{{
 		.i_clk(clk), .i_reset(reset),

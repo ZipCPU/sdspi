@@ -129,11 +129,11 @@ task	sdio_wait_while_busy;
 	reg	[31:0]	read_data;
 	reg		prior_interrupt;
 begin
-$display("WAIT-WHILE-BUSY");
+	// $display("WAIT-WHILE-BUSY");
 	r_interrupted   = 1'b0;
 	prior_interrupt = 1'b0;
 	u_bfm.readio(ADDR_SDCARD, read_data);
-$display("FIRST-CHECK: %08x", read_data);
+	// $display("FIRST-CHECK: %08x", read_data);
 	if(read_data & SDIO_BUSY)
 	begin
 		while(!prior_interrupt && (read_data & SDIO_BUSY))
@@ -357,8 +357,12 @@ end endtask
 // }}}
 
 reg	[31:0]	tuning_pat[0:15];
+`ifdef	SDIO_AXI
+integer		reorder;
+`endif
 
 initial begin
+	// This is a big-endian byte order, with bits [31:24] coming first
 	tuning_pat[ 0]=	32'hFF0FFF00;
 	tuning_pat[ 1]=	32'hFFCCC3CC;
 	tuning_pat[ 2]=	32'hC33CCCFF;
@@ -375,6 +379,16 @@ initial begin
 	tuning_pat[13]=	32'hDFFFBFFF;
 	tuning_pat[14]=	32'hBBFFF7FF;
 	tuning_pat[15]=	32'hF77F7BDE;
+`ifdef	SDIO_AXI
+	// In AXI, we need to byte-reverse the tuning pattern to account for
+	// the little endian byte ordering
+	for(reorder=0; reorder<16; reorder=reorder+1)
+		tuning_pat[reorder] = {
+			tuning_pat[reorder][ 7: 0],
+			tuning_pat[reorder][15: 8],
+			tuning_pat[reorder][23:16],
+			tuning_pat[reorder][31:24] };
+`endif
 end
 
 task	sdcard_send_tuning_block;	// CMD19
@@ -417,7 +431,11 @@ $display("SEND-TUNING-BLOCK");
 		begin
 			u_bfm.readio(ADDR_FIFOA, dat_reg);
 			if (tuning_pat[k] !== dat_reg)
+			begin
+				$display("-- TUNING-PAT[%1d] = %08x <> %08x (Read mismatch)",
+					k, tuning_pat[k], dat_reg);
 				vld = 0;
+			end
 		end
 
 		if (vld)
@@ -428,7 +446,8 @@ $display("SEND-TUNING-BLOCK");
 			eyesz = eyesz + 1;
 			$display("-- %2d is valid", ph);
 		end else begin
-			$display("-- %2d *INVALID*", ph);
+			$display("-- %2d *INVALID*",
+				ph, eyesz, ctrl_reg);
 			if (eyesz > best_eye)
 			begin
 				best_ph = (ph - first_eye)/ 2 + first_eye;

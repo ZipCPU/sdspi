@@ -702,7 +702,6 @@ static	void	sdio_send_tuning_block(SDIODRV *dev) { // CMD19
 		unsigned vld = 1;
 		for(int k=0; k<16; k++)
 			rxv[k] = dev->d_dev->sd_fifa;
-		for(int k=0; k<16; k++) {
 		for(int k=0; (k<16) && vld; k++) {
 			unsigned	r;
 			r = rxv[k];

@@ -317,10 +317,17 @@ begin
 	for(ik=0; ik<512/4; ik=ik+1)
 	begin
 		u_bfm.readio(ADDR_FIFOA, uv);
+`ifdef	SDIO_AXI
+		ext_csd[511-(4*ik+0)] = uv[ 7: 0];
+		ext_csd[511-(4*ik+1)] = uv[15: 8];
+		ext_csd[511-(4*ik+2)] = uv[23:16];
+		ext_csd[511-(4*ik+3)] = uv[31:24];
+`else
 		ext_csd[511-(4*ik+0)] = uv[31:24];
 		ext_csd[511-(4*ik+1)] = uv[23:16];
 		ext_csd[511-(4*ik+2)] = uv[15: 8];
 		ext_csd[511-(4*ik+3)] = uv[ 7: 0];
+`endif
 	end
 
 	u_bfm.readio(ADDR_SDCARD, ctrl_reg);
@@ -375,17 +382,32 @@ begin
 	u_bfm.writeio(ADDR_SDDATA, 32'h0);
 	case(phy_reg[11:10])
 	2'b01: begin
+`ifdef	SDIO_AXI
+		u_bfm.writeio(ADDR_FIFOA, 32'h0000_005a);
+		u_bfm.writeio(ADDR_FIFOA, 32'h0000_0000);
+`else
 		u_bfm.writeio(ADDR_FIFOA, 32'h5a00_0000);
 		u_bfm.writeio(ADDR_FIFOA, 32'h0000_0000);
+`endif
 		end
 	2'b10: begin
+`ifdef	SDIO_AXI
+		u_bfm.writeio(ADDR_FIFOA, 32'h0000_aa55);
+		u_bfm.writeio(ADDR_FIFOA, 32'h0000_0000);
+`else
 		u_bfm.writeio(ADDR_FIFOA, 32'h55aa_0000);
 		u_bfm.writeio(ADDR_FIFOA, 32'h0000_0000);
+`endif
 		end
 	// 2'b00:
 	default: begin	// Also 2'b00 (1b width)
+`ifdef	SDIO_AXI
+		u_bfm.writeio(ADDR_FIFOA, 32'h0000_0080);
+		u_bfm.writeio(ADDR_FIFOA, 32'h0000_0000);
+`else
 		u_bfm.writeio(ADDR_FIFOA, 32'h8000_0000);
 		u_bfm.writeio(ADDR_FIFOA, 32'h0000_0000);
+`endif
 		end
 	endcase
 

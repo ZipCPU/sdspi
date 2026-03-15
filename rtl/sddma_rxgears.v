@@ -538,6 +538,48 @@ module	sddma_rxgears #(
 	//
 	//
 
+	reg	[7:0]	cvr_8b, cvr_16b, cvr_32b;
+
+	initial	cvr_8b = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset || i_soft_reset
+			|| (M_VALID && M_READY && M_LAST)
+			|| (S_VALID && S_BYTES > 1))
+		cvr_8b <= 0;
+	else if (M_VALID && M_READY && M_BYTES >= DW/8)
+		cvr_8b <= cvr_8b+1;
+
+
+	initial	cvr_16b = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset || i_soft_reset
+			|| (M_VALID && M_READY && M_LAST)
+			|| (S_VALID && S_BYTES != 2))
+		cvr_16b <= 0;
+	else if (M_VALID && M_READY) //  && M_BYTES >= DW/8)
+		cvr_16b <= cvr_16b+1;
+
+
+	initial	cvr_32b = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset || i_soft_reset
+			|| (M_VALID && M_READY && M_LAST)
+			|| (S_VALID && S_BYTES > 4 && S_BYTES < DW/8))
+		cvr_32b <= 0;
+	else if (M_VALID && M_READY) //  && M_BYTES >= DW/8)
+		cvr_32b <= cvr_32b+1;
+
+
+	always @(*)
+	begin
+		cover(cvr_8b  > 8 && M_VALID && M_LAST);
+		cover(cvr_16b > 8 && M_VALID && M_LAST);
+		cover(cvr_32b > 8 && M_VALID && M_LAST);
+
+		cover(f_sent >= 32 && M_VALID && M_LAST);
+		cover(f_sent >= 64 && M_VALID && M_LAST);
+	end
+
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//

@@ -7,6 +7,9 @@ my $sdio_nodma  = " -chparam OPT_DMA 1\'b0 -chparam NUMIO 4 -chparam OPT_EMMC 1\
 my $emmc_nodma  = " -chparam OPT_DMA 1\'b0 -chparam NUMIO 8 -chparam OPT_EMMC 1\'b1";
 my $sdio_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_EMMC 1\'b0 -chparam NUMIO 4 -chparam OPT_ISTREAM 1\'b1 -chparam OPT_OSTREAM 1\'b1 -chparam DMA_DW 64";
 my $emmc_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_EMMC 1\'b1 -chparam NUMIO 8 -chparam OPT_ISTREAM 1\'b1 -chparam OPT_OSTREAM 1\'b1 -chparam DMA_DW 64";
+my $emmc_boot  = $emmc_dma . " -chparam OPT_BOOTEN 1\'b1 -chparam OPT_AUTOBOOT 1\'b1 BOOT_TOKEN 1\'b1";
+
+$emmc_dma = $emmc_dma . " -chparam OPT_BOOTEN 1\'b0";
 ## }}}
 
 ## Files
@@ -134,6 +137,13 @@ $header = "           iCE40  X7-s   RAW\n"
 	$result = $result . $line;
 	print USAGE $line;
 
+	$line = sprintf("EMMC w/BOOT:  %5d %5d %7d\n",
+		calcusage($ice40synth, "sdio", "wb", $emmc_boot,""),
+		calcusage($xilinxsynth,"sdio", "wb", $emmc_boot,""),
+		calcusage($asicsynth,  "sdio", "wb", $emmc_dma,$asicpost));
+	$result = $result . $line;
+	print USAGE $line;
+
 	$line = sprintf("SDAXI w/DMA: %5d %5d %7d\n",
 		calcusage($ice40synth, "sdio", "axil", $sdio_dma,""),
 		calcusage($xilinxsynth,"sdio", "axil", $sdio_dma,""),
@@ -145,6 +155,13 @@ $header = "           iCE40  X7-s   RAW\n"
 		calcusage($ice40synth, "sdio", "axil", $emmc_dma,""),
 		calcusage($xilinxsynth,"sdio", "axil", $emmc_dma,""),
 		calcusage($asicsynth,  "sdio", "axil", $emmc_dma,$asicpost));
+	$result = $result . $line;
+	print USAGE $line;
+
+	$line = sprintf("EMAXI w/BOOT: %5d %5d %7d\n",
+		calcusage($ice40synth, "sdio", "axil", $emmc_boot,""),
+		calcusage($xilinxsynth,"sdio", "axil", $emmc_boot,""),
+		calcusage($asicsynth,  "sdio", "axil", $emmc_boot,$asicpost));
 	$result = $result . $line;
 	print USAGE $line;
 

@@ -268,6 +268,7 @@ foreach $prf (sort @proofs) {
 	}
 
 	my $firstd = 1;
+	my $notfound = ($ndirs >= 1) ? 0:1;
 
 	# Find each subproof of the component
 	foreach $dent (@dirent) {
@@ -302,10 +303,10 @@ foreach $prf (sort @proofs) {
 		my $tail;
 		if ($firstd) {
 			print "<TR></TR>\n";
-			$tail = "</TD><TD>$el</TD><TD>$prf</TD><TD>$subprf</TD><TD rowspan=$ndirs>$desc{$prf}</TD></TR>\n";
+			$tail = "</TD><TD>$el</TD><TD rowspan=$ndirs>$prf</TD><TD>$subprf</TD><TD rowspan=$ndirs>$desc{$prf}</TD></TR>\n";
 			$firstd = 0;
 		} else {
-			$tail = "</TD><TD>$el</TD><TD>$prf</TD><TD>$subprf</TD></TR>\n";
+			$tail = "</TD><TD>$el</TD><TD>$subprf</TD></TR>\n";
 		} if ($link ne "") {
 			$tail = "</A>" . $tail;
 		}
@@ -340,7 +341,9 @@ foreach $prf (sort @proofs) {
 		}
 		## }}}
 	} if ($myfirstd != 0) {
-		print "<TR><TD bgcolor=#e5e5e5>Not found</TD><TD>$prf</TD><TD>&nbsp;</TD><TD rowspan=$ndirs>$desc{$prf}</TD></TR>\n";
+		print "<TR><TD bgcolor=#e5e5e5 colspan=2>Not found</TD><TD>$prf</TD><TD>&nbsp;</TD><TD rowspan=$ndirs>$desc{$prf}</TD></TR>\n";
+	} elsif ($notfound) {
+		print "<TR><TD bgcolor=#e5e5e5 colspan=2>Not found</TD><TD>$prf</TD><TD>&nbsp;</TD><TD rowspan=$ndirs>$desc{$prf}</TD></TR>\n";
 	}
 }
 

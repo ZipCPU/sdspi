@@ -78,7 +78,7 @@ axemmc8x	AXI emmcstart	OPT_SERDES=1 OPT_DDR=1
 ## }}}
 ##
 ## eMMC BOOT
-# emmcboot8x	WB  emmcboot	OPT_SERDES=1 OPT_DDR=1 OPT_BOOTEN=1 OPT_VCD=1
+emmcboot8x	WB  emmcboot	OPT_SERDES=1 OPT_BOOTEN=1
 #
 ## SDSLAVE
 ## {{{

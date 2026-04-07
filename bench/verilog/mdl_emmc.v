@@ -50,6 +50,7 @@ module	mdl_emmc #(
 		parameter	LGMEMSZ = 20,	// Log_2(Mem size in bytes)
 		parameter	LGBOOTSZ = 17,	// Minimum of 17, for 128kB
 		parameter	MAX_BLKLEN = 512,	// Max Blk Size in bytes
+		parameter [0:0]	OPT_BOOTTOK = 1'b1,
 		parameter [3:0]	OPT_BOOTMODE = 4'h0,
 		// MEM_HEX: If non-zero, is the name of a hex file to be used
 		// to initialize the main memory of the device.
@@ -135,7 +136,7 @@ module	mdl_emmc #(
 	integer	read_ik;
 	reg		write_en, tx_valid, tx_last, pending_write;
 	reg	[31:0]	tx_data;
-	wire		tx_ready, tx_ds;
+	wire		raw_tx_ready, tx_ready, tx_ds;
 	reg	[LGBLKSZ-1:0]	tx_addr;
 
 	reg	[31:0]	mem_buf	[0:(MAX_BLKLEN/4)-1];
@@ -156,6 +157,12 @@ module	mdl_emmc #(
 	wire	[31:0]	QSR;
 
 	reg	[6:0]	boot_clk_count;
+	reg	[3:0]	boot_startup_count;
+	wire		boot_gate;
+	// boot_mode: We're doing boot types of stuff
+	// boot_active: We're actively sending a block
+	// alt_boot_mode: Entered via command, CMD will be high, see spec for
+	//	more details
 	reg		boot_mode, boot_active, alt_boot_mode;
 	reg		busy_programming;
 
@@ -195,9 +202,40 @@ module	mdl_emmc #(
 	generate if (MEM_HEX != 0)
 	begin
 		initial	begin
-			$readmemh(MEM_HEX, boot_mem1);
+			$readmemh(MEM_HEX, mem);
 		end
 	end endgenerate
+
+	task	randmize_boot;
+		// {{{
+		integer	wadr;
+	begin
+$display("Randomize boot data");
+		for(wadr=0; wadr < BOOTSZ/4; wadr=wadr+1)
+			boot_mem1[wadr] = $random;
+		for(wadr=0; wadr < BOOTSZ/4; wadr=wadr+1)
+			boot_mem2[wadr] = $random;
+	end endtask
+	// }}}
+
+	task	randmize_mem;
+		// {{{
+		integer	wadr;
+	begin
+		for(wadr=0; wadr < MEMSZ/4; wadr=wadr+1)
+			mem[wadr] = $random;
+	end endtask
+	// }}}
+
+	task	read_bootword(input [BOOTSZ/4:0] wadr, output[31:0] data);
+		// {{{
+	begin
+		if (wadr[BOOTSZ/4])
+			data = boot_mem2[wadr[BOOTSZ/4-1:0]];
+		else
+			data = boot_mem1[wadr[BOOTSZ/4-1:0]];
+	end endtask
+	// }}}
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -205,10 +243,28 @@ module	mdl_emmc #(
 	// Command wire handler
 	// {{{
 
+	reg	sdcmd_reset_n;
+
+	always @(*)
+	begin
+		sdcmd_reset_n = 1'b1;
+
+		if ((card_state == EMMC_BOOT || card_state == EMMC_PRE_IDLE)
+				&& (sd_cmd === 1'b0)
+				&& boot_clk_count > 44)
+			sdcmd_reset_n = 1'b0;
+
+		if (alt_boot_mode)
+			sdcmd_reset_n = 1'b1;
+		if (!rst_n)
+			sdcmd_reset_n = 1'b0;
+	end
+
 	mdl_sdcmd
 	tb_sdcmd (
 		// {{{
-		.rst_n(rst_n), .sd_clk(sd_clk), .sd_cmd(sd_cmd),
+		.rst_n(sdcmd_reset_n),
+			.sd_clk(sd_clk), .sd_cmd(sd_cmd),
 			.sd_ds(cmd_ds),
 		//
 		.o_cmd_valid(cmd_valid), .o_cmd(cmd), .o_arg(cmd_arg),
@@ -251,7 +307,7 @@ module	mdl_emmc #(
 	mdl_sdtx
 	tb_sdtx (
 		// {{{
-		.rst_n(rst_n && (!boot_mode || sd_cmd === 1'b0)),
+		.rst_n(rst_n && (!boot_mode || alt_boot_mode || sd_cmd === 1'b0)),
 			.sd_clk(sd_clk), .sd_dat( sd_dat ), .sd_ds(tx_ds),
 		//
 		.i_en(write_en),
@@ -260,28 +316,50 @@ module	mdl_emmc #(
 		//
 		.i_crcack(r_crcack), .i_crcnak(r_crcnak),
 		//
-		.i_valid(tx_valid), .o_ready(tx_ready),
+		.i_valid(tx_valid && boot_gate),
+			.o_ready(raw_tx_ready),
 			.i_data(tx_data), .i_last(tx_last)
 		// }}}
 	);
+
+	assign	boot_gate = (!boot_mode || boot_startup_count[3]);
+	assign	tx_ready= raw_tx_ready && boot_gate;
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Boot setup
 	// {{{
+	reg	reset_boot_clk_count_n;
+
+	always @(*)
+	begin
+		reset_boot_clk_count_n = 1'b1;
+
+		if (!alt_boot_mode && sd_cmd !== 1'b0)
+			reset_boot_clk_count_n = 1'b0;
+		if (card_state != EMMC_PRE_IDLE && card_state != EMMC_BOOT)
+			reset_boot_clk_count_n = 1'b0;
+
+		if (!rst_n)
+			reset_boot_clk_count_n = 1'b0;
+	end
 
 	initial	boot_mode = 1'b0;
-
 	initial	boot_clk_count = 0;
-	always @(posedge sd_clk or negedge rst_n)
-	if (!rst_n)
-		boot_clk_count <= 0;
-	else if ((!alt_boot_mode && sd_cmd !== 1'b0)
-				|| card_state != EMMC_PRE_IDLE)
+	always @(posedge sd_clk or negedge reset_boot_clk_count_n)
+	if (!reset_boot_clk_count_n)
 		boot_clk_count <= 0;
 	else if (!(&boot_clk_count))
 		boot_clk_count <= boot_clk_count + 1;
+
+	always @(posedge sd_clk or negedge rst_n)
+	if (!rst_n)
+		boot_startup_count <= 0;
+	else if (card_state == EMMC_BOOT && r_crcack)
+		boot_startup_count <= 1;
+	else if (raw_tx_ready && boot_startup_count != 0 && !(&boot_startup_count))
+		boot_startup_count <= boot_startup_count+1;
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -330,6 +408,11 @@ module	mdl_emmc #(
 		// BUS_WIDTH
 		ext_csd[183] = 8'd0;
 
+		// Boot partition and boot token
+		ext_csd[179] <= 8'h0;
+			ext_csd[179][6  ] <= OPT_BOOTTOK;
+			ext_csd[179][5:3] <= 3'h1;
+
 		// Boot mode
 		case(OPT_BOOTMODE[1:0])
 		2'b00: ext_csd[177][1:0] = 2'b00;
@@ -344,7 +427,9 @@ module	mdl_emmc #(
 			if (OPT_BOOTMODE[1:0] == 2'h0)
 				// In DDR mode, we disallow starting in 1b mode
 				ext_csd[177][1:0] = 2'b1;
-		end
+		end else
+			// Always default to high speed mode timings
+			ext_csd[177][4:3] = 2'h1;
 
 		// Only some of these registers are properly implemented
 	end
@@ -419,9 +504,6 @@ module	mdl_emmc #(
 		else if (ext_csd[179][5:3] == 3'h2)
 			cfg_partition <= 3'h2;
 		else
-			cfg_partition <= 3'h0;
-
-		if (sd_cmd !== 1'b0)
 			cfg_partition <= 3'h0;
 	end else if (cmd_valid && !cmd_alt && cmd[5:0] == 6'd0)
 	begin
@@ -586,6 +668,8 @@ module	mdl_emmc #(
 	end
 	// }}}
 
+	initial	multi_block = 1'b0;
+	initial	boot_active = 1'b0;
 	always @(posedge sd_clk or negedge rst_n)
 	if (!rst_n)
 	begin
@@ -604,31 +688,46 @@ module	mdl_emmc #(
 		clear_errors  <= 1'b0;
 		bustest_w <= 1'b0;
 		bustest_r <= 1'b0;
-		boot_mode <= 1'b1;
+		boot_active <= 1'b0;
+		boot_mode <= 1'b0;
 		cfg_ppull <= 1'b0;
 		alt_boot_mode <= 1'b0;
+		multi_block <= 1'b0;
+		read_posn <= 0;
 		// }}}
 	end else if (card_state == EMMC_INACTIVE)
-	begin
+	begin	// Will remain inactive until a power cycle
+		// {{{
 		clear_errors  <= 1'b0;
 		bustest_w <= 1'b0;
 		bustest_r <= 1'b0;
 		cfg_ppull <= 1'b0;
-	end else if (cmd_valid && cmd[5:0] == 6'h0
-			&& cmd_arg != 32'hfffffffa && cmd_arg != 32'hf0f0f0f0)
+		multi_block <= 1'b0;
+		boot_active <= 1'b0;
+		boot_mode <= 1'b0;
+		alt_boot_mode <= 1'b0;
+		// }}}
+	end else if (cmd_valid && !cmd_crc_err && cmd[5:0] == 6'h0
+						&& cmd_arg == 32'hf0f0f0f0)
+	begin // CMD0: go to pre-idle
+		// {{{
+		read_posn <= 0;
+		boot_mode <= 1'b1;
+		card_state <= EMMC_PRE_IDLE;
+		clear_errors  <= 1'b0;
+		bustest_w <= 1'b0;
+		bustest_r <= 1'b0;
+		alt_boot_mode <= 1'b0;
+		// }}}
+	end else if (cmd_valid && !cmd_crc_err && cmd[5:0] == 6'h0
+		&& (card_state != EMMC_PRE_IDLE || cmd_arg != 32'hffff_fffa))
 	begin // CMD0: GO_IDLE_STATE, overrides all other internal states
 		// {{{
+		read_posn <= 0;
+		multi_block <= 1'b0;
 		alt_boot_mode <= 1'b0;
-		if (cmd_arg == 32'hf0f0f0f0)
-		begin
-			card_state <= EMMC_PRE_IDLE;
-			boot_mode <= 1;
-		end else if (cmd_arg == 32'hffff_fffa)
-		begin
-			card_state <= EMMC_PRE_IDLE;
-			boot_mode <= 1;
-			alt_boot_mode <= 1'b1;
-		end
+		boot_mode <= 1'b0;
+		card_state <= EMMC_IDLE;
 
 		reply_valid <= 1'b0;
 		// ocr[31] <= power_up_busy;
@@ -652,47 +751,47 @@ module	mdl_emmc #(
 		// }}}
 	end else if (card_state == EMMC_PRE_IDLE)
 	begin
-		if (!alt_boot_mode && sd_cmd !== 1'b0)
-			card_state <= EMMC_IDLE;
-		else if (boot_clk_count >= 73 && boot_mode)
+		// {{{
+		read_posn <= 0;
+		boot_mode <= 1'b1;
+		if (cmd_valid && !cmd_crc_err && cmd[5:0] == 6'h0
+					&& cmd_arg == 32'hffff_fffa)
 		begin
 			card_state <= EMMC_BOOT;
-			boot_active <= 1'b1;
+			alt_boot_mode <= 1'b1;
+		end else if (boot_clk_count >= 73 && boot_mode)
+		begin
+			card_state <= EMMC_BOOT;
 		end
 		clear_errors  <= 1'b0;
 		bustest_w <= 1'b0;
 		bustest_r <= 1'b0;
-	/*
-	end else if (card_state == EMMC_PRE_BOOT
-			&& (!cmd_valid || cmd_crc_err || cmd[5:0] != 6'd1))
-	begin
-		clear_errors  <= 1'b0;
-		bustest_w <= 1'b0;
-		bustest_r <= 1'b0;
-	*/
+		// }}}
 	end else if (card_state == EMMC_BOOT)
 	begin
+		// {{{
 		clear_errors  <= 1'b0;
 		bustest_w <= 1'b0;
 		bustest_r <= 1'b0;
 		write_ext_csd <= 1'b0;
+		// multi_block <= !pending_ack && !pending_nak && ;
 
 		if ((!alt_boot_mode && sd_cmd !== 1'b0)
 				||(cmd_valid && !cmd_crc_err
 					&& cmd_arg == 32'h0 &&cmd[5:0] == 6'd0)
-			|| (tx_valid && tx_last && read_posn >= BOOTSZ))
+			|| (0 && tx_valid && tx_last && read_posn >= BOOTSZ))
 		begin
 			// End of boot
 			pending_write <= 1'b0;
 			multi_block   <= 1'b0;
 			card_state <= EMMC_IDLE;
-		end else if (!boot_active)
+		end else if (!boot_active && boot_mode)
 		begin
-			read_posn <= cmd_arg;
 			pending_write <= 1'b1;
 			multi_block   <= 1'b1;
 			boot_active <= 1'b1;
 		end
+		// }}}
 	end else if (cmd_valid && !cmd_crc_err && (card_state != EMMC_IDLE
 				|| cmd[5:0] == 6'd1))
 	begin
@@ -1331,6 +1430,7 @@ $display("READ-CMD-ERR: Small Sector out of bounds");
 		begin
 			// card_state <= EMMC_IDLE;
 		end else if (card_state == EMMC_PRE_IDLE
+			&& ext_csd[179][6]
 			&& boot_clk_count >= 73 && boot_mode)
 		begin
 			pending_ack <= 1'b1;
@@ -1386,7 +1486,20 @@ $display("SETTING MEM[%08x] TO MEM-BUF[0] = %08x", (read_posn/4), mem_buf[0]);
 		tx_data  = 0;
 		tx_last  = 1'b0;
 	end
+
+	reg	boot_flag;
+	always @(posedge sd_clk or negedge rst_n)
+	if (!rst_n)
+		boot_flag <= 1'b0;
+	else if (boot_mode && ((!alt_boot_mode && sd_cmd !== 1'b0)
+			|| (alt_boot_mode && cmd_valid && !cmd_crc_err
+				&& { cmd_alt, cmd[5:0] } == 7'd0)
+			|| (!write_en && read_posn >= BOOTSZ)))
+		boot_flag <= 1'b0;
+	else if (boot_mode)
+		boot_flag <= 1'b1;
 		
+
 	always @(posedge sd_clk or negedge rst_n)
 	if (!rst_n)
 	begin
@@ -1395,9 +1508,13 @@ $display("SETTING MEM[%08x] TO MEM-BUF[0] = %08x", (read_posn/4), mem_buf[0]);
 		tx_valid <= 1'b0;
 		tx_addr <= 0;
 		tx_last <= 0;
-	end else if (boot_mode && (!boot_active || sd_cmd !== 1'b0
-			|| (tx_valid && tx_last && read_posn >= BOOTSZ)))
-	begin
+	end else if (boot_mode && card_state == EMMC_BOOT
+			&& ((!alt_boot_mode && sd_cmd !== 1'b0)
+			|| (alt_boot_mode && cmd_valid && !cmd_crc_err
+				&& { cmd_alt, cmd[5:0] } == 7'd0)
+			|| (!write_en && read_posn >= BOOTSZ)))
+	begin	// EXIT BOOT MODE
+		// {{{
 $display("Exiting boot mode");
 		boot_active <= 1'b0;
 		boot_mode   <= 1'b0;
@@ -1409,19 +1526,33 @@ $display("Exiting boot mode");
 		tx_valid <= 1'b0;
 		tx_addr <= 0;
 		tx_last <= 0;
-	end else if (cmd_valid && !cmd_crc_err && card_state != EMMC_IDLE
-			&& { cmd_alt, cmd[5:0] } == 7'd12
-			&& cmd_arg[31:16] == RCA)
-	begin
+		// }}}
+	end else if (cmd_valid && !cmd_crc_err &&(
+			// CMD12 is a STOP_TRANSMISSION command
+			(card_state != EMMC_IDLE
+				&& { cmd_alt, cmd[5:0] } == 7'd12
+				&& cmd_arg[31:16] == RCA)
+			// sd_cmd will exit normal boot mode
+			||(card_state == EMMC_BOOT && !alt_boot_mode
+				&& sd_cmd !== 1'b0)
+			// CMD0 will exit alt boot mode
+			||(card_state == EMMC_BOOT && alt_boot_mode
+				&& { cmd_alt, cmd[5:0] } == 7'd0
+				&& cmd_arg[31:28] != 4'hf)))
+	begin	// STOP_TRANSMISSION
+		// {{{
 		pending_write <= 1'b0;
 		write_en <= (card_state == EMMC_SEND_DATA);
 		tx_valid <= (card_state == EMMC_SEND_DATA);
 		tx_data  <= 0;
 		tx_last  <= 0;
+		// }}}
 	end else if (pending_write && !reply_valid && !reply_busy)
-	begin
+	begin	// Start a new block
+		// {{{
 		// We can place a delay here, to simulate read access time
 		// if desired ...
+		// $display("Write request");
 		// #50; @(posedge sd_clk) begin
 			pending_write <= 1'b0;
 			if (bustest_r)
@@ -1442,45 +1573,54 @@ $display("Exiting boot mode");
 				read_posn <= read_posn + 512;
 				// }}}
 			end else if (cfg_partition == 3'h1)
-			begin
-				// Read from Boot partition #1
+			begin // Read from Boot partition #1
+				// {{{
 				for(read_ik=0; read_ik<block_len/4;
 							read_ik=read_ik+1)
 					mem_buf[read_ik]=boot_mem1[read_ik+(read_posn/4)];
 
 				read_posn <= read_posn + block_len;
+				// }}}
 			end else if (cfg_partition == 3'h2)
-			begin
-				// Read from Boot partition #2
+			begin // Read from Boot partition #2
+				// {{{
 				for(read_ik=0; read_ik<block_len/4;
 							read_ik=read_ik+1)
-					mem_buf[read_ik]=boot_mem1[read_ik+(read_posn/4)];
+					mem_buf[read_ik]=boot_mem2[read_ik+(read_posn/4)];
 
 				read_posn <= read_posn + block_len;
-			end else begin
-				// Read from device memory
+				// }}}
+			end else begin // Read from device memory
+				// {{{
 				for(read_ik=0; read_ik<block_len/4;
 							read_ik=read_ik+1)
 					mem_buf[read_ik]=mem[read_ik+(read_posn/4)];
 
 				read_posn <= read_posn + block_len;
+				// }}}
 			end
-			write_en <= (card_state == EMMC_SEND_DATA);
-			tx_valid <= (card_state == EMMC_SEND_DATA);
-$display("TX-DATA set to %08x", mem_buf[0]);
+			write_en <= (card_state == EMMC_SEND_DATA)
+				|| (card_state == EMMC_BOOT && boot_mode);
+			tx_valid <= (card_state == EMMC_SEND_DATA)
+				|| (card_state == EMMC_BOOT && boot_mode);
+			// $display("TX-DATA set to %08x", mem_buf[0]);
+			// $display("Card state is %d", card_state);
 			tx_data <= mem_buf[0];
 			tx_addr <= 1;
 			tx_last <= 0;
 		// end
+		// }}}
 	end else if (write_en && tx_valid && tx_ready)
 	begin
 		if (tx_last)
-		begin
+		begin	// End of write.  If multi_block, continue
 			tx_valid <= 1'b0;
 			// Need to keep write_en high until we're done
 			// write_en <= 1'b0;
 			write_ext_csd <= 1'b0;
 			if (multi_block && card_state == EMMC_SEND_DATA)
+				pending_write <= #WRITE_TIME 1'b1;
+			else if (boot_active && card_state == EMMC_BOOT)
 				pending_write <= #WRITE_TIME 1'b1;
 			else
 				card_state <= EMMC_TRANSFER;
@@ -1533,7 +1673,7 @@ $display("TX-DATA set to %08x", mem_buf[0]);
 		busy_wait <= 6;
 	end
 
-	assign	sd_dat[0] = (busy_indication && !read_en) ? 1'b0 : 1'bz;
+	assign	sd_dat[0] = (tx_ready && busy_indication && !read_en) ? 1'b0 : 1'bz;
 
 	// assign	sd_ds = #DS_DELAY (ds_enabled
 	assign	#DS_DELAY sd_ds = (ds_enabled

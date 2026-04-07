@@ -205,6 +205,15 @@ module sdio_top #(
 		// bad board connection.
 		parameter	LGTIMEOUT = 23,
 		// }}}
+		// DEF_SAMPLE_SHIFT
+		// {{{
+		// Normally the sample shift is determined at run time by
+		// software.  This doesn't work for BOOT, however, where the
+		// sample shift needs to be known before starting.  Therefore,
+		// the DEF_SAMPLE_SHIFT provides the option for pre-loading
+		// the sample shift at reset time.
+		parameter [4:0]	DEF_SAMPLE_SHIFT = 5'h18,
+		// }}}
 		// EMMC BOOT parameters
 		// {{{
 		parameter [0:0]	OPT_BOOTEN   = OPT_EMMC,
@@ -400,6 +409,7 @@ module sdio_top #(
 		.OPT_HWRESET(OPT_HWRESET),
 		.OPT_1P8V(OPT_1P8V),
 		.LGTIMEOUT(LGTIMEOUT),
+		.DEF_SAMPLE_SHIFT(DEF_SAMPLE_SHIFT),
 		// Boot parameters
 		// {{{
 		.OPT_BOOTEN(OPT_BOOTEN && OPT_EMMC),
@@ -561,8 +571,8 @@ module sdio_top #(
 		// {{{
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR), .NUMIO(NUMIO),
 		.OPT_DS(OPT_DS), .OPT_COLLISION(OPT_COLLISION),
-		.OPT_CRCTOKEN(OPT_CRCTOKEN), .HWBIAS(HWDELAY),
-		.BUSY_CLOCKS(OPT_CRCTOKEN ? 16 : 4)
+		.OPT_CRCTOKEN(OPT_CRCTOKEN), .HWBIAS(HWDELAY)
+		// , .BUSY_CLOCKS(4)
 		// }}}
 	) u_sdfrontend (
 		// {{{

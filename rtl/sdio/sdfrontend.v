@@ -58,6 +58,8 @@ module	sdfrontend #(
 		parameter [0:0]	OPT_DS = OPT_SERDES,
 		parameter [0:0]	OPT_COLLISION = 1'b0,
 		parameter [0:0]	OPT_CRCTOKEN = 1'b1,
+		// As per the eMMC spec, BUSY_CLOCKS need be no more than 2
+		// 4 is likely overkill.
 		parameter 	BUSY_CLOCKS = 4,
 		parameter	HWBIAS = (OPT_SERDES ? 2 : 0),
 		parameter	NUMIO = 8
@@ -130,7 +132,7 @@ module	sdfrontend #(
 	// {{{
 	localparam	LGBUSY = $clog2(BUSY_CLOCKS+1);
 	genvar		gk;
-	reg		dat0_busy, wait_for_busy;
+	reg		dat0_busy, wait_for_busy, pending_ack;
 	reg	[LGBUSY-1:0]	busy_count;
 	wire		raw_cmd;
 	wire	[NUMIO-1:0]	raw_iodat;
@@ -152,6 +154,14 @@ module	sdfrontend #(
 	initial	last_ck = 1'b0;
 	always @(posedge i_clk)
 		last_ck <= i_sdclk[0];
+
+	always @(posedge i_clk)
+	if (i_reset)
+		pending_ack <= 1'b0;
+	else if (i_expect_token)
+		pending_ack <= 1'b1;
+	else if (o_crcack || o_crcnak)
+		pending_ack <= 1'b0;
 
 	assign	next_pedge = ~{ last_ck, i_sdclk[7:1] } &  i_sdclk[7:0];
 	assign	next_nedge =  { last_ck, i_sdclk[7:1] } & ~i_sdclk[7:0];
@@ -278,14 +288,14 @@ module	sdfrontend #(
 		// CRC TOKEN detection
 		// {{{
 		always @(posedge i_clk)
-		if(i_reset || i_data_en || i_cfg_ds || !OPT_CRCTOKEN)
+		if(i_reset || i_expect_token || i_cfg_ds || !OPT_CRCTOKEN)
 			acknak_sreg <= -1;
 		else if (acknak_sreg[4] && sample_pck)
 			acknak_sreg <= { acknak_sreg[3:0], raw_iodat[0] };
 
 		initial	{ sync_ack, sync_nak } = 2'b00;
 		always @(posedge i_clk)
-		if(i_reset || i_data_en || i_cfg_ds || !OPT_CRCTOKEN)
+		if(i_reset || i_expect_token || i_cfg_ds || !OPT_CRCTOKEN)
 		begin
 			sync_ack <= 1'b0;
 			sync_nak <= 1'b0;
@@ -342,7 +352,7 @@ module	sdfrontend #(
 		// {{{
 		initial	busy_count = 0;
 		always @(posedge i_clk)
-		if (i_reset || i_cmd_en || i_data_en)
+		if (i_reset || i_cmd_en || i_data_en || pending_ack)
 			busy_count <= BUSY_CLOCKS[LGBUSY-1:0];
 		else if (sample_pck && busy_count > 0)
 			busy_count <= busy_count-1;
@@ -350,7 +360,7 @@ module	sdfrontend #(
 
 		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
-		if (i_reset || i_data_en)
+		if (i_reset || i_data_en || pending_ack)
 		begin
 			// *MUST* clear busy on i_data_en, else we'd overwrite
 			// the busy bit anyway by transmitting
@@ -680,7 +690,7 @@ module	sdfrontend #(
 		// {{{
 		initial	busy_count = BUSY_CLOCKS[LGBUSY-1:0];
 		always @(posedge i_clk)
-		if (i_reset || i_cmd_en || i_data_en)
+		if (i_reset || i_data_en || i_cmd_en || pending_ack)
 			// Clock periods to wait until busy is active
 			busy_count <= BUSY_CLOCKS[LGBUSY-1:0];
 		else if (sample_pck != 0 && busy_count > 0)
@@ -696,7 +706,7 @@ module	sdfrontend #(
 
 		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
-		if (i_reset || i_data_en)
+		if (i_reset || i_data_en || pending_ack)
 		begin
 			dat0_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
@@ -1058,7 +1068,7 @@ module	sdfrontend #(
 		// {{{
 		initial	busy_count = BUSY_CLOCKS[LGBUSY-1:0];
 		always @(posedge i_clk)
-		if (i_reset || i_cmd_en || i_data_en)
+		if (i_reset || i_cmd_en || i_data_en || pending_ack)
 			busy_count <= BUSY_CLOCKS[LGBUSY-1:0];
 		else if (busy_strb != 0 && busy_count > 0)
 			busy_count <= busy_count - 1;
@@ -1076,7 +1086,7 @@ module	sdfrontend #(
 
 		initial	{ dat0_busy, wait_for_busy } = 2'b01;
 		always @(posedge i_clk)
-		if (i_reset || i_data_en)
+		if (i_reset || i_data_en || pending_ack)
 		begin
 			dat0_busy <= 1'b0;
 			wait_for_busy <= 1'b1;
@@ -1107,7 +1117,7 @@ module	sdfrontend #(
 		always @(posedge i_clk)
 		if(i_reset || i_rx_en || i_cfg_ds || !OPT_CRCTOKEN)
 			acknak_sreg <= 0;
-		else if (i_data_en)
+		else if (i_data_en || i_expect_token)
 			acknak_sreg <= -1;
 		else if (acknak_sreg[4])
 		begin

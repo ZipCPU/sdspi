@@ -78,6 +78,7 @@ module	sdio #(
 		parameter [0:0]	OPT_CRCTOKEN = 1'b1,
 		parameter	LGTIMEOUT = 23,
 		parameter [0:0]	OPT_ISTREAM = 0, OPT_OSTREAM = 0,
+		parameter [4:0]	DEF_SAMPLE_SHIFT = 5'h18,
 		// Boot parameters
 		parameter	SWIDE_AW = ADDRESS_WIDTH
 					+ ((OPT_ISTREAM||OPT_OSTREAM)? 1:0),
@@ -251,6 +252,13 @@ module	sdio #(
 
 	// Local declarations
 	// {{{
+	// Force the bottom bits of the sample shift to zero when unused.
+	// This is primarily a synthesis optimization, since these bits won't
+	// be used in the front end anyway.
+	localparam [4:0]	L_SAMPLE_SHIFT = (OPT_SERDES) ? DEF_SAMPLE_SHIFT
+				: (OPT_DDR) ? { DEF_SAMPLE_SHIFT[4:2], 2'b00 }
+					: { DEF_SAMPLE_SHIFT[4:3], 3'b000 };
+
 	wire			soft_reset;
 
 	wire			cfg_clk90, cfg_clk_shutdown, cfg_expect_ack,
@@ -319,6 +327,7 @@ module	sdio #(
 			.OPT_HWRESET(OPT_HWRESET), .OPT_1P8V(OPT_1P8V),
 		.OPT_STREAM(OPT_ISTREAM || OPT_OSTREAM),
 		.OPT_CRCTOKEN(OPT_CRCTOKEN),
+		.DEF_SAMPLE_SHIFT(L_SAMPLE_SHIFT),
 		// Boot parameters
 		.OPT_BOOTEN(OPT_BOOTEN && OPT_EMMC && OPT_DMA),
 		.OPT_AUTOBOOT(OPT_AUTOBOOT),
@@ -451,6 +460,7 @@ module	sdio #(
 			.OPT_HWRESET(OPT_HWRESET), .OPT_1P8V(OPT_1P8V),
 		.OPT_STREAM(OPT_ISTREAM || OPT_OSTREAM),
 		.OPT_CRCTOKEN(OPT_CRCTOKEN),
+		.DEF_SAMPLE_SHIFT(L_SAMPLE_SHIFT),
 		// Boot parameters
 		.OPT_BOOTEN(OPT_BOOTEN && OPT_EMMC && OPT_DMA),
 		.OPT_AUTOBOOT(OPT_AUTOBOOT),

@@ -44,14 +44,15 @@ module	tb_axi
 // `define	SDIO_AXI
 		parameter	[0:0]	OPT_SERDES = 1'b1,
 		parameter	[0:0]	OPT_DDR = 1'b1,
-		parameter	[0:0]	OPT_DMA = 1'b0,
 		parameter	[0:0]	OPT_VCD = 1'b0,
 		parameter	[0:0]	OPT_CPU = 1'b0,
 		parameter	[0:0]	OPT_STREAM = 1'b0,
 		parameter	[0:0]	OPT_SDSLAVE = 1'b0,
 		parameter	[0:0]	OPT_1P8V = OPT_SERDES,
 		parameter	[0:0]	OPT_BOOTEN = 1'b0,
+		parameter	[0:0]	OPT_DMA = OPT_BOOTEN,
 		parameter	[0:0]	OPT_AUTOBOOT = OPT_BOOTEN,
+		parameter	[0:0]	BOOT_TOKEN = 1'b1,
 		parameter	[3:0]	BOOT_MODE = 4'b0010,
 		parameter		DW = 64,
 		parameter		SW = 32,	// May only be 32 or DW
@@ -92,10 +93,17 @@ module	tb_axi
 			EMMC_MASK = { 4'b1111,{(AW-4-5){1'b1}}, {(5){1'b0}} };
 
 	localparam	SWIDE_AW = ADDRESS_WIDTH + (OPT_STREAM ? 1 : 0);
-	localparam [ADDRESS_WIDTH:0]	BOOT_ADDR = { 1'b0, MEM_MASK };
-	localparam		EMMC_LGBOOTSZ = 17;	// 128kB
+	localparam [ADDRESS_WIDTH:0]	BOOT_ADDR = { 1'b0, MEM_ADDR };
+	// EMMC_LGBOOTSZ
+	// {{{
+	localparam		EMMC_LGBOOTSZ = (ADDRESS_WIDTH-2>17) ? 17
+					: (ADDRESS_WIDTH-2);	// 128kB
+	// }}}
 	localparam	[31:0]	BOOT_BLOCKS = (1<<(EMMC_LGBOOTSZ-9)); // in 512B blks
 	localparam	[7:0]	BOOT_SPEED  = 8'h01;	// 100MHz
+	localparam	[4:0]	EMMC_SHIFT = (!OPT_BOOTEN) ? 5'h18
+					: (OPT_SERDES) ? 5'h0a
+					: (OPT_DDR) ? 5'h0c : 5'h08;
 	reg	[2:0]		ckcounter;
 	wire			clk, hsclk;
 	reg			reset;
@@ -1184,6 +1192,16 @@ module	tb_axi
 	if (ram_rd)
 		ram_rdata <= mem[ram_raddr];
 
+	task	read8(input [RAM_AW-1:0] tskaddr, output [7:0] ramdat);
+		// {{{
+		reg	[DW-1:0]	ramword;
+	begin
+		ramword = mem[tskaddr];
+		ramword = ramword >> (tskaddr[$clog2(DW/8)-1:0]*8);
+		ramdat = ramword[7:0];
+	end endtask
+	// }}}
+
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -1485,8 +1503,9 @@ module	tb_axi
 		.OPT_CARD_DETECT(0), .LGTIMEOUT(10),
 		.OPT_1P8V(OPT_1P8V),
 		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b1),
+		.DEF_SAMPLE_SHIFT(EMMC_SHIFT),
 		.OPT_BOOTEN(OPT_BOOTEN), .OPT_AUTOBOOT(OPT_AUTOBOOT),
-		.BOOT_TOKEN(1'b1), .BOOT_MODE(BOOT_MODE),
+		.BOOT_TOKEN(BOOT_TOKEN), .BOOT_MODE(BOOT_MODE),
 		.BOOT_ADDR(BOOT_ADDR[SWIDE_AW-1:0]),
 		.BOOT_BLOCKS(BOOT_BLOCKS), .BOOT_SPEED(BOOT_SPEED)
 		// }}}
@@ -1612,6 +1631,8 @@ module	tb_axi
 
 	mdl_emmc #(
 		.LGMEMSZ(20), .LGBOOTSZ(EMMC_LGBOOTSZ),
+		.OPT_BOOTTOK(BOOT_TOKEN),
+		.OPT_BOOTMODE(BOOT_MODE),
 		.OPT_HIGH_CAPACITY(1'b1)
 	) u_mcchip (
 		.rst_n(emmc_reset_n),
@@ -1696,7 +1717,6 @@ module	tb_axi
 			.i_bus_clk(slv_clk), .i_aresetn(!reset),
 			// AXI master (DMA) interface
 			// {{{
-`ifdef	SDIO_AXI
 			.M_AXI_AWVALID(X_AWVALID),
 			.M_AXI_AWREADY(X_AWREADY),
 			.M_AXI_AWID(X_AWID),
@@ -1738,7 +1758,6 @@ module	tb_axi
 			.M_AXI_RDATA(X_RDATA),
 			.M_AXI_RLAST(X_RLAST),
 			.M_AXI_RRESP(X_RRESP),
-`endif
 			// }}}
 			// SD slave front-end interface
 			// {{{

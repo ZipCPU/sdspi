@@ -971,6 +971,7 @@ module	sdax_s2mm #(
 		r_initial_beats <= 0;
 	else if (r_initial_burst && r_initial_beats < w_max_burst)
 		r_initial_beats <= initial_beats[7:0];
+
 `ifdef	FORMAL
 	always @(*)
 	if (o_busy && r_initial_burst)

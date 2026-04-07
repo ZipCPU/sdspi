@@ -90,6 +90,7 @@ module	mdl_sdcmd #(
 	initial o_cmd = 6'h0;
 	initial o_arg = 32'h0;
 	initial	r_incoming = 1'b0;
+	initial	icount = 0;
 	always @(posedge sd_clk or negedge rst_n)
 	if (!rst_n)
 	begin
@@ -97,6 +98,7 @@ module	mdl_sdcmd #(
 		o_cmd = 6'h0;
 		o_arg = 32'h0;
 		r_incoming = 1'b0;
+		icount <= 0;
 	end else begin
 		o_cmd_valid <= 1'b0;
 		if (r_incoming)

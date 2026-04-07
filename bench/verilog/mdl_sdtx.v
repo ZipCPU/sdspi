@@ -72,7 +72,7 @@ module mdl_sdtx #(
 	reg	[79:0]	tx_sreg;
 	reg	[5:0]	r_count;
 	reg		r_crc, r_active, ds;
-	reg		r_ready, r_token, r_ddr_started;
+	reg		r_ready, r_token, r_ddr_started, pedge_token, pedge_active;
 
 	wire		w_drive;
 	wire	[7:0]	w_dat;
@@ -123,6 +123,7 @@ module mdl_sdtx #(
 	// tx_sreg, r_count, r_crc r_active: positive edge of the clock
 	// {{{
 	// Setup for the positive clock edge
+	initial	r_active = 1'b0;
 	always @(negedge sd_clk or negedge rst_n)
 	if (!rst_n)
 	begin
@@ -156,7 +157,10 @@ module mdl_sdtx #(
 		r_token  <= 1;
 		r_crc    <= 0;
 		r_active <= 0;
-		r_count  <= i_ddr ? 6'd10 : 6'd5;
+		// r_count  <= i_ddr ? 6'd10 : 6'd5;
+		// Force us to be busy for longer than the token, to force
+		// BOOT to wait until the token has been received and processed
+		r_count  <= i_ddr ? (6'd10 + 6'd4) : (6'd5 + 6'd2);
 
 		ds <= #FF_HOLD 1'b1;
 
@@ -164,32 +168,32 @@ module mdl_sdtx #(
 		begin
 			// {{{
 			if (i_ddr)
-				tx_sreg  <= #FF_HOLD { 8'h0,
-					(i_crcnak) ? 4'hf : 4'h0, 4'hx,
-					(i_crcnak) ? 4'h0 : 4'hf, 4'hx,
-					(i_crcnak) ? 4'hf : 4'h0, 4'hx,
+				tx_sreg  <= #FF_HOLD { 8'hee,
+					(i_crcnak) ? 4'hf : 4'he, 4'hx,
+					(i_crcnak) ? 4'he : 4'hf, 4'hx,
+					(i_crcnak) ? 4'hf : 4'he, 4'hx,
 					4'hf, 4'hx, 40'hff_ffff_ffff };
 			else
-				tx_sreg  <= #FF_HOLD { 4'h0,
-					(i_crcnak) ? 4'hf : 4'h0,
-					(i_crcnak) ? 4'h0 : 4'hf,
-					(i_crcnak) ? 4'hf : 4'h0,
+				tx_sreg  <= #FF_HOLD { 4'he,
+					(i_crcnak) ? 4'hf : 4'he,
+					(i_crcnak) ? 4'he : 4'hf,
+					(i_crcnak) ? 4'hf : 4'he,
 					4'hf, {(60){1'b1}} };
 			// }}}
 		end else if (i_width[1]) // 8b
 		begin
 			// {{{
 			if (i_ddr)
-				tx_sreg  <= #FF_HOLD { 16'h0,
-					(i_crcnak) ? 8'hff : 8'h00, 8'hx,
-					(i_crcnak) ? 8'h00 : 8'hff, 8'hx,
-					(i_crcnak) ? 8'hff : 8'h00, 8'hx,
+				tx_sreg  <= #FF_HOLD { 16'hfefe,
+					(i_crcnak) ? 8'hff : 8'hfe, 8'hx,
+					(i_crcnak) ? 8'hfe : 8'hff, 8'hx,
+					(i_crcnak) ? 8'hff : 8'hfe, 8'hx,
 					8'hff, 8'hx };
 			else
-				tx_sreg  <= #FF_HOLD { 8'h0,
-					(i_crcnak) ? 8'hff : 8'h00,
-					(i_crcnak) ? 8'h00 : 8'hff,
-					(i_crcnak) ? 8'hff : 8'h00,
+				tx_sreg  <= #FF_HOLD { 8'hfe,
+					(i_crcnak) ? 8'hff : 8'hfe,
+					(i_crcnak) ? 8'hfe : 8'hff,
+					(i_crcnak) ? 8'hff : 8'hfe,
 					8'hff, {(40){1'b1}} };
 			// }}}
 		end else if (i_ddr)
@@ -300,10 +304,15 @@ module mdl_sdtx #(
 
 	// Negative clock edge
 	// {{{
-	initial	r_active = 1'b0;
 	always @(posedge sd_clk)
 	if (rst_n)
 		ds <= #FF_HOLD 1'b0;
+
+	always @(posedge sd_clk or negedge rst_n)
+	if (!rst_n)
+		{ pedge_active, pedge_token } <= 1'b0;
+	else
+		{ pedge_active, pedge_token } <= { r_active, r_token };
 
 	always @(posedge sd_clk)
 	if (!rst_n)
@@ -382,7 +391,7 @@ module mdl_sdtx #(
 
 	assign	sd_ds = ds;
 
-	assign	o_ready = !r_token && (!r_active || (!r_crc && r_ready));
+	assign	o_ready = (!pedge_token) && (!pedge_active || (!r_crc && r_ready));
 		// ((sd_clk && r_count == 1) || (!sd_clk && r_ready))));
 
 	// CRC generation
@@ -394,7 +403,7 @@ module mdl_sdtx #(
 		always @(posedge sd_clk or negedge rst_n)
 		if (!rst_n)
 			crc[gk] <= 0;
-		else if (!i_en || r_token)
+		else if (!i_en || !r_active || r_token || pedge_token)
 			crc[gk] <= 0;
 		else if (!r_crc)
 			crc[gk] <= STEPCRC(crc[gk], w_dat[gk]);
@@ -404,7 +413,7 @@ module mdl_sdtx #(
 		always @(negedge sd_clk or negedge rst_n)
 		if (!rst_n)
 			crc[8+gk] <= 0;
-		else if (!r_ddr_started || r_token)
+		else if (!r_ddr_started || !r_active || r_token)
 			crc[8+gk] <= 0;
 		else if (!r_crc)
 			crc[8+gk] <= STEPCRC(crc[8+gk], w_dat[gk]);

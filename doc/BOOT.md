@@ -41,12 +41,22 @@ document will become obsolete, with the user guide taking precedence.
 There are three ways to enter boot mode.
 
 1. If `OPT_AUTOBOOT=1`, the design will enter boot mode automatically following
-   a reset.
+   an initial reset.  It will not automatically enter boot mode following a
+   user commanded hardware reset.
+
 2. The controller will also enter boot mode following a write of
    `32'ha300|CRC_TOKEN` to the command register.
+
+   If you wish to enter reset following a hardware reset, write this on
+   reset release.
+
 3. The controller will enter the alternate boot mode following a write
    of `32'ha300|CRC_TOKEN` to the command register, provided the argument
    register is set to `32'hffff_fffa`.
+
+   This isn't quite right.  You need to first send a `32'h8040` with an
+   argument of `32'hf0f0_f0f0`.  Only after this command will the eMMC be
+   expecting the `ffff_fffa` argument.
 
 
 ## Commands:
@@ -91,3 +101,8 @@ Writing the following to the command register will ...
   - `w_boot_active`
   - `w_boot_end`
 
+
+## NOTES:
+
+- Must ensure a minimum of 56 device clocks between BOOT CMD control and the
+  first command.

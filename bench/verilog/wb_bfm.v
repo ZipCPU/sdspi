@@ -110,8 +110,10 @@ module	wb_bfm #(
 	begin
 		writeio(addr, dat);
 
+		@(posedge i_clk);
 		// Now wait for the last read to finish
-		while(o_wb_cyc || fifo_fill != 0)
+		while(o_wb_cyc || fifo_fill != 0
+					|| fifo_wraddr !== fifo_rdaddr)
 			@(posedge i_clk);
 
 	end endtask

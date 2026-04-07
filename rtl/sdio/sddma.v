@@ -703,11 +703,11 @@ module	sddma #(
 	// sd2s_busy
 	// {{{
 	always @(posedge i_clk)
-	if (i_reset || mm2s_err)
+	if (i_reset || s2mm_err)
 		sd2s_busy <= 1'b0;
 	else if (i_dma_sd2s)
 		sd2s_busy <= 1'b1;
-	else if (tx_valid && tx_ready && tx_last)
+	else if ((m_valid && tx_ready && tx_last) || (!m_active && !s2mm_busy))
 		sd2s_busy <= 1'b0;
 	// }}}
 

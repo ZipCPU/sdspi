@@ -242,7 +242,7 @@ module	sdwb #(
 	// Speed == 1 => 100MHz (OPT_SERDES || (OPT_DDR && !DDR))
 	// Speed == 2 =>  50MHz (OPT_SERDES || OPT_DDR || !DDR)
 	// All other speeds supported
-	// 
+	//
 	localparam	[7:0]	P_BOOTSPD
 			= (OPT_SERDES || BOOT_SPEED > 2) ? BOOT_SPEED
 			: (BOOT_SPEED <= 1 && (OPT_DDR && !BOOT_MODE[2])) ? 1
@@ -347,7 +347,8 @@ module	sdwb #(
 
 	// BOOT signals
 	wire		w_alt_boot, w_activate_boot, w_boot_active, w_boot_err;
-	reg		bus_reset;
+	reg		bus_reset, reset_stb;
+	wire		w_pending_boot_tok;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -372,6 +373,23 @@ module	sdwb #(
 
 	// o_soft_reset
 	// {{{
+	initial	reset_stb = 1'b0;
+	always @(posedge i_clk)
+	if (i_reset)
+		reset_stb <= 1'b0;
+	else begin
+		reset_stb <= 1'b0;
+
+		// bus_reset <= bus_reset && o_soft_reset;
+		if (bus_write && bus_wraddr == ADDR_CMD)
+		begin
+			if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8])
+				reset_stb <= bus_wdata[HWRESET_BIT];
+			if (&bus_wstrb[3:0] && bus_wdata == RESET_KEY)
+				reset_stb <= 1'b1;
+		end
+	end
+
 	initial	bus_reset = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset)
@@ -380,9 +398,8 @@ module	sdwb #(
 		// bus_reset <= bus_reset && o_soft_reset;
 		if (bus_write && bus_wraddr == ADDR_CMD)
 		begin
-			if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8]
-						&& bus_wdata[HWRESET_BIT])
-				bus_reset <= 1'b1;
+			if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8])
+				bus_reset <= bus_wdata[HWRESET_BIT];
 			if (&bus_wstrb[3:0] && bus_wdata == RESET_KEY)
 				bus_reset <= 1'b1;
 		end else if (OPT_HWRESET && o_hwreset_n)
@@ -405,6 +422,9 @@ module	sdwb #(
 	end else
 		o_soft_reset <= 1'b0;
 `ifdef	FORMAL
+	always @(posedge i_clk)
+	if (!i_reset && bus_reset && !$past(i_reset))
+		assert(reset_stb == $rose(bus_reset));
 	always @(*)
 	if (!i_reset && bus_reset)
 		assert(o_soft_reset);
@@ -498,6 +518,14 @@ module	sdwb #(
 			// }}}
 		end else if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8] && bus_wdata[HWRESET_BIT])
 		begin // Hardware reset request -- overrides everything else
+			// {{{
+			new_cmd_request  = 1'b0;
+			new_data_request = 1'b0;
+			new_dma_request  = 1'b0;
+			new_r2_request   = 1'b0;
+			// }}}
+		end else if (bus_wdata[9:6] == { R1B_REPLY, NUL_PREFIX})
+		begin // Boot request
 			// {{{
 			new_cmd_request  = 1'b0;
 			new_data_request = 1'b0;
@@ -804,10 +832,9 @@ module	sdwb #(
 		o_cfg_expect_ack <= 1'b0;
 	else if (i_reset)
 		o_cfg_expect_ack <= P_BOOTTOK;
-	else if (o_soft_reset)
+	else if (reset_stb)
 	begin
-		if (!P_BOOTEN || bus_reset)
-			o_cfg_expect_ack <= 1'b0;
+		o_cfg_expect_ack <= 1'b0;
 	end else if (w_boot_active)
 	begin
 		if  (i_boot_ack || i_boot_nak)
@@ -903,13 +930,7 @@ module	sdwb #(
 	// {{{
 	initial	r_rx_request = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset)
-		r_rx_request <= P_AUTOBOOT;
-	else if (o_soft_reset)
-	begin
-		if (!w_boot_active || bus_reset)
-			r_rx_request <= 1'b0;
-	end else if (i_cmd_err)
+	if (i_reset || o_soft_reset || i_cmd_err)
 		r_rx_request <= 1'b0;
 	else if (new_data_request && !bus_wdata[FIFO_WRITE_BIT]
 			&& (!bus_wdata[USE_DMA_BIT] || !dma_zero_len)
@@ -921,16 +942,8 @@ module	sdwb #(
 
 	initial	o_rx_en = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset)
-		o_rx_en <= P_AUTOBOOT && !P_BOOTTOK;
-	else if (o_soft_reset)
-	begin
-		if (!w_boot_active || bus_reset)
-			o_rx_en <= 1'b0;
-	end else if (i_cmd_err && !o_rx_en)
+	if (i_reset || o_soft_reset || (i_cmd_err && !o_rx_en))
 		o_rx_en <= 1'b0;
-	else if (w_boot_active && i_boot_ack && o_cfg_expect_ack)
-		o_rx_en <= 1'b1;
 	else if (o_rx_en && i_rx_done)
 		o_rx_en <= 1'b0;
 	else if (!o_cmd_request && r_rx_request)
@@ -1055,7 +1068,7 @@ module	sdwb #(
 	begin
 		w_cmd_word = 32'h0;
 		//
-		w_cmd_word[29] = OPT_BOOTEN;
+		w_cmd_word[29] = P_BOOTEN;
 		w_cmd_word[28] = w_boot_err;
 		w_cmd_word[27] = w_boot_active;
 		//
@@ -1279,10 +1292,9 @@ module	sdwb #(
 	begin
 		if (i_reset)
 			o_cfg_sample_shift <= DEF_SAMPLE_SHIFT;
-		else if (o_soft_reset)
+		else if (reset_stb)
 		begin
-			if (!w_boot_active || bus_reset)
-				o_cfg_sample_shift <= DEF_SAMPLE_SHIFT;
+			o_cfg_sample_shift <= DEF_SAMPLE_SHIFT;
 		end else if (bus_phy_stb && bus_wstrb[2])
 			o_cfg_sample_shift <= bus_wdata[20:16];
 
@@ -1305,10 +1317,9 @@ module	sdwb #(
 	begin
 		r_clk_shutdown	<= 1'b0;
 		o_cfg_clk90	<= P_AUTOBOOT && P_BOOT_MODE[2];
-	end else if (o_soft_reset)
+	end else if (reset_stb)
 	begin
-		if (!w_boot_active || bus_reset)
-			{ r_clk_shutdown, o_cfg_clk90 } <= 2'b00;
+		{ r_clk_shutdown, o_cfg_clk90 } <= 2'b00;
 	end else if (bus_phy_stb && bus_wstrb[CLK90_BIT/8])
 	begin
 		r_clk_shutdown <= bus_wdata[CLK_SHUTDOWN_BIT];
@@ -1326,7 +1337,8 @@ module	sdwb #(
 			o_cfg_shutdown <= 1'b1;
 		if (w_card_busy)
 			o_cfg_shutdown <= 1'b0;
-		if (r_tx_request || r_rx_request)
+		if (r_tx_request || r_rx_request
+				|| (w_pending_boot_tok && !i_boot_ack))
 			o_cfg_shutdown <= 1'b0;
 		if (o_tx_en && !i_tx_done)
 			o_cfg_shutdown <= 1'b0;
@@ -1382,10 +1394,9 @@ module	sdwb #(
 		always @(posedge i_clk)
 		if (i_reset)
 			r_cfg_ds <= P_AUTOBOOT && P_BOOT_MODE[3];
-		else if (o_soft_reset)
+		else if (reset_stb)
 		begin
-			if (!w_boot_active || bus_reset)
-				r_cfg_ds <= 1'b0;
+			r_cfg_ds <= 1'b0;
 		end else if (bus_phy_stb && bus_wstrb[DDR_BIT/8])
 			r_cfg_ds <= bus_wdata[DS_BIT] && bus_wdata[DDR_BIT];
 
@@ -1429,10 +1440,9 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset)
 		o_cfg_ddr <= P_AUTOBOOT && P_BOOT_MODE[2];
-	else if (o_soft_reset)
+	else if (reset_stb)
 	begin
-		if (!w_boot_active || bus_reset)
-			o_cfg_ddr <= 1'b0;
+		o_cfg_ddr <= 1'b0;
 	end else if (bus_phy_stb && bus_wstrb[DDR_BIT/8])
 		o_cfg_ddr <= bus_wdata[DDR_BIT];
 	// }}}
@@ -1445,10 +1455,9 @@ module	sdwb #(
 	always @(posedge i_clk)
 	if (i_reset)
 		r_width <= P_AUTOBOOT ? P_BOOT_MODE[1:0] : WIDTH_1W;
-	else if(o_soft_reset)
+	else if(reset_stb)
 	begin
-		if (!w_boot_active || bus_reset)
-			r_width <= WIDTH_1W;
+		r_width <= WIDTH_1W;
 	end else if (bus_phy_stb && bus_wstrb[1])
 	begin
 		case(bus_wdata[11:10])
@@ -1477,10 +1486,9 @@ module	sdwb #(
 	if (i_reset)
 	begin
 		r_ckspeed <= P_AUTOBOOT ? P_BOOTSPD : DEF_SPEED;
-	end else if (o_soft_reset)
+	end else if (reset_stb)
 	begin
-		if (!w_boot_active || bus_reset)
-			r_ckspeed <= DEF_SPEED;
+		r_ckspeed <= DEF_SPEED;
 	end else if (bus_phy_stb)
 	begin
 		if (bus_wstrb[0])
@@ -2025,7 +2033,8 @@ module	sdwb #(
 				DMA_ADDR_LN = 3'h7;
 		localparam [31:0]	DMA_STOP_TRANSMISSION = 32'h834c,
 					DMA_NULL_READ = 32'h8800,
-					DMA_NULL_WRITE= 32'h8c00;
+					DMA_NULL_WRITE= 32'h8c00,
+					DMA_ENDBOOT = 32'h8040;
 
 		reg			r_dma, r_abort, r_tx, pre_dma_valid,
 					r_dma_write, r_dma_stopped,r_last_block,
@@ -2073,13 +2082,12 @@ module	sdwb #(
 			dma_s2sd   <= 1'b0;
 			dma_sd2s   <= 1'b0;
 			// }}}
-		end else if (o_soft_reset)
+		end else if (reset_stb)
 		begin
 			// {{{
 			dma_s2sd   <= 1'b0;
 			dma_sd2s   <= 1'b0;
-			if (!w_boot_active || bus_reset)
-				r_dma <= 1'b0;
+			r_dma <= 1'b0;
 			// o_dma_abort <= dma_busy;
 			// }}}
 		end else if (!dma_busy) // i.e. if !r_dma
@@ -2097,7 +2105,7 @@ module	sdwb #(
 					{ dma_s2sd, dma_sd2s } <= 2'b00;
 			end
 
-			if (w_activate_boot)
+			if (w_activate_boot && bus_wdata[USE_DMA_BIT])
 				{ r_dma, dma_s2sd, dma_sd2s } <= 3'b100;
 			// }}}
 		end else if (w_boot_active && o_cfg_expect_ack && i_boot_nak)
@@ -2506,18 +2514,15 @@ module	sdwb #(
 
 			if (P_AUTOBOOT)
 			begin
-				r_last_block   <= BOOT_BLOCKS <= 2;
-				r_block_count  <= BOOT_BLOCKS  - 1;
-				r_dma_zero_len <= BOOT_BLOCKS <= 1;
+				r_last_block   <= BOOT_BLOCKS <= 1;
+				r_block_count  <= BOOT_BLOCKS;
+				r_dma_zero_len <= 0;
 			end
-		end else if (o_soft_reset)
+		end else if (reset_stb)
 		begin
-			if (!w_boot_active || bus_reset)
-			begin
-				r_block_count <= 0;
-				r_last_block <= 1;
-				r_dma_zero_len <= 1'b1;
-			end
+			r_block_count <= 0;
+			r_last_block <= 1;
+			r_dma_zero_len <= 1'b1;
 		end else if (dma_busy)
 		begin
 			if (dma_last_beat)
@@ -2584,7 +2589,7 @@ module	sdwb #(
 		begin
 			r_dma_write    <= 1'b0;
 			r_dma_stopped  <= 1'b0;
-		end else if (dma_write)
+		end else if (dma_write || w_pending_boot_tok)
 			r_dma_write <= 1'b0;
 		else if (!o_dma_s2sd && !o_dma_sd2s && !r_dma_stopped)
 		begin
@@ -2603,7 +2608,8 @@ module	sdwb #(
 					r_dma_stopped <= 1'b1;
 				end
 				// }}}
-			end else if (!i_dma_busy && !o_tx_en && !o_rx_en
+			end else if ((!i_dma_busy || !r_tx)
+					&& !o_tx_en && !o_rx_en
 					&& !cmd_busy && !r_dma_err
 					&& !r_tx_request && !r_rx_request)
 			begin // Have the DMA read/write another block
@@ -2633,7 +2639,10 @@ module	sdwb #(
 			if (r_dma_err || (dma_zero_len
 					&&(!r_tx || !dma_loaded)))
 			begin
-				r_dma_command <= DMA_STOP_TRANSMISSION;
+				if (w_alt_boot)
+					r_dma_command <= DMA_ENDBOOT;
+				else
+					r_dma_command <= DMA_STOP_TRANSMISSION;
 			end
 
 			r_dma_command[FIFO_ID_BIT] <= dma_cmd_fifo;
@@ -3110,27 +3119,42 @@ module	sdwb #(
 	//
 	// Boot handling
 	// {{{
-	generate if (OPT_BOOTEN)
+	generate if (P_BOOTEN)
 	begin : BOOT_LOGIC
 		// {{{
 		reg	r_activate_boot, r_alt_bootarg, r_boot_err, r_alt_boot,
-			r_boot_active, r_boot_tok;
+			r_boot_active, r_boot_tok, r_pending_boot_tok;
 		wire	activate_alt_boot;
 
 		// r_activate_boot, activate_alt_boot, r_alt_bootarg
 		// {{{
+		// The alternate boot is active following a command zero, with
+		// the alternate boot argument active.
 		assign	activate_alt_boot = bus_write && bus_wstrb[1:0] == 2'b11
-				&& r_alt_bootarg && bus_wdata[9:6] == 4'h0;
+				&& r_alt_bootarg
+				&& !bus_wdata[FIFO_WRITE_BIT]
+				&& (bus_wdata[USE_FIFO_BIT]
+					|| (OPT_DMA && bus_wdata[USE_DMA_BIT]))
+				&& bus_wdata[9:6] == { RNO_REPLY, CMD_PREFIX }
+				&& bus_wdata[5:0] == 6'h0; // CMD0
 
 		always @(*)
-		if (!bus_cmd_stb || bus_wstrb[1:0] != 2'b11 || !bus_write)
+		if (!bus_cmd_stb || bus_wstrb[1:0] != 2'b11)
+			// We *only* activate boot on bus command writes
 			r_activate_boot = 1'b0;
 		else if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8]
-				&& bus_wdata[HWRESET_BIT])
+						&& bus_wdata[HWRESET_BIT])
+			// Initiating a reset does *not* activate a boot
 			r_activate_boot = 1'b0;
+		else if (activate_alt_boot)
+			r_activate_boot = 1'b1;
 		else
-			r_activate_boot = bus_wdata[9:6] == 4'b1100
-				|| activate_alt_boot;
+			// Boot mode may be activated w/ or w/o DMA
+			r_activate_boot = (bus_wdata[9:6]
+						== { R1B_REPLY, NUL_PREFIX })
+				&& !bus_wdata[FIFO_WRITE_BIT]
+				&& (bus_wdata[USE_FIFO_BIT]
+					|| (OPT_DMA && bus_wdata[USE_DMA_BIT]));
 
 		always @(posedge i_clk)
 		if (i_reset || o_soft_reset)
@@ -3152,7 +3176,7 @@ module	sdwb #(
 		else if (i_boot_nak && o_cfg_expect_ack)
 			r_boot_active <= 1'b0;
 		else if (!o_dma_sd2s && !cmd_busy && (dma_error
-				|| (dma_zero_len && !dma_loaded)))
+				|| (dma_busy && dma_zero_len && !dma_loaded)))
 			r_boot_active <= 1'b0;
 
 		always @(posedge i_clk)
@@ -3166,7 +3190,7 @@ module	sdwb #(
 		else if (i_boot_nak && o_cfg_expect_ack)
 			r_alt_boot <= 1'b0;
 		else if (!o_dma_sd2s && !cmd_busy && (dma_error
-				|| (dma_zero_len && !dma_loaded)))
+				|| (dma_busy && dma_zero_len && !dma_loaded)))
 			r_alt_boot <= 1'b0;
 		// }}}
 
@@ -3175,7 +3199,10 @@ module	sdwb #(
 		always @(posedge i_clk)
 		if (i_reset || o_soft_reset || !OPT_CRCTOKEN)
 			r_boot_err <= 1'b0;
-		else if (r_boot_active && i_boot_nak && o_cfg_expect_ack)
+		else if (r_boot_active && (
+				(i_boot_nak && o_cfg_expect_ack)
+				|| (o_rx_en && i_rx_err)
+				|| i_dma_err))
 			r_boot_err <= 1'b1;
 		else if (bus_write && bus_wraddr == ADDR_CMD
 				&& bus_wstrb[ERR_BIT/8] && bus_wdata[ERR_BIT])
@@ -3195,6 +3222,19 @@ module	sdwb #(
 			r_boot_tok <= bus_wdata[EXPECT_ACK_BIT];
 		else if (bus_reset || !o_soft_reset)
 			r_boot_tok <= 1'b0;
+
+		always @(posedge i_clk)
+		if (i_reset)
+			r_pending_boot_tok <= P_BOOTTOK;
+		else if (r_activate_boot && bus_write
+				&& bus_wstrb[EXPECT_ACK_BIT/8]
+				&& (bus_wstrb[3:0] != 4'hf
+						|| bus_wdata!= RESET_KEY))
+			r_pending_boot_tok <= bus_wdata[EXPECT_ACK_BIT];
+		else if (i_boot_ack || i_boot_nak)
+			r_pending_boot_tok <= 1'b0;
+
+		assign	w_pending_boot_tok = r_pending_boot_tok;
 		// }}}
 
 		assign	w_boot_err      = r_boot_err;
@@ -3209,6 +3249,7 @@ module	sdwb #(
 		assign	w_alt_boot      = 1'b0;
 		assign	w_activate_boot = 1'b0;
 		assign	w_boot_active   = 1'b0;
+		assign	w_pending_boot_tok = 1'b0;
 		assign	o_boot_tok      = 1'b0;
 		assign	o_boot_cmden    = 1'b0;
 

@@ -549,12 +549,14 @@ begin
 	end
 	// }}}
 
+	u_bfm.readio(ADDR_SDPHY, read_data);
 	// OPT_SERDES, OPT_DDR
 	// {{{
 	u_bfm.readio(ADDR_SDPHY, read_data);
 	phy_reg = read_data;
-	phy_reg[20:16] = 5'h1f;
-	phy_reg[7:0] = 8'h0;
+	phy_reg[20:16] = 5'h1f;	// Maximum sample shift (for now)
+	phy_reg[15] = 1'b1;	// Make sure the clock is shutdown
+	phy_reg[7:0] = 8'h0;	// Request the fastest speed
 	phy_reg[8] = 1'b0; // Turn off any DDR
 	u_bfm.write_f(ADDR_SDPHY, phy_reg);
 	u_bfm.readio(ADDR_SDPHY, phy_reg);

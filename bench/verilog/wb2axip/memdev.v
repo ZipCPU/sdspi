@@ -187,6 +187,36 @@ module	memdev #(
 
 	assign	o_wb_stall = 1'b0;
 
+	task automatic read8(input [LGMEMSZ-1:0] addr,
+				output [7:0] return_data);
+		// {{{
+		reg	[AW-1:0]	waddr;
+		reg	[DW-1:0]	word;
+	begin
+		waddr = addr >> $clog2(DW/8);
+		word  = mem[waddr];
+		word  = word << (addr[$clog2(DW/8)-1:0]*8);
+		return_data  = word[DW-1:DW-8];
+	end endtask
+	// }}}
+
+	task automatic read32(input [LGMEMSZ-1:0] addr,
+				output [31:0] return_data);
+		// {{{
+		reg	[AW-1:0]	waddr;
+		reg	[DW-1:0]	word;
+	begin
+		waddr = addr >> $clog2(DW/8);
+		word  = mem[waddr];
+		if (DW > 32)
+		begin
+			word  = word << (addr[$clog2(DW/8)-1:2]*32);
+		end
+		return_data  = word[DW-1:DW-32];
+	end endtask
+	// }}}
+
+
 	// Make verilator happy
 	// {{{
 	// verilator lint_off UNUSED

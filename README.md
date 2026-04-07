@@ -197,6 +197,12 @@ could still be made, as listed below:
   to believe it won't close timing.  As a result, this feature is awaiting
   hardware which will support testing with the data strobe.
 
+- **Better time modeling**: After reviewing various specifications, it is
+  apparent the design needs better IO time modeling.  An ideal solution would
+  depend upon both `$hold` and `$setup` simulation timing constraints,
+  although it is not clear to what extent such constraints would be supported
+  by the open source tool chain(s).
+
 - **eMMC Boot mode**: An initial draft of the eMMC boot mode now exists.
   It hasn't yet been tested.
 
@@ -220,6 +226,11 @@ controller and protocol.  The RPi should be able to read/write anything in the
 FPGA Wishbone (or eventually AXI) address space via this approach.  At present,
 via simulation only, all commands to/from memory only apply to blocks of
 512Bytes, so there's some work left to be done.
+
+The slave capability turns SDIO read and write requests into Wishbone (or AXI)
+bus requests.  It is designed to be a hands off capability that doesn't require
+any (local) CPU.  If connected to a memory device, this slave capability could
+easily make that memory device available over an SDIO interface.
 
 Possible uses include:
 
@@ -255,6 +266,10 @@ Key features of this design include:
 - **Low Logic** - I wasn't expecting this one, but the SDSlave controller has
   less than half the logic requirement of the SDIO controller.  We'll see if
   this continues to be the case as more commands are implemented.
+
+*Status*: This slave controller has yet to see Silicon.  An [FPGA design
+exists](https://github.com/ZipCPU/eth10g) for testing this controller, but
+that test remains pending.
 
 ### Roadmap and TODO items
 
@@ -300,6 +315,10 @@ Key features of this design include:
   controller.  The other slave modules have been built to work in an eMMC
   environment (8b, w/ or w/o DS), so it should only require a rewrite of the FSM
   to support eMMC devices instead of SD devices.
+
+- **Better Timing**: The current design is built based upon clock edge
+  transitions.  It does _not_ meet the IO timing requirements found in the
+  specification, yet might be good enough to work.
 
 Bottom line?  This is still a work in progress, and it will probably remain
 so until hardware testing completes.

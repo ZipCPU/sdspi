@@ -36,7 +36,7 @@
 ##
 ## }}}
 .PHONY: all
-all:	sdspi llsdspi spicmd spitxdata spirxdata sdcmd sdwb sdaxil sdckgen sdtxframe sdrxframe sdsfsm report
+all:	sdspi llsdspi spicmd spitxdata spirxdata sdcmd sdwb sdaxil sdckgen sdtxframe sdrxframe sdsfsm wbs2mm wbmm2s rxgears txgears report
 
 RTL := ../../rtl
 ## SDSPI components
@@ -53,6 +53,14 @@ SDCK  := sdckgen
 SDTX  := sdtxframe
 SDRX  := sdrxframe
 SDSFSM:= sdsfsm
+
+RXGEARS := sddma_rxgears
+TXGEARS := sddma_txgears
+WBS2MM  := sddma_s2mm
+WBMM2S  := sddma_mm2s
+AXIS2MM  := sdax_s2mm
+AXIMM2S  := sdax_mm2s
+FAXI := faxi_master.v faxi_addr.v faxi_valaddr.v faxi_wstrb.v
 
 ########################################
 ##
@@ -224,6 +232,77 @@ $(SDRX)_prfs4/PASS: $(RTL)/sdio/$(SDRX).v $(SDRX).sby
 	sby -f $(SDRX).sby prfs4
 $(SDRX)_cvr/PASS: $(RTL)/sdio/$(SDRX).v $(SDRX).sby
 	sby -f $(SDRX).sby cvr
+## }}}
+
+.PHONY: $(RXGEARS) rxgears
+## {{{
+rxgears: $(RXGEARS)
+$(RXGEARS): $(RXGEARS)_prf/PASS  $(RXGEARS)_prfw/PASS $(RXGEARS)_cvr/PASS
+$(RXGEARS)_prf/PASS: $(RTL)/$(RXGEARS).v $(RXGEARS).sby
+	sby -f $(RXGEARS).sby prf
+$(RXGEARS)_prfw/PASS: $(RTL)/$(RXGEARS).v $(RXGEARS).sby
+	sby -f $(RXGEARS).sby prfw
+$(RXGEARS)_cvr/PASS: $(RTL)/$(RXGEARS).v $(RXGEARS).sby
+	sby -f $(RXGEARS).sby cvr
+## }}}
+
+.PHONY: $(TXGEARS) txgears
+## {{{
+txgears: $(TXGEARS)
+$(TXGEARS): $(TXGEARS)_prf/PASS $(TXGEARS)_prfw/PASS
+$(TXGEARS): $(TXGEARS)_cvr/PASS $(TXGEARS)_cvrw/PASS
+$(TXGEARS)_prf/PASS: $(RTL)/$(TXGEARS).v $(TXGEARS).sby
+	sby -f $(TXGEARS).sby prf
+$(TXGEARS)_prfw/PASS: $(RTL)/$(TXGEARS).v $(TXGEARS).sby
+	sby -f $(TXGEARS).sby prfw
+$(TXGEARS)_cvr/PASS: $(RTL)/$(TXGEARS).v $(TXGEARS).sby
+	sby -f $(TXGEARS).sby cvr
+$(TXGEARS)_cvrw/PASS: $(RTL)/$(TXGEARS).v $(TXGEARS).sby
+	sby -f $(TXGEARS).sby cvrw
+## }}}
+
+.PHONY: s2mm mm2s
+s2mm: wbs2mm axis2mm
+mm2s: wbmm2s aximm2s
+
+.PHONY: $(WBS2MM) wbs2mm
+## {{{
+wbs2mm: $(WBS2MM)
+$(WBS2MM): $(WBS2MM)_prf/PASS $(WBS2MM)_cvr/PASS
+$(WBS2MM)_prf/PASS: $(RTL)/$(WBS2MM).v $(WBS2MM).sby fwb_master.v
+	sby -f $(WBS2MM).sby prf
+$(WBS2MM)_cvr/PASS: $(RTL)/$(WBS2MM).v $(WBS2MM).sby fwb_master.v
+	sby -f $(WBS2MM).sby cvr
+## }}}
+
+.PHONY: $(WBMM2S) wbmm2s
+## {{{
+wbmm2s: $(WBMM2S)
+$(WBMM2S): $(WBMM2S)_prf/PASS $(WBMM2S)_cvr/PASS
+$(WBMM2S)_prf/PASS: $(RTL)/$(WBMM2S).v $(WBMM2S).sby fwb_master.v
+	sby -f $(WBMM2S).sby prf
+$(WBMM2S)_cvr/PASS: $(RTL)/$(WBMM2S).v $(WBMM2S).sby fwb_master.v
+	sby -f $(WBMM2S).sby cvr
+## }}}
+
+.PHONY: $(AXIS2MM) axis2mm
+## {{{
+axis2mm: $(AXIS2MM)
+$(AXIS2MM): $(AXIS2MM)_prf/PASS $(AXIS2MM)_cvr/PASS
+$(AXIS2MM)_prf/PASS: $(RTL)/sdio/$(AXIS2MM).v $(AXIS2MM).sby $(FAXI)
+	sby -f $(AXIS2MM).sby prf
+$(AXIS2MM)_cvr/PASS: $(RTL)/sdio/$(AXIS2MM).v $(AXIS2MM).sby $(FAXI)
+	sby -f $(AXIS2MM).sby cvr
+## }}}
+
+.PHONY: $(AXIMM2S) aximm2s
+## {{{
+aximm2s: $(AXIMM2s)
+$(AXIMM2S): $(AXIMM2s)_prf/PASS $(AXIMM2s)_cvr/PASS
+$(AXIMM2S)_prf/PASS: $(RTL)/sdio/$(AXIMM2S).v $(AXIMM2S).sby $(FAXI)
+	sby -f $(AXIMM2S).sby prf
+$(AXIMM2S)_cvr/PASS: $(RTL)/sdio/$(AXIMM2S).v $(AXIMM2S).sby $(FAXI)
+	sby -f $(AXIMM2S).sby cvr
 ## }}}
 ## }}}
 ########################################

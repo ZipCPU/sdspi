@@ -1,0 +1,30 @@
+[tasks]
+prf
+prfw prf bus64
+cvr
+cvrw cvr bus64
+
+[options]
+prf: mode prove
+prf: depth 4
+cvr: mode cover
+cvr: depth 40
+
+[engines]
+smtbmc
+
+[script]
+read -define TXGEARS
+read -formal sddma_txgears.v
+--pycode-begin--
+cmd = "hierarchy -top sddma_txgears"
+if ("bus64" in tags):
+	cmd += " -chparam BUS_WIDTH 64"
+else:
+	cmd += " -chparam BUS_WIDTH 32"
+output(cmd)
+--pycode-end--
+prep -top sddma_txgears
+
+[files]
+../../rtl/sddma_txgears.v

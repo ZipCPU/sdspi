@@ -16,7 +16,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -136,29 +136,20 @@ module	sddma_s2mm #(
 	begin
 		next_addr = { 1'b0, o_wr_addr, subaddr };
 
-		if (o_wr_stb && !i_wr_stall)
+		// While it would make sense to clear the sub address on any
+		// subsequent writes, we need to keep track of it in order
+		// to know how much to shift our register--so we keep it around.
+		if (o_wr_stb && !i_wr_stall && r_inc)
 		case(r_size)
-		SZ_BYTE: if (r_inc)
+		SZ_BYTE: // 8b addressing
 			next_addr = next_addr + 1;
-		SZ_16B: begin	// 16-bit addressing
-			if (r_inc)
-				next_addr = next_addr + 2;
-			else
-				next_addr[  0] = 0;
-			end
-		SZ_32B: begin	// 32-bit addressing
-			if (r_inc)
-				next_addr = next_addr + 4;
-			else
-				next_addr[1:0] = 0;
-			end
-		SZ_BUS: begin	// Full word addressing
-			if (r_inc)
-				next_addr = next_addr + { {(AW-1){1'b0}}, 1'b1,
+		SZ_16B: // 16-bit addressing
+			next_addr = next_addr + 2;
+		SZ_32B: // 32-bit addressing
+			next_addr = next_addr + 4;
+		SZ_BUS: // Full word addressing
+			next_addr = next_addr + { {(AW-1){1'b0}}, 1'b1,
 						{(WBLSB){1'b0}} };
-			else
-				next_addr[WBLSB-1:0] = 0;
-			end
 		endcase
 	end
 
@@ -324,7 +315,11 @@ module	sddma_s2mm #(
 		o_wr_stb <= 1'b0;
 
 		if (o_wr_stb)
+		begin
 			{ o_wr_addr, subaddr } <= next_addr[ADDRESS_WIDTH-1:0];
+			if (!r_inc)
+				subaddr <= subaddr;
+		end
 
 		if (!wb_pipeline_full)
 		begin
@@ -349,6 +344,12 @@ module	sddma_s2mm #(
 	end
 
 `ifdef	FORMAL
+	always @(posedge i_clk)
+	if (!i_reset && o_busy && wr_overflow)
+	begin
+		assert(!o_wr_stb);
+	end
+
 	always @(posedge i_clk)
 	if (i_reset || !o_busy || o_err || (o_wr_cyc && i_wr_err))
 	begin
@@ -656,7 +657,10 @@ module	sddma_s2mm #(
 	if (!i_reset && o_busy && !r_last && !o_err)
 			// && (o_wr_stb || !fwb_addr[ADDRESS_WIDTH]) && !r_last)
 	begin
-		assert({ 1'b0, o_wr_addr } == fwb_addr[ADDRESS_WIDTH:WBLSB]);
+		if (!wr_overflow)
+		begin
+			assert({ 1'b0, o_wr_addr } == fwb_addr[ADDRESS_WIDTH:WBLSB]);
+		end
 		case(r_size)
 		SZ_BUS: assert(subaddr == r_addr[WBLSB-1:0]);
 		SZ_16B: assert(subaddr == { fwb_addr[WBLSB-1:1], r_addr[0] });
@@ -669,7 +673,8 @@ module	sddma_s2mm #(
 	always @(*)
 	if (o_busy && fwb_addr[ADDRESS_WIDTH] && !r_last)
 	begin
-		assert(o_err);
+		assert(!o_wr_stb);
+		assert(o_err || wr_overflow);
 		// assert(fwb_addr[ADDRESS_WIDTH-1:0] <= DW/8);
 	end
 

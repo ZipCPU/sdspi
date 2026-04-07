@@ -2,7 +2,8 @@
 
 This directory contains the Verilog components for both the [SDSPI](spi/sdspi.v)
 controller, the [SDIO](sdio/sdio.v) controller, and the
-[SDIO slave](sdslave/sdslave.v) controller.
+[SDIO slave](sdslave/sdslave.v) controller.  Components specific to one
+controller or another have been placed in appropriate subdirectories.
 
 ## SDSPI
 
@@ -109,29 +110,50 @@ The SDIO slave remans a work in progress at this time.  Components include:
   the [SDSLAVE](sdslave/sdslave.v) logic module, and a device-dependent
   physical IO module.
 
-- [SDSLAVE](sdslave/sdslave.v)
+- [SDSLAVE](sdslave/sdslave.v) - Top device level module for the slave IP.
+  This primarily consists of instantiations of the various components below.
 
   - [SDSFSM](sdslave/sdsfsm.v) - This is the guts of the slave, containing the
     command handler and control logic generator.  This is the component that
-    receives and replies to commands.
+    receives and replies to commands.  It's also the component that directs
+    DMA transfers and handles (or not) any errors.
+
+    When/if I decide to build an eMMC slave module, this component will need
+    to have an eMMC version.
 
   - [SDSCMD](sdslave/sdscmd.v) - Controls the command wire, both receiving
-    commands and then replying to them
+    commands and then (following an FSM request) replying to them
 
-  - [SDSRXFRAME](sdslave/sdsrxframe.v) - Receives and processes packets from
-    the host controller.  Handles start/stop bits, width selection, CRC checking
-    and more.  The result of this module is an AXI stream containing data
-    packets.
+  - [SDSRXFRAME](sdslave/sdsrxframe.v) - Receives and processes a block of data
+    from the (external) host controller.  Handles start/stop bits, width
+    selection, CRC checking and more.  The result of this module is an AXI
+    stream containing data packets.  (Only the 1b and 4b data paths in SDR
+    mode have been tested.)
 
-  - [SDSTXFRAME](sdslave/sdstxframe.v)
-  - [SDSDMA](sdslave/sdsdma.v)
-    - [SDTFRVALUE](sdslave/sdtfrvalue.v)
+  - [SDSTXFRAME](sdslave/sdstxframe.v) - Handles three things: 1) Transmits
+    data blocks to the (external) host controller via SDIO.  Automatically adds
+    start bits, CRCs, and stop bits.  Generates tristate controls as well.
+    This can take place in SDR or DDR modes, in 1, 4, or 8b widths, although
+    only SDR mode with either 1b and 4b widths has been tested so far.
+    2) Returns ACK/NAK tokens following a received frame.  3) Activates the
+    "busy" line (i.e. lowers D[0]) while operations are ongoing.
+
+  - [SDSDMA](sdslave/sdsdma.v) - The DMA wrapper.  This is (primarily) a high level module containing several sub-components beneath it.
+
+    - [SDTFRVALUE](sdslave/sdtfrvalue.v) - Used to move a single word of data from one clock domain to another.  Specifically, used to move the DMA control signals to and from the SD clock domain and the system clock domain.
+    - [SDDMA_RXGEARS](sddma_rxgears.v) massages incoming data to the size of a full bus word, in preparation for (bus-word sized) the FIFO.
+    - [SDDMA_TXGEARS](sddma_txgears.v) massages incoming data from the size of a bus word back down to the 32b size used by the transmit frame component.
+    - [SDDMA_MM2S](sddma_mm2s.v) reads data from memory, to feed the gearboxes and then return data via the SDIO channel to the host.  This forms the beginning of the DEV2HOST return path.
+    - [SDDMA_S2MM](sddma_s2mm.v) takes data from the SDIO interface (via the RX Gears, asynchronous FIFO, and then the synchronous FIFO) and writes it to the bus.  This forms the end of the HOST2DEV data path.
+    - [AFIFO](afifo.v), an asynchronous FIFO, for moving data between the SD clock domain and the system (bus) clock domain.  All asynchronous FIFO operations are on full bus-word sized data words.
+    - [SDFIFO](sdfifo.v), a basic synchronous data FIFO.  This is required by the Wishbone MM2S component, and it guarantees that no data will be requested of the bus unless there's a place to put it.  When used by the S2MM DMA, it helps to guarantee that no bus operation takes place unless there's sufficient data to warrant a transfer.
 
 ## Logic Usage
 
 A [perl script](usage.pl) is also available to measure the logic usage of these
 two IP components via Yosys.  Measurement results are kept [here](usage.txt).
-As of this writing, the [SDSPI](spi/sdspi.v) controller requires only 544 Xilinx
-6-LUTs, whereas the [SDIO](sdio/sdio.v) controller requires 1420 Xilinx 6-LUTs
-without the DMA, and 2869 6-LUTs with the DMA.
+As of this writing, the [SDSPI](spi/sdspi.v) controller requires only 545 Xilinx
+6-LUTs, whereas the [SDIO](sdio/sdio.v) controller requires 1427 Xilinx 6-LUTs
+without the DMA, and 2852 6-LUTs with the DMA.  The [SDSLAVE](sdslave/sdslave.v)
+has no non-DMA option, and requires 1342 6-LUTs.
 

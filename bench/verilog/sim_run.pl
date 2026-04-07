@@ -16,7 +16,7 @@
 ##
 ################################################################################
 ## }}}
-## Copyright (C) 2016-2025, Gisselquist Technology, LLC
+## Copyright (C) 2016-2026, Gisselquist Technology, LLC
 ## {{{
 ## This program is free software (firmware): you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as published
@@ -92,7 +92,7 @@ if ($ARGV[0] eq "") {
 	$run_all = 0;
 	$vivado  = 1;
 	@array = @ARGV;
-	# Remove the "Icarus" flag
+	# Remove the "Vivado" flag
 	splice(@array, 0, 1);
 } else {
 	@array = @ARGV;

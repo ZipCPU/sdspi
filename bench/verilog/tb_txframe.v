@@ -13,7 +13,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -42,6 +42,7 @@ module	tb_txframe;
 	// Local declarations
 	// {{{
 	parameter [0:0]	OPT_SERDES = 1'b1;
+	parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0;
 	reg		clk, reset;
 	reg	[7:0]	cfg_spd;
 	reg	[1:0]	cfg_width;
@@ -85,7 +86,8 @@ module	tb_txframe;
 	// {{{
 
 	sdtxframe #(
-		.OPT_SERDES(OPT_SERDES)
+		.OPT_SERDES(OPT_SERDES),
+		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN)
 	) u_txframe (
 		// {{{
 		.i_clk(clk), .i_reset(reset),

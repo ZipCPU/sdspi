@@ -19,7 +19,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -630,6 +630,7 @@ module	sdio #(
 		// {{{
 		.OPT_SERDES(OPT_SERDES || OPT_DDR),
 		.OPT_CRCTOKEN(OPT_CRCTOKEN),
+		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN),
 		.NUMIO(NUMIO)
 		// .MW(MW)
 		// }}}
@@ -662,6 +663,7 @@ module	sdio #(
 	sdrxframe #(
 		// {{{
 		.OPT_DS(OPT_SERDES), .NUMIO(NUMIO),
+		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN),
 		.LGLEN(LGFIFO),
 		.MW(MW),
 		.LGTIMEOUT(LGTIMEOUT)
@@ -870,7 +872,7 @@ module	sdio #(
 		wire	unused_dma;
 		assign	unused_dma = &{ 1'b0,
 `ifdef	SDIO_AXI
-				M_AXI_AWREADY, M_AXI_WREADY, M_AXI_ARREADY, 
+				M_AXI_AWREADY, M_AXI_WREADY, M_AXI_ARREADY,
 				M_AXI_BVALID, M_AXI_BID, M_AXI_BRESP,
 				M_AXI_RVALID, M_AXI_RID, M_AXI_RDATA,
 					M_AXI_RLAST, M_AXI_RRESP,

@@ -15,7 +15,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -252,7 +252,7 @@ module sdio_top #(
 		// DMA interface
 		// {{{
 `ifdef	SDIO_AXI
-		// (Optional) AXI-Lite interface
+		// (Optional) AXI (Full) DMA interface
 		// {{{
 		output	wire			M_AXI_AWVALID,
 		input	wire			M_AXI_AWREADY,

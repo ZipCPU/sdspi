@@ -11,7 +11,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -42,8 +42,8 @@ module	sdsfsm #(
 		parameter [0:0]	OPT_HIGH_CAPACITY = 1'b1,
 		parameter [0:0]	OPT_1P8V = 1'b0,
 		parameter [0:0]	OPT_UHSII = 1'b0,
-		parameter [127:0]	CID = { 64'hdadd_3519_2347_291a,
-						64'habca_dead_519d_dad1 },
+		parameter [119:0]	CID = { 64'hdadd_3519_2347_291a,
+						56'habca_dead_51da_d1 },
 		parameter [15:0]	OCR_VOLTAGE = 16'hff_80
 		// }}}
 	) (
@@ -71,6 +71,7 @@ module	sdsfsm #(
 		output	reg	[95:0]	o_resp_extra,
 		//
 		input	wire		i_collision,
+		input	wire		i_cmd_busy,
 		// }}}
 		// RX (host -> slave) control
 		// {{{
@@ -185,11 +186,14 @@ module	sdsfsm #(
 
 	reg		new_dma_request, new_tx_en, new_rx_en;
 	reg	[1:0]	new_bufcount;
+	wire	[119:0]	w_CID;
+	reg		r_reply_active;
 	// }}}
 
 	assign	R1 = { 19'h0, r_state, 3'h0, app_cmd, 5'h0 };
 	// assign	R1 = 32'h0; // | sd_state | BUS_ERR | CRC_ERR | CMD_ERR | APPCMD
 	assign	CSD = 128'h0;
+	assign	w_CID = CID;
 
 	assign	o_cfg_ds = 1'b0;
 	assign	o_cfg_width = { 1'b0, r_width };
@@ -313,6 +317,7 @@ module	sdsfsm #(
 	// }}}
 
 	initial	r_state = ST_IDLE;
+	initial	r_reply_active = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset)
 	begin
@@ -333,6 +338,7 @@ module	sdsfsm #(
 		my_cid <= 1'b0;
 		r_inactive <= 1'b0;
 		first_command <= 1'b1;
+		r_reply_active <= 1'b0;
 		// }}}
 	end else begin
 		o_resp_valid <= 1'b0;
@@ -340,7 +346,7 @@ module	sdsfsm #(
 		o_resp_nocrc <= 1'b0;	// (Most) everything gets a CRC
 		if (i_collision)
 			my_cid <= 1'b0;
-		o_resp_extra <= CID[95:0];
+		o_resp_extra <= { CID[87:0], 8'hff };
 
 		if (!o_dma_request && r_state == ST_PRG && bufcount == 0)
 			r_state <= ST_TRAN;
@@ -357,6 +363,9 @@ module	sdsfsm #(
 
 		if (i_cmd_valid && !r_inactive)
 			first_command <= 1'b0;
+
+		if (!i_cmd_busy && !o_resp_valid)
+			r_reply_active <= 1'b0;
 
 		if (r_inactive)
 		begin
@@ -431,6 +440,7 @@ module	sdsfsm #(
 					o_resp_data[12:9] <= ST_DATA;
 					// The SD Status result is 64 bytes
 					o_cfg_lgblksz <= 4'h6;
+					r_reply_active <= 1'b1;
 				end end
 				// }}}
 			// { 1'b1, 6'd22 }: begin // ACMD22: SEND_NUM_WR_BLOCKS
@@ -450,6 +460,7 @@ module	sdsfsm #(
 					o_resp_data[12:9] <= ST_DATA;
 					// The SD Config Register is 8bytes
 					o_cfg_lgblksz <= 4'h3;
+					r_reply_active <= 1'b1;
 				end end
 				// }}}
 			{ 1'b?, 6'd0 }: begin	// CMD0: GO_IDLE
@@ -475,7 +486,7 @@ module	sdsfsm #(
 				begin
 					o_resp_valid <= 1'b1;
 					r_state <= ST_IDENT;
-					{ o_resp_data, o_resp_extra } <= CID;
+					{ o_resp_data, o_resp_extra } <= { CID, 8'hff };
 					o_resp_typ <= 1'b1;
 					my_cid <= 1'b1;
 				end end
@@ -559,7 +570,7 @@ module	sdsfsm #(
 				// }}}
 			{ 1'b0, 6'd10 }: begin // CMD10: SEND_CID
 				// {{{
-				{ o_resp_data, o_resp_extra } <= CID;
+				{ o_resp_data, o_resp_extra } <= { CID, 8'hff };
 				o_resp_typ <= 1'b1;
 				if (r_state == ST_STBY && i_arg[31:16] == RCA)
 				begin
@@ -573,6 +584,7 @@ module	sdsfsm #(
 				begin
 					o_resp_valid <= 1'b1;
 					o_resp_data <= R1;
+					r_reply_active <= 1'b1;
 					if (r_state == ST_RCV)
 					begin
 						r_state <= ST_PRG;
@@ -631,6 +643,7 @@ module	sdsfsm #(
 					o_resp_data <= R1;
 					o_resp_data[12:9] <= ST_DATA;
 					o_cfg_lgblksz <= 4'h9;
+					r_reply_active <= 1'b1;
 				end end
 				// }}}
 			{ 1'b0, 6'd18 }: begin // CMD18: READ_MULTIPLE_BLOCK
@@ -649,6 +662,7 @@ module	sdsfsm #(
 					begin
 						o_resp_data[12:9] <= ST_DATA;
 						o_cfg_lgblksz <= 4'h9;
+						r_reply_active <= 1'b1;
 					end else
 						o_resp_data <= R1
 							| ILLEGAL_COMMAND;
@@ -662,6 +676,7 @@ module	sdsfsm #(
 					o_resp_valid <= 1'b1;
 					o_resp_data <= R1;
 					o_resp_data[12:9] <= ST_DATA;
+					r_reply_active <= 1'b1;
 					// The SD Config Register is 8bytes
 					if (r_width)
 						// 128 clocks, 4b/clk => 64B
@@ -774,7 +789,7 @@ module	sdsfsm #(
 			D_DEV2HOST:
 				if (r_multiblock && !o_dma_request
 							&& new_bufcount < 2)
-					new_dma_request = 1'b1;
+					new_dma_request = (o_tx_src == S_MEM);
 			D_HOST2DEV: if (!s2mm_busy && new_bufcount > 0)
 					new_dma_request = 1'b1;
 			endcase
@@ -785,6 +800,7 @@ module	sdsfsm #(
 
 		case(o_dma_dir)
 		D_DEV2HOST: if (!o_tx_en && new_bufcount > 0
+							&& !r_reply_active
 							&& r_state == ST_DATA)
 			// Once a page is loaded, send it, but first
 			// guarantee an empty cycle
@@ -847,7 +863,7 @@ module	sdsfsm #(
 		r_multiblock <= 1'b0;
 		// }}}
 	end else begin
-		if (o_dma_reset && (!o_tx_en || i_tx_done))
+		if (o_dma_reset && bufcount == 0 && (!o_tx_en || i_tx_done))
 			o_tx_src <= S_MEM;
 
 		if (i_cfg_ready)
@@ -905,9 +921,6 @@ module	sdsfsm #(
 		if (o_dma_reset)
 			bufcount <= 0;
 
-		o_tx_en <= new_tx_en;
-		o_rx_en <= new_rx_en;
-
 		if (!o_dma_request && new_dma_request)
 		begin
 			o_cfg_valid <= 1'b1;
@@ -935,16 +948,26 @@ module	sdsfsm #(
 				// {{{
 				if (r_state == ST_TRAN)
 				begin
-					o_tx_en  <= 1'b1;
+					// Need to wait for the reply to
+					//  complete before we enable the
+					//  transmit side
+					// o_tx_en  <= 1'b1;
 					o_tx_src <= S_STATUS;	// 512b/64B vector
+					bufcount <= 1;
+					o_dma_dir <= D_DEV2HOST;
 				end end
 				// }}}
 			{ 1'b1, 6'd51 }: begin // ACMD51: SEND_SCR
 				// {{{
 				if (r_state == ST_TRAN)
 				begin
-					o_tx_en  <= 1'b1;
+					// Need to wait for the reply to
+					//  complete before we enable the
+					//  transmit side
+					// o_tx_en  <= 1'b0;
 					o_tx_src <= S_SCR;	// 64b/8B vector
+					bufcount <= 1;
+					o_dma_dir    <= D_DEV2HOST;
 				end end
 				// }}}
 			{ 1'b?, 6'd0 }: begin // CMD0
@@ -1097,8 +1120,10 @@ module	sdsfsm #(
 				// {{{
 				if (r_state == ST_TRAN && !o_tx_busy)
 				begin
-					o_tx_en  <= 1'b1;
+					// o_tx_en  <= 1'b1;
 					o_tx_src <= S_TUNING;
+					bufcount <= 1;
+					o_dma_dir    <= D_DEV2HOST;
 				end end
 				// }}}
 			{ 1'b0, 6'd24 }: begin // CMD24: WRITE_BLOCK
@@ -1201,6 +1226,29 @@ module	sdsfsm #(
 
 	always @(posedge i_clk)
 		assume(!i_cmd_valid || !i_cmd_err);
+
+	always @(posedge i_clk)
+	if (f_past_valid && !$past(i_reset))
+	begin
+		/*
+		if (!$past(i_cmd_err) && o_resp_valid && (o_resp == 6'd12
+				|| o_resp == 6'd17
+				|| o_resp == 6'd18
+				|| o_resp == 6'd19))
+		begin
+			assert(r_reply_active);
+		end
+		*/
+
+		if (r_reply_active)
+		begin
+			if (!$past(r_reply_active))
+				assert(o_resp_valid);
+			assume(!i_cmd_valid && !i_cmd_err);
+		end
+
+		assume($rose(i_cmd_busy) == $past(o_resp_valid));
+	end
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -1347,22 +1395,23 @@ cover($past(r_state) == ST_PRG);
 		if (!r_multiblock)
 		begin
 			assert(!o_tx_en || !mm2s_busy);
-			assert(bufcount <= 1);
+			assert(bufcount + (mm2s_busy ? 1:0) <= 1);
 		end
 		// assert(!o_dma_reset || (!mm2s_busy && o_tx_src != S_MEM));
 		assert(o_dma_reset == (o_tx_src != S_MEM));
 		assert(!s2mm_busy);
 		assert(!o_rx_en);
-		assert($rose(o_tx_en) || $stable(o_tx_src));
+		if (o_tx_en && $stable(o_tx_en))
+			assert($stable(o_tx_src));
 		assert(RCA != 0);
 		if (o_tx_src != S_MEM)
-			assert(!o_dma_request && !mm2s_busy && bufcount == 0);
+			assert(!o_dma_request && !mm2s_busy);
 		case(o_tx_src)
 		S_MEM: begin end
 		S_SCR: assert(!mm2s_busy && o_cfg_lgblksz == 3);
 		S_STATUS: assert(!mm2s_busy && o_cfg_lgblksz == 6);
 		S_TUNING: begin
-			assert(!mm2s_busy)
+			assert(!mm2s_busy);
 			if (r_width)
 			begin
 				assert(o_cfg_lgblksz == 6);
@@ -1426,6 +1475,17 @@ cover($past(r_state) == ST_PRG);
 	always @(posedge i_clk)
 	if (!i_reset && !$past(i_reset))
 	begin
+		if (o_tx_en)
+			assert(bufcount > 0);
+		if (o_tx_src != S_MEM)
+		begin
+			assert(o_dma_dir == D_DEV2HOST);
+			assert(o_dma_reset);
+			assert(!o_dma_request);
+			assert(!mm2s_busy);
+			assert(!s2mm_busy);
+			assert(bufcount <= 1);
+		end
 		assert(bufcount <= 2);
 		if (bufcount == 2)
 		begin
@@ -1445,14 +1505,20 @@ cover($past(r_state) == ST_PRG);
 			assert(s2mm_busy == (o_dma_dir == D_HOST2DEV));
 		end
 
-		if (bufcount > 0 && o_dma_dir == D_DEV2HOST
-						&& r_state == ST_DATA)
-			assert(o_tx_en || $past(o_tx_en));
+		if (bufcount > 0 && $past(bufcount > 0)
+					&& o_dma_dir == D_DEV2HOST
+					&& r_state == ST_DATA)
+		begin
+			assert(o_tx_en || $past(o_tx_en || r_reply_active));
+		end
 
-		assert(!o_cfg_pp);
+		assert(!o_cfg_cmd_pp);
+		assert(!o_cfg_dat_pp);
 		if (mm2s_busy || s2mm_busy)
 		begin
-			assert($stable(o_cfg_pp));
+			assert(o_tx_src == S_MEM);
+			assert($stable(o_cfg_dat_pp));
+			assert($stable(o_cfg_cmd_pp));
 			// assert($stable(o_cfg_ds));
 			assert($rose(mm2s_busy || s2mm_busy)
 					|| $stable(o_cfg_lgblksz)

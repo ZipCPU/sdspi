@@ -1,0 +1,52 @@
+[tasks]
+prf
+prf64 prf bus64
+cvr
+
+[options]
+prf: mode prove
+prf: depth 8
+prf: depth 14		## 5 hrs as of 9/25, 26.5hrs for 64b
+cvr: depth 80		## Still fails ... ???
+cvr: mode cover
+
+[engines]
+smtbmc
+# prf: smtbmc boolector
+
+[script]
+read -define F_PEEK
+read -formal sdax_s2mm.v
+read -formal sddma_txgears.v
+read -formal sdfifo.v
+read -formal faxi_master.v
+read -formal faxi_addr.v
+read -formal faxi_valaddr.v
+read -formal faxi_wstrb.v
+--pycode-begin--
+cmd = "hierarchy -top sdax_s2mm"
+if ("cvr" in tags):
+	cmd += " -chparam LGMAXBURST 2"
+if ("bus64" in tags):
+	cmd += " -chparam BUS_WIDTH 64"
+elif ("bus128" in tags):
+	cmd += " -chparam BUS_WIDTH 128"
+elif ("bus256" in tags):
+	cmd += " -chparam BUS_WIDTH 256"
+elif ("bus512" in tags):
+	cmd += " -chparam BUS_WIDTH 512"
+else:
+	cmd += " -chparam BUS_WIDTH 32"
+output(cmd)
+--pycode-end--
+proc -norom
+prep -top sdax_s2mm
+
+[files]
+faxi_master.v
+faxi_addr.v
+faxi_valaddr.v
+faxi_wstrb.v
+../../rtl/sdio/sdax_s2mm.v
+../../rtl/sddma_txgears.v
+../../rtl/sdfifo.v

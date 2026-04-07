@@ -44,10 +44,10 @@
 //		of data at the maximum transfer size.
 //
 //		Our SFIFO will run on the bus (WB) clock.
-//		
+//
 //	S2MM
 //	MM2S
-//		
+//
 //
 // So ... how do we do this?
 	// RX Data path: sdsrxframe -> rxgears -> AFIFO -> FIFO(sys) -> S2MM
@@ -65,7 +65,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -405,7 +405,7 @@ module	sdsdma #(
 	);
 	// }}}
 
-	// WB ingest, MM2S (TODO)
+	// WB ingest, MM2S
 	// {{{
 	reg	[LGMAXBLKSZ:0]	wide_wb_len;
 
@@ -468,7 +468,9 @@ module	sdsdma #(
 	sdfifo #(
 		.BW(1+(WBLSB+1)+DW),
 		// Always have enough room for 2x blocks, to allow for ping-pong
-		.LGFLEN(LGFLEN)
+		.LGFLEN(LGFLEN),
+		// If we want to support iCE40 chips, we can't use ASYNC reads
+		.OPT_ASYNC_READ(1'b0)
 	) u_sfifo (
 		.i_clk(i_wb_clk),
 		.i_reset(i_wb_reset || wb_softreset),

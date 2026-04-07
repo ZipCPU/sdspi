@@ -15,7 +15,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -390,7 +390,7 @@ module	sdrxframe #(
 		for(ik=0; ik<MW/8; ik=ik+1)
 		begin
 			swap_strb[ik] = mem_strb[MW/8-1-ik];
-			swap_data[ik*8 +: 8] = mem_strb[MW-ik*8 +: 8];
+			swap_data[ik*8 +: 8] = mem_data[MW-8-ik*8 +: 8];
 		end
 
 		assign	o_mem_strb  = swap_strb;

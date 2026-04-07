@@ -57,8 +57,65 @@ begin
 	////////////////////////////////////////////////////////////////////////
 	$display("BOOT TEST #1: Automatic boot following a system RESET");
 
-	$display("  Waiting ...");
-	wait(emmc_interrupt);
+	if (OPT_DMA)
+	begin
+		$display("  Waiting ...");
+		wait(emmc_interrupt);
+	end else begin
+		loading = 2'b00;
+		b_addr = 32'h0;
+		b_addr[ADDRESS_WIDTH-1:0] = BOOT_ADDR;
+
+		// Request the first block
+		// {{{
+		if (blk == 0)
+		begin
+			read_data = 32'h0 | EMMC_MEM;
+			u_bfm.writeio(ADDR_SDCARD, read_data);
+		end
+		// }}}
+
+		for(blk=0; 1'b0 === error_flag
+				&& blk<(1<<(EMMC_LGBOOTSZ-9)); blk=blk+1)
+		begin
+			// Wait for a block to be ready
+			// {{{
+			wait(emmc_interrupt);
+
+			u_bfm.readio(ADDR_SDCARD, read_data);
+			while(read_data & EMMC_MEM)
+				u_bfm.readio(ADDR_SDCARD, read_data);
+
+			error_flag = error_flag || read_data[15];
+			// }}}
+
+			// (Possibly) Request the next block
+			// {{{
+			if (blk + 1 < (1<<(EMMC_LGBOOTSZ-9)) )
+			begin
+				read_data = 32'h0 | EMMC_FIFO;
+				if (blk[0] == 1'b0)
+					read_data = read_data | EMMC_FIFO;
+				u_bfm.writeio(ADDR_SDCARD, read_data);
+			end
+			// }}}
+
+			// Transfer data
+			// {{{
+			for(iw=0; 1'b0 === error_flag && iw<(1<<7); iw=iw+1)
+			begin
+				u_bfm.readio(ADDR_FIFOA + (blk[0]? 4:0),
+						read_data);
+				u_bfm.writeio(b_addr + { iw, 2'b00 },
+						read_data);
+			end
+			b_addr = b_addr + 512;
+			// }}}
+		end
+
+		b_addr = 32'h0;
+		b_addr[ADDRESS_WIDTH-1:0] = BOOT_ADDR;
+	end
 
 	u_bfm.readio(ADDR_SDCARD, read_data);
 	$display("  CMD: 0x%08x", read_data);
@@ -151,6 +208,8 @@ begin
 		phy_data[9] = BOOT_MODE[3];	// HS400 mode w/ DS (Disallowed by spec)
 		// ... as will the width
 		phy_data[11:10] = BOOT_MODE[1:0];
+		// ... and the block size (512Bytes)
+		phy_data[27:24] = 9;
 		u_bfm.writeio(ADDR_SDPHY, phy_data);
 
 		// Set up the DMA
@@ -172,12 +231,69 @@ begin
 		// read_data[15] = 1'b1;
 		// All put together now ...
 		read_data[15:0] = 16'ha300;
+		read_data[13:11] = { OPT_DMA, 1'b0, !OPT_DMA };
 		u_bfm.writeio(ADDR_SDCARD, read_data);
 		// }}}
 
-		$display("  Waiting ...");
+		if (OPT_DMA)
+		begin
+			$display("  Waiting ...");
+			wait(emmc_interrupt);
+		end else begin
+			loading = 2'b00;
+			b_addr = 32'h0;
+			b_addr[ADDRESS_WIDTH-1:0] = BOOT_ADDR;
 
-		wait(emmc_interrupt);
+			// Request the first block
+			// {{{
+			if (blk == 0)
+			begin
+				read_data = 32'h0 | EMMC_MEM;
+				u_bfm.writeio(ADDR_SDCARD, read_data);
+			end
+			// }}}
+
+			for(blk=0; 1'b0 === error_flag
+				&& blk<(1<<(EMMC_LGBOOTSZ-9)); blk=blk+1)
+			begin
+				// Wait for a block to be ready
+				// {{{
+				wait(emmc_interrupt);
+
+				u_bfm.readio(ADDR_SDCARD, read_data);
+				while(read_data & EMMC_MEM)
+					u_bfm.readio(ADDR_SDCARD, read_data);
+
+				error_flag = error_flag || read_data[15];
+				// }}}
+
+				// (Possibly) Request the next block
+				// {{{
+				if (blk + 1 < (1<<(EMMC_LGBOOTSZ-9)) )
+				begin
+					read_data = 32'h0 | EMMC_FIFO;
+					if (blk[0] == 1'b0)
+						read_data = read_data | EMMC_FIFO;
+					u_bfm.writeio(ADDR_SDCARD, read_data);
+				end
+				// }}}
+
+				// Transfer data
+				// {{{
+				for(iw=0; 1'b0 === error_flag && iw<(1<<7); iw=iw+1)
+				begin
+					u_bfm.readio(ADDR_FIFOA + (blk[0]? 4:0),
+							read_data);
+					u_bfm.writeio(b_addr + { iw, 2'b00 },
+							read_data);
+				end
+				b_addr = b_addr + 512;
+				// }}}
+			end
+
+			b_addr = 32'h0;
+			b_addr[ADDRESS_WIDTH-1:0] = BOOT_ADDR;
+		end
 
 		u_bfm.readio(ADDR_SDCARD, read_data);
 		$display("  CMD: 0x%08x", read_data);
@@ -263,6 +379,8 @@ begin
 		phy_data[11:10] = BOOT_MODE[1:0];
 		// Must use the clock shutdown, to deal w/ bus idle issues
 		phy_data[15] = 1'b1;
+		// ... and the block size (512Bytes)
+		phy_data[27:24] = 9;
 		u_bfm.writeio(ADDR_SDPHY, phy_data);
 		// }}}
 
@@ -286,6 +404,7 @@ begin
 		// Make sure whether or not we expect a boot token
 		//  acknowledgment matches how our model is set up
 		read_data[26] = BOOT_TOKEN;
+		read_data[13:11] = { OPT_DMA, 1'b0, !OPT_DMA };
 		u_bfm.write_f(ADDR_SDCARD, read_data);
 		// }}}
 
@@ -375,6 +494,8 @@ begin
 		phy_data[11:10] = BOOT_MODE[1:0];
 		// Must use the clock shutdown, to deal w/ bus idle issues
 		phy_data[15] = 1'b1;
+		// ... and the block size (512Bytes)
+		phy_data[27:24] = 9;
 		u_bfm.writeio(ADDR_SDPHY, phy_data);
 		// }}}
 
@@ -400,8 +521,11 @@ begin
 		// {{{
 		//   This should also start our boot, while leaving CMD0 high
 		u_bfm.writeio(ADDR_SDDATA, 32'hffff_fffa);
-		u_bfm.write_f(ADDR_SDCARD,
-				EMMC_CMD | EMMC_DMA | EMMC_RNONE | EMMC_ERR);
+		read_data = EMMC_CMD | EMMC_RNONE | EMMC_ERR;
+		read_data[13:11] = { OPT_DMA, 1'b0, !OPT_DMA };
+		// Boot token's aren't (yet) supported for alternate boot
+		// read_data[26] = BOOT_TOKEN;
+		u_bfm.write_f(ADDR_SDCARD, read_data);
 		// }}}
 
 		// Wait for the command to finish

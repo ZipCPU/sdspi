@@ -1,14 +1,17 @@
 [tasks]
 prf
-prfds prf opt_serdes opt_emmc opt_dma
-prfdr prf opt_ddr opt_dma
-prfdma prf opt_dma
-cvr opt_serdes opt_dma
+prfds  prf opt_serdes opt_emmc opt_dma
+prfdr  prf opt_ddr opt_dma
+prfdma prf         opt_dma
+pboot  prf opt_ddr opt_emmc opt_dma boot
+cvr      opt_serdes opt_dma
+cvrb cvr opt_ddr    opt_dma boot
 
 [options]
 prf: mode prove
 cvr: mode cover
 prf: depth 10
+pboot: depth 14
 cvr: depth 45	# Actually takes 42 steps, and about 4hrs
 
 [engines]
@@ -24,8 +27,8 @@ cmd += " -chparam OPT_SERDES   %d" % (1 if "opt_serdes" in tags else 0)
 cmd += " -chparam OPT_DDR      %d" % (1 if "opt_ddr"  in tags else 0)
 cmd += " -chparam OPT_DMA      %d" % (1 if "opt_dma"  in tags else 0)
 cmd += " -chparam OPT_EMMC     %d" % (1 if "opt_emmc" in tags else 0)
-cmd += " -chparam OPT_CRCTOKEN 1"
 cmd += " -chparam NUMIO        %d" % (8 if "opt_emmc" in tags else 4)
+cmd += " -chparam OPT_BOOTEN   %d" % (1 if "boot" in tags else 0)
 output(cmd)
 --pycode-end--
 proc -norom

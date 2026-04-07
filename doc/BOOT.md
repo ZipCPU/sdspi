@@ -51,7 +51,7 @@ There are three ways to enter boot mode.
    reset release.
 
 3. The controller will enter the alternate boot mode following a write
-   of `32'ha300|CRC_TOKEN` to the command register, provided the argument
+   of `32'ha040|CRC_TOKEN` to the command register, provided the argument
    register is set to `32'hffff_fffa`.
 
    This isn't quite right.  You need to first send a `32'h8040` with an
@@ -106,3 +106,8 @@ Writing the following to the command register will ...
 
 - Must ensure a minimum of 56 device clocks between BOOT CMD control and the
   first command.
+- What about BOOT without DMA?  This will be known as _manual boot_.  It is
+  entered in the same way as before, save that the FIFO bit must be set rather
+  than the DMA bit.  For AUTOBOOT, manual boot requires that the block count
+  must be set to zero.
+- How shall manual boot be exited?  With a bus reset command?

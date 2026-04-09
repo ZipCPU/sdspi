@@ -151,6 +151,7 @@ $(SDCMD)_cvr/PASS: $(RTL)/sdio/$(SDCMD).v $(SDCMD).sby
 ## {{{
 $(SDWB): $(SDWB)_prf/PASS $(SDWB)_cvr/PASS
 $(SDWB): $(SDWB)_prfds/PASS $(SDWB)_prfdr/PASS $(SDWB)_prfdma/PASS
+$(SDWB): $(SDWB)_pboot/PASS
 $(SDWB)_prf/PASS: $(SDWB).sby $(RTL)/sdio/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prf
 $(SDWB)_prfdma/PASS: $(SDWB).sby $(RTL)/sdio/$(SDWB).v fwb_slave.v fwb_register.v
@@ -159,6 +160,8 @@ $(SDWB)_prfds/PASS: $(SDWB).sby $(RTL)/sdio/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prfds
 $(SDWB)_prfdr/PASS: $(SDWB).sby $(RTL)/sdio/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby prfdr
+$(SDWB)_pboot/PASS: $(SDWB).sby $(RTL)/sdio/$(SDWB).v fwb_slave.v fwb_register.v
+	sby -f $(SDWB).sby pboot
 $(SDWB)_cvr/PASS: $(SDWB).sby $(RTL)/sdio/$(SDWB).v fwb_slave.v fwb_register.v
 	sby -f $(SDWB).sby cvr
 ## }}}

@@ -790,7 +790,12 @@ begin
 		read_data = 32'h0; read_data[18] = 1'b1; read_data[2] = 1'b1;
 		u_bfm.write_f(GPIO_ADDR, read_data);
 `endif
-		repeat (1536)
+		// Wait one millisecond--as required by spec
+		#1_000_000;
+		// That's the minimum wait, so ... wait a bit longer
+		#500_000;
+		// Re-synchronize with the clock (again)
+		repeat (2)
 			@(posedge clk);
 		u_bfm.readio(ADDR_SDCARD, read_data);
 		if (2'b01 === read_data[19:18])

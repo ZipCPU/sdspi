@@ -51,6 +51,8 @@
 ##		top level (will eventually) contain a ZipCPU, and it's test
 ##		script would be a hex file specifying the software load for
 ##		the test.
+## Parameters are given in the format of PARAM=X.  As an example, appending
+## OPT_VCD=1 will set the OPT_VCD parameter, thuhs turning on VCD generation.
 ## }}}
 ##
 ## SD card checks
@@ -83,7 +85,6 @@ emmcboot8x	WB  emmcboot	OPT_SERDES=1 OPT_BOOTEN=1
 ## SDSLAVE
 ## {{{
 sdslvio		WB  sdiostart	OPT_SERDES=0 OPT_DDR=1 OPT_SDSLAVE=1
-## The AXI version of the SDSLAVE doesn't (yet) exist
 axslvio	AXI sdiostart	OPT_SERDES=0 OPT_DDR=1 OPT_SDSLAVE=1
 ## }}}
 #

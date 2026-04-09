@@ -37,9 +37,7 @@
 `default_nettype none
 `timescale 1ns / 1ps
 // }}}
-module	tb_axi
-	#(
-		// Design configuration parameters
+module	tb_axi #( // Design configuration parameters
 		// {{{
 // `define	SDIO_AXI
 		parameter	[0:0]	OPT_SERDES = 1'b1,
@@ -64,7 +62,6 @@ module	tb_axi
 		parameter		LGMEMSZ = 16,	// 64kB
 		localparam		ADDRESS_WIDTH = LGMEMSZ + 1
 		// }}}
-	// ) (
 	);
 
 	// Local declarations
@@ -800,9 +797,9 @@ module	tb_axi
 	wire			zip_reset, zip_halted, zip_gie,
 				zip_opstall, zip_pfstall, zip_icount;
 
-	wire	[30:0]	sd_ocr;
-	wire		sd_rx_err;
-	wire	[119:0]	sd_cid;
+	wire	[30:0]		sd_ocr;
+	wire			sd_rx_err;
+	wire	[119:0]		sd_cid;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -1373,7 +1370,7 @@ module	tb_axi
 
 	sdio_top #(
 		// {{{
-		.LGFIFO(12), .NUMIO(4), .SW(SW),
+		.LGFIFO(9), .NUMIO(4), .SW(SW),
 		.OPT_ISTREAM(OPT_STREAM), .OPT_OSTREAM(OPT_STREAM),
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.DW(DW), .AXI_IW(AXI_IW),
@@ -1381,7 +1378,8 @@ module	tb_axi
 		.OPT_CARD_DETECT(1'b1), .LGTIMEOUT(10),
 		.OPT_1P8V(OPT_1P8V),
 		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b0),
-		.HWDELAY(OPT_SERDES ? 6 : 0)
+		.HWDELAY(OPT_SERDES ? 9 : 0),
+		.OPT_BOOTEN(1'b0)
 		// }}}
 	) u_sdio (
 		// {{{
@@ -1653,7 +1651,7 @@ module	tb_axi
 		// {{{
 		genvar			sk;
 		reg			slv_clk;
-		wire	[3:0]		wide_sd_dat;
+		wire			w_ds;
 
 		// Local AXI (in the SD clock domain ...)
 		// {{{
@@ -1708,10 +1706,13 @@ module	tb_axi
 		// }}}
 
 		sdslave_top #(
+			// {{{
+			.ADDRESS_WIDTH(ADDRESS_WIDTH),
 			.AXI_IW(AXI_IW),
 			.AXI_READ_ID(0), .AXI_WRITE_ID(2),
-			.ADDRESS_WIDTH(AW), .DW(DW)
-			// .OPT_DDR(1'b1), .NUMIO(4), .OPT_EMMC(1'b0)
+			.DW(DW), .NUMIO(4)
+			// .OPT_DDR(1'b1), .OPT_EMMC(1'b0)
+			// }}}
 		) u_slave (
 			// {{{
 			.i_bus_clk(slv_clk), .i_aresetn(!reset),
@@ -1761,11 +1762,11 @@ module	tb_axi
 			// }}}
 			// SD slave front-end interface
 			// {{{
-			.i_sd_clk(sd_ck),
+			.i_ck(sd_ck),
 			//
-			.io_sd_cmd(sd_cmd),
-			.io_sd_dat({ wide_sd_dat, sd_dat })
-			// .o_sd_ds(w_sd_ds)
+			.io_cmd(sd_cmd),
+			.io_dat( sd_dat ),
+			.o_ds(w_ds)
 			// }}}
 			// }}}
 		);
@@ -1878,8 +1879,8 @@ module	tb_axi
 		);
 		// }}}
 
-		assign	sd_ocr = u_slave.u_slave.u_fsm.OCR;
-		assign	sd_cid = u_slave.u_slave.u_fsm.CID[127:8];
+		assign	sd_ocr = u_slave.u_sdslave.u_fsm.OCR;
+		assign	sd_cid = u_slave.u_sdslave.u_fsm.CID;
 		assign	sd_rx_err = 1'b0;
 
 		// Keep Verilator happy
@@ -1891,6 +1892,7 @@ module	tb_axi
 		// }}}
 		// }}}
 	end else begin : GEN_SDIO_MODEL
+		// {{{
 
 		mdl_sdio #(
 			.LGMEMSZ(16),
@@ -1901,10 +1903,6 @@ module	tb_axi
 			.sd_clk(sd_ck), .sd_cmd(sd_cmd), .sd_dat(sd_dat),
 			.i_1p8v(sdio_1p8v)
 		);
-
-		assign		sd_ocr = u_sdcard.ocr;
-		assign		sd_cid = u_sdcard.CID[119:0];
-		assign		sd_rx_err = u_sdcard.rx_err;
 
 		// The *model* doesn't use the AXI bus
 		// {{{
@@ -1951,11 +1949,11 @@ module	tb_axi
 		// assign	SDSLV_RRESP = 0;
 		// }}}
 
-	end endgenerate
-
-		assign	sd_cid = u_sdcard.CID;
 		assign	sd_ocr = u_sdcard.ocr;
+		assign	sd_cid = u_sdcard.CID;
 		assign	sd_rx_err = u_sdcard.rx_err;
+		// }}}
+	end endgenerate
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////

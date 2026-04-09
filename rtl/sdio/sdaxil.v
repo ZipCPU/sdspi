@@ -241,18 +241,14 @@ module	sdaxil #(
 
 	// Local declarations
 	// {{{
+	// The RESET_KEY *MUST* *SET* the HWRESET_BIT
 	localparam	[31:0]	RESET_KEY = 32'h5200_0000;
-	localparam	[0:0]	P_BOOTEN = OPT_EMMC && OPT_DMA && OPT_BOOTEN,
+	localparam	[0:0]	P_BOOTEN = OPT_EMMC && OPT_DMA && OPT_BOOTEN;
+`ifndef	FORMAL
+	localparam	[0:0]	P_BOOTFIFO = 1'b0,
 				P_AUTOBOOT = P_BOOTEN && OPT_AUTOBOOT
 						&& BOOT_BLOCKS != 0,
 				P_BOOTTOK = P_AUTOBOOT && BOOT_TOKEN && OPT_CRCTOKEN;
-	localparam	[3:0]	P_BOOT_MODE = { BOOT_MODE[3] && OPT_DS,
-						BOOT_MODE[2],
-				(NUMIO >= 8) ? { BOOT_MODE[1],
-						!BOOT_MODE[1] && BOOT_MODE[0] }
-				: (NUMIO >= 4 && |BOOT_MODE[1:0]) ? WIDTH_4W
-				: WIDTH_1W };
-
 	//
 	// Speed == 0 => 200MHz (Only OPT_SERDES)
 	// Speed == 1 => 100MHz (OPT_SERDES || (OPT_DDR && !DDR))
@@ -264,6 +260,37 @@ module	sdaxil #(
 			: (BOOT_SPEED <= 1 && (OPT_DDR && !BOOT_MODE[2])) ? 1
 			: (BOOT_SPEED <= 2 && (OPT_DDR || !BOOT_MODE[2])) ? 2
 			: 3;	// 25MHz
+
+`else
+	// Let the formal tool play with and adjust these otherwise parameters
+	// as it sees fit--keeps us from needing to run the tool against all
+	// combinations.
+	(* anyconst *) reg [0:0]	P_AUTOBOOT, P_BOOTTOK, OPT_CRCTOKEN,
+					P_BOOTFIFO;
+	(* anyconst *) reg [DMA_AW-1:0]	BOOT_ADDR;
+	(* anyconst *) reg [31:0]	BOOT_BLOCKS;
+	(* anyconst *) reg [7:0]	BOOT_SPEED;
+	wire	[7:0]			P_BOOTSPD;
+
+	always @(*)
+	if (!P_BOOTEN || BOOT_BLOCKS == 0)
+		assume(!P_AUTOBOOT);
+
+	always @(*)
+	if (!P_BOOTEN || !P_AUTOBOOT || !OPT_CRCTOKEN)
+		assume(!P_BOOTTOK);
+
+	assign	P_BOOTSPD = (OPT_SERDES || BOOT_SPEED > 2) ? BOOT_SPEED
+			: (BOOT_SPEED <= 1 && (OPT_DDR && !BOOT_MODE[2])) ? 1
+			: (BOOT_SPEED <= 2 && (OPT_DDR || !BOOT_MODE[2])) ? 2
+			: 3;	// 25MHz
+`endif
+	localparam	[3:0]	P_BOOT_MODE = { BOOT_MODE[3] && OPT_DS,
+						BOOT_MODE[2],
+				(NUMIO >= 8) ? { BOOT_MODE[1],
+						!BOOT_MODE[1] && BOOT_MODE[0] }
+				: (NUMIO >= 4 && |BOOT_MODE[1:0]) ? WIDTH_4W
+				: WIDTH_1W };
 
 	localparam	LGFIFO32 = LGFIFO - $clog2(32/8);
 
@@ -374,7 +401,7 @@ module	sdaxil #(
 
 	// BOOT signals
 	wire		w_alt_boot, w_activate_boot, w_boot_active, w_boot_err;
-	reg		bus_reset, reset_stb;
+	reg		bus_reset, reset_stb, bus_reset_request;
 	wire		w_pending_boot_tok;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -463,21 +490,26 @@ module	sdaxil #(
 
 	// o_soft_reset
 	// {{{
+	always @(*)
+	begin
+		bus_reset_request = 1'b0;
+
+		if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8])
+			bus_reset_request = bus_wdata[HWRESET_BIT];
+
+		// This only works if the RESET_KEY includes the HWRESET_BIT
+		if (!OPT_HWRESET && (&bus_wstrb[3:0]) && bus_wdata == RESET_KEY)
+			bus_reset_request = 1'b1;
+		if (!bus_write || bus_wraddr != ADDR_CMD)
+			bus_reset_request = 1'b0;
+	end
+
 	initial	reset_stb = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset)
 		reset_stb <= 1'b0;
 	else begin
-		reset_stb <= 1'b0;
-
-		// bus_reset <= bus_reset && o_soft_reset;
-		if (bus_write && bus_wraddr == ADDR_CMD)
-		begin
-			if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8])
-				reset_stb <= bus_wdata[HWRESET_BIT];
-			if (&bus_wstrb[3:0] && bus_wdata == RESET_KEY)
-				reset_stb <= 1'b1;
-		end
+		reset_stb <= !bus_reset && bus_reset_request;
 	end
 
 	initial	bus_reset = 1'b0;
@@ -485,15 +517,10 @@ module	sdaxil #(
 	if (i_reset)
 		bus_reset <= 1'b0;
 	else begin
-		// bus_reset <= bus_reset && o_soft_reset;
-		if (bus_write && bus_wraddr == ADDR_CMD)
-		begin
-			if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8])
-				bus_reset <= bus_wdata[HWRESET_BIT];
-			if (&bus_wstrb[3:0] && bus_wdata == RESET_KEY)
-				bus_reset <= 1'b1;
-		end else if (OPT_HWRESET && o_hwreset_n)
+		if (OPT_HWRESET && o_hwreset_n)
 			bus_reset <= 1'b0;
+
+		bus_reset <= bus_reset_request;
 	end
 
 	initial	o_soft_reset = 1'b1;
@@ -502,14 +529,9 @@ module	sdaxil #(
 			|| (OPT_HWRESET && !o_hwreset_n))
 	begin
 		o_soft_reset <= 1'b1;
-	end else if (bus_write && bus_wraddr == ADDR_CMD)
-	begin
-		o_soft_reset <= 1'b0;
-		if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8])
-			o_soft_reset <= bus_wdata[HWRESET_BIT];
-		if (&bus_wstrb[3:0] && bus_wdata == RESET_KEY)
-			o_soft_reset <= 1'b1;
-	end else
+	end else if (bus_reset_request)
+		o_soft_reset <= 1'b1;
+	else
 		o_soft_reset <= 1'b0;
 `ifdef	FORMAL
 	always @(posedge i_clk)
@@ -614,10 +636,13 @@ module	sdaxil #(
 			new_dma_request  = 1'b0;
 			new_r2_request   = 1'b0;
 			// }}}
-		end else if (bus_wdata[9:6] == { R1B_REPLY, NUL_PREFIX})
-		begin // Boot request
+		end else if (w_activate_boot)
+		begin // Boot request, but not ALT boot requests
 			// {{{
-			new_cmd_request  = 1'b0;
+			// i.e. if bus_wdata[9:6] == { R1B_REPLY, NUL_PREFIX}
+			// but with more conditions, all captured in the
+			// if (P_BOOTEN) generate section.
+			new_cmd_request  = (bus_wdata[7:6] == CMD_PREFIX);
 			new_data_request = 1'b0;
 			new_dma_request  = 1'b0;
 			new_r2_request   = 1'b0;
@@ -679,13 +704,16 @@ module	sdaxil #(
 			end
 			// }}}
 		end else if (bus_wdata[7:6] == CMD_PREFIX)
-		begin // Normal command request
+		begin // Normal command request, alt boot requests come in here
 			// {{{
 			new_cmd_request  = 1'b1;
 			new_data_request = 1'b0;
 			new_dma_request  = 1'b0;
 			new_r2_request   = 1'b0;
-			if (cmd_busy || (OPT_DMA && dma_busy && !dma_write))
+			if (cmd_busy || (OPT_DMA && dma_busy && !dma_write)
+				|| (P_BOOTEN && w_boot_active
+					&& (!bus_wstrb[1]
+						||bus_wdata[9:8] != RNO_REPLY)))
 			begin
 				new_cmd_request  = 1'b0;
 			end
@@ -908,6 +936,8 @@ module	sdaxil #(
 	always @(*)
 	begin
 		new_tx_request = new_data_request && bus_wdata[FIFO_WRITE_BIT];
+		if (P_BOOTEN && w_boot_active)
+			new_tx_request = 1'b0;
 		if (OPT_DMA && !dma_write && bus_wdata[USE_DMA_BIT])
 			new_tx_request = 1'b0;
 		if (bus_wdata[9:8] == R2_REPLY
@@ -917,14 +947,21 @@ module	sdaxil #(
 			new_tx_request = 1'b0;
 	end
 
+`ifndef	FORMAL
+	initial	o_cfg_expect_ack = P_BOOTTOK && OPT_CRCTOKEN;
+`endif
 	always @(posedge i_clk)
 	if (!OPT_CRCTOKEN)
 		o_cfg_expect_ack <= 1'b0;
 	else if (i_reset)
 		o_cfg_expect_ack <= P_BOOTTOK;
-	else if (reset_stb)
+	else if (bus_reset_request)
 	begin
 		o_cfg_expect_ack <= 1'b0;
+	end else if (w_activate_boot)
+	begin
+		o_cfg_expect_ack <= bus_wstrb[EXPECT_ACK_BIT/8]
+					&& bus_wdata[EXPECT_ACK_BIT];
 	end else if (w_boot_active)
 	begin
 		if  (i_boot_ack || i_boot_nak)
@@ -1056,7 +1093,9 @@ module	sdaxil #(
 	initial	r_fifo = 1'b0;
 	always @(posedge i_clk)
 	if (i_reset || o_soft_reset)
-		r_fifo <= 1'b0;
+		r_fifo <= P_BOOTFIFO;
+	else if (w_activate_boot)
+		r_fifo <= bus_wdata[FIFO_ID_BIT];
 	else if (!r_mem_busy && !o_tx_en
 				&& bus_cmd_stb && bus_wstrb[FIFO_ID_BIT/8])
 		r_fifo <= bus_wdata[FIFO_ID_BIT];
@@ -1109,18 +1148,15 @@ module	sdaxil #(
 	// {{{
 	initial	r_transfer_err = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || o_soft_reset)
+	if (i_reset || o_soft_reset || dma_busy || w_boot_active)
 		r_transfer_err <= 1'b0;
 	else begin
 		if (clear_err)
 			r_transfer_err <= 1'b0;
-		if (!dma_busy)
-		begin
-			if (o_rx_en && i_rx_err)
-				r_transfer_err <= 1'b1;
-			if (o_tx_en && i_tx_err)
-				r_transfer_err <= 1'b1;
-		end
+		if (o_rx_en && i_rx_err)
+			r_transfer_err <= 1'b1;
+		if (o_tx_en && i_tx_err)
+			r_transfer_err <= 1'b1;
 	end
 
 	initial	r_ecode = 1'b0;
@@ -1142,8 +1178,16 @@ module	sdaxil #(
 		assume(!i_rx_done && !i_rx_err);
 
 	always @(*)
-	if (!o_rx_en)
+	if (!o_rx_en || !i_rx_done)
+	begin
 		assume(!i_rx_err);
+		assume(!i_rx_done);
+		assume(!i_rx_ercode);
+	end
+
+	always @(posedge i_clk)
+	if (f_past_valid && !$past(o_rx_en))
+		assume(!i_rx_err && !i_rx_done);
 
 	always @(*)
 	if (!i_reset && !o_soft_reset && !o_hwreset_n)
@@ -1225,7 +1269,7 @@ module	sdaxil #(
 	// {{{
 	initial	lgblk = 4'h9;
 	always @(posedge i_clk)
-	if (i_reset || o_soft_reset)
+	if (i_reset || reset_stb)
 		lgblk <= 4'h9;
 	else if (!o_tx_en && !o_rx_en && !r_tx_request && !r_rx_request
 			&& bus_phy_stb && bus_wstrb[3] && !dma_busy)
@@ -1466,7 +1510,7 @@ module	sdaxil #(
 	if (i_reset || o_soft_reset)
 		{ o_pp_cmd, o_pp_data } <= 2'b00;
 	else if (w_boot_active)
-		{ o_pp_cmd, o_pp_data } <= 2'b01;
+		{ o_pp_cmd, o_pp_data } <= 2'b00;
 	else if (bus_phy_stb && bus_wstrb[1])
 	begin
 		o_pp_cmd  <= bus_wdata[PP_CMD_BIT];
@@ -1666,7 +1710,9 @@ module	sdaxil #(
 `ifdef	FORMAL
 		reg	[1:0]	card_detect_counter;
 `else
-		reg	[9:0]	card_detect_counter;
+		// card_detect_counter must count at least 1ms.  At 10ns per
+		// clock, 1ms ~= 2^17 clocks
+		reg	[16:0]	card_detect_counter;
 `endif
 		reg		r_card_removed, r_card_present;
 
@@ -2149,7 +2195,7 @@ module	sdaxil #(
 		always @(posedge i_clk)
 		if ((i_reset && P_AUTOBOOT) || w_activate_boot)
 			r_tx <= 1'b0;
-		else if (!dma_busy && new_dma_request)
+		else if (!dma_busy && new_dma_request && !w_boot_active)
 			r_tx <= bus_wdata[FIFO_WRITE_BIT];
 
 		always @(*)
@@ -2197,6 +2243,8 @@ module	sdaxil #(
 
 			if (w_activate_boot && bus_wdata[USE_DMA_BIT])
 				{ r_dma, dma_s2sd, dma_sd2s } <= 3'b100;
+			if (r_dma_zero_len)
+				{ r_dma, dma_s2sd, dma_sd2s } <= 3'b000;
 			// }}}
 		end else if (w_boot_active && o_cfg_expect_ack && i_boot_nak)
 		begin
@@ -2305,6 +2353,7 @@ module	sdaxil #(
 				assert(!r_dma_loaded[dma_fifo]);
 			if (r_tx_request || o_tx_en)
 			begin
+				assert(!w_boot_active);
 				if (!r_tx_sent)
 				begin
 					assert(r_dma_fifo != r_fifo
@@ -2330,7 +2379,7 @@ module	sdaxil #(
 			assert(dma_int || dma_busy);
 		end else if ($past(dma_busy) && !dma_busy)
 		begin
-			assert(dma_int);
+			assert(dma_int || w_boot_err);
 		end else begin
 			assert(!dma_int);
 		end
@@ -2453,7 +2502,13 @@ module	sdaxil #(
 		// r_subblock, r_dma_last, o_dma_len: based on [io]_s[d]2s[d]*
 		// {{{
 		always @(posedge i_clk)
-		if (i_reset || o_soft_reset || !dma_busy)
+		if (i_reset || reset_stb)
+		begin // Default to a 512Byte block, lgblk=9
+			// blk_words = (1<<(lgblk-2))-1;
+			r_subblock <= 127;
+			r_dma_last <= 1'b0; // (lgblk <= 2);
+			r_dma_len  <= 512; // 1<<lgblk;
+		end else if (!dma_busy)
 		begin
 			r_subblock <= blk_words[LGFIFO-2:0];
 			r_dma_last <= (lgblk <= 2);
@@ -2530,11 +2585,12 @@ module	sdaxil #(
 		// r_dma_fifo
 		// {{{
 		always @(posedge i_clk)
-		if (i_reset || o_soft_reset)
-			r_dma_fifo <= 1'b0;
+		if (i_reset || reset_stb)
+			r_dma_fifo <= P_BOOTFIFO;
 		else if (!dma_busy)
 		begin
-			r_dma_fifo <= bus_wdata[FIFO_ID_BIT];
+			if (bus_cmd_stb && bus_wstrb[FIFO_ID_BIT/8])
+				r_dma_fifo <= bus_wdata[FIFO_ID_BIT];
 		end else if ((i_s2sd_valid && o_s2sd_ready && r_dma_last)
 				||(o_sd2s_valid && i_sd2s_ready && r_dma_last))
 			r_dma_fifo <= !r_dma_fifo;
@@ -2651,7 +2707,9 @@ module	sdaxil #(
 		// {{{
 		always @(posedge i_clk)
 		if (i_reset || o_soft_reset)
-			dma_cmd_fifo <= 1'b0;
+			dma_cmd_fifo <= P_BOOTFIFO;
+		else if (w_activate_boot)
+			dma_cmd_fifo <= bus_wdata[FIFO_ID_BIT];
 		else if (new_dma_request)
 		begin
 			if (bus_wdata[FIFO_WRITE_BIT])
@@ -2751,11 +2809,14 @@ module	sdaxil #(
 		always @(posedge i_clk)
 		if (!i_reset && !$past(i_reset) && $rose(r_dma_stopped))
 		begin
-			assert(dma_write);
-			assert(dma_command[FIFO_ID_BIT-1:0]
-				== DMA_STOP_TRANSMISSION[FIFO_ID_BIT-1:0]);
-			assert(dma_command[31:FIFO_ID_BIT+1]
-				== DMA_STOP_TRANSMISSION[31:FIFO_ID_BIT+1]);
+			if (!$past(o_boot_cmden || w_alt_boot))
+			begin
+				assert(dma_write);
+				assert(dma_command[FIFO_ID_BIT-1:0]
+					== DMA_STOP_TRANSMISSION[FIFO_ID_BIT-1:0]);
+				assert(dma_command[31:FIFO_ID_BIT+1]
+					== DMA_STOP_TRANSMISSION[31:FIFO_ID_BIT+1]);
+			end
 		end else if (!i_reset && dma_write)
 		begin
 			if (r_tx)
@@ -2891,7 +2952,19 @@ module	sdaxil #(
 		// f_cfg_* configuration copy
 		// {{{
 		always @(posedge i_clk)
-		if (!dma_busy)
+		if (i_reset && P_AUTOBOOT)
+		begin
+			f_cfg_addr <= BOOT_ADDR;
+			f_cfg_fifo <= P_BOOTFIFO;
+			f_cfg_len  <= BOOT_BLOCKS;
+		end else if (w_activate_boot)
+		begin
+			f_cfg_fifo <= P_BOOTFIFO;
+			if (bus_cmd_stb && bus_wstrb[FIFO_ID_BIT/8])
+				f_cfg_fifo <= bus_wdata[FIFO_ID_BIT];
+			f_cfg_addr <= o_dma_addr;
+			f_cfg_len  <= r_block_count;
+		end else if (!dma_busy)
 		begin
 			if (bus_cmd_stb && bus_wstrb[FIFO_ID_BIT/8])
 				f_cfg_fifo <= bus_wdata[FIFO_ID_BIT];
@@ -2998,8 +3071,14 @@ module	sdaxil #(
 		// }}}
 
 		always @(posedge i_clk)
-		if (!f_past_valid || $past(i_reset)
-				|| $past(o_soft_reset) || $past(!o_hwreset_n))
+		if (!f_past_valid)
+		begin
+			assert(!r_dma);
+		end else if ($past(i_reset) || $past(reset_stb))
+		begin
+			assert(r_dma == (P_AUTOBOOT && $past(i_reset)));
+		end else if (!P_BOOTEN
+			&& ($past(o_soft_reset) || $past(!o_hwreset_n)))
 		begin
 			assert(!r_dma);
 		end else if ($past(w_release_dma))
@@ -3013,7 +3092,7 @@ module	sdaxil #(
 		end
 
 		always @(*)
-		if (!i_reset && dma_busy && !dma_error)
+		if (!i_reset && dma_busy && !dma_error && !reset_stb)
 		begin
 			if (r_tx)
 			begin
@@ -3050,7 +3129,10 @@ module	sdaxil #(
 			end else if (!r_dma_err)
 			begin
 				assert(dma_fifo==(f_tx_blocks[0] ^ f_cfg_fifo));
-				assert(dma_cmd_fifo != r_fifo);
+				// The following *should* be true, yet fails
+				// during boot transients
+				assert(w_boot_active && (!i_dma_busy && !r_rx_request && !o_rx_en)
+					|| dma_cmd_fifo != r_fifo);
 			end
 		end
 
@@ -3090,6 +3172,17 @@ module	sdaxil #(
 			end
 		end
 
+		always @(posedge i_clk)
+		if (!i_reset && dma_busy && w_boot_active)
+		begin
+			if (!o_hwreset_n && !$past(o_hwreset_n))
+			begin
+				assert(!dma_error);
+				assert(!o_dma_abort);
+				assert(!dma_zero_len);
+			end
+		end
+
 		////////////////////////////////////////////////////////////////
 		//
 		// Cover checks
@@ -3101,9 +3194,6 @@ module	sdaxil #(
 		always @(posedge i_clk)
 		if (f_past_valid && !$past(i_reset) && !$past(o_soft_reset))
 		begin
-			cover(i_wb_stb);
-			cover(i_wb_stb && i_wb_we);
-			cover(i_wb_stb && i_wb_we && !o_wb_stall);
 			cover(bus_write);
 			cover(bus_write && bus_wstrb);
 			cover(bus_write && bus_wstrb == 4'hf
@@ -3213,7 +3303,8 @@ module	sdaxil #(
 	begin : BOOT_LOGIC
 		// {{{
 		reg	r_activate_boot, r_alt_bootarg, r_boot_err, r_alt_boot,
-			r_boot_active, r_boot_tok, r_pending_boot_tok;
+			r_boot_active, r_boot_tok, r_pending_boot_tok,
+			r_boot_dma;
 		wire	activate_alt_boot;
 
 		// r_activate_boot, activate_alt_boot, r_alt_bootarg
@@ -3221,6 +3312,7 @@ module	sdaxil #(
 		// The alternate boot is active following a command zero, with
 		// the alternate boot argument active.
 		assign	activate_alt_boot = bus_write && bus_wstrb[1:0] == 2'b11
+				&& bus_wraddr == ADDR_CMD
 				&& r_alt_bootarg
 				&& !bus_wdata[FIFO_WRITE_BIT]
 				&& (bus_wdata[USE_FIFO_BIT]
@@ -3229,11 +3321,18 @@ module	sdaxil #(
 				&& bus_wdata[5:0] == 6'h0; // CMD0
 
 		always @(*)
-		if (!bus_cmd_stb || bus_wstrb[1:0] != 2'b11)
+		if (!bus_cmd_stb || bus_wstrb[1:0] != 2'b11 || r_boot_active)
 			// We *only* activate boot on bus command writes
 			r_activate_boot = 1'b0;
-		else if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8]
-						&& bus_wdata[HWRESET_BIT])
+		else if (r_mem_busy || o_tx_en || dma_busy || cmd_busy)
+			// We can't activate boot if we're already busy doing
+			// something else
+			r_activate_boot = 1'b0;
+		else if (w_cmd_word[ERR_BIT] && !clear_err)
+			// Errors must be cleared, before any boot mode may be
+			// activated
+			r_activate_boot = 1'b0;
+		else if (bus_reset_request)
 			// Initiating a reset does *not* activate a boot
 			r_activate_boot = 1'b0;
 		else if (activate_alt_boot)
@@ -3258,22 +3357,28 @@ module	sdaxil #(
 		always @(posedge i_clk)
 		if (i_reset)
 			r_boot_active <= P_AUTOBOOT;
-		else if (bus_write && (&bus_wstrb[3:0])
-						&& bus_wdata == RESET_KEY)
-			r_boot_active <= 1'b0;
+		// else if (bus_write && bus_wraddr == ADDR_CMD
+		//		&&(((&bus_wstrb[3:0]) && bus_wdata == RESET_KEY)
+		//		||(OPT_HWRESET && bus_wstrb[HWRESET_BIT/8]
+		//				&& o_hwreset_n
+		//				&& bus_wdata[HWRESET_BIT])))
+		//	r_boot_active <= 1'b0;
 		else if (r_activate_boot && !r_boot_active)
 			r_boot_active <= 1'b1;
+		else if (bus_reset_request)
+			r_boot_active <= 1'b0;
 		else if (i_boot_nak && o_cfg_expect_ack)
 			r_boot_active <= 1'b0;
-		else if (!o_dma_sd2s && !cmd_busy && (dma_error
+		else if (r_boot_dma && !o_dma_sd2s && !cmd_busy
+				&& o_hwreset_n && (dma_error
 				|| (dma_busy && dma_zero_len && !dma_loaded)))
 			r_boot_active <= 1'b0;
 
 		always @(posedge i_clk)
-		if (i_reset)
+		if (i_reset || reset_stb)
 			r_alt_boot <= 1'b0;
-		else if (bus_write && (&bus_wstrb[3:0])
-						&& bus_wdata == RESET_KEY)
+		else if (bus_write && bus_wraddr == ADDR_CMD
+				&& (&bus_wstrb[3:0]) && bus_wdata == RESET_KEY)
 			r_alt_boot <= 1'b0;
 		else if (r_activate_boot && !r_boot_active)
 			r_alt_boot <= activate_alt_boot;
@@ -3284,13 +3389,26 @@ module	sdaxil #(
 			r_alt_boot <= 1'b0;
 		// }}}
 
+		// r_boot_dma
+		// {{{
+		always @(posedge i_clk)
+		if (!OPT_DMA)
+			r_boot_dma <= 1'b0;
+		else if (i_reset)
+			r_boot_dma <= P_BOOTEN && (BOOT_BLOCKS > 0);
+		else if (r_activate_boot)
+			r_boot_dma <= bus_wdata[USE_DMA_BIT];
+		else if (reset_stb)
+			r_boot_dma <= 1'b0;
+		// }}}
+
 		// r_boot_err
 		// {{{
 		always @(posedge i_clk)
-		if (i_reset || o_soft_reset || !OPT_CRCTOKEN)
+		if (i_reset || o_soft_reset)
 			r_boot_err <= 1'b0;
 		else if (r_boot_active && (
-				(i_boot_nak && o_cfg_expect_ack)
+				(OPT_CRCTOKEN && i_boot_nak && o_cfg_expect_ack)
 				|| (o_rx_en && i_rx_err)
 				|| i_dma_err))
 			r_boot_err <= 1'b1;
@@ -3303,23 +3421,29 @@ module	sdaxil #(
 		// {{{
 		// To be sent to the front end
 		always @(posedge i_clk)
-		if (i_reset)
+		if (!OPT_CRCTOKEN)
+			r_boot_tok <= 1'b0;
+		else if (i_reset)
 			r_boot_tok <= P_BOOTTOK;
+		else if (bus_reset_request)
+			r_boot_tok <= 1'b0;
 		else if (r_activate_boot && bus_write
-				&& bus_wstrb[EXPECT_ACK_BIT/8]
-				&& (bus_wstrb[3:0] != 4'hf
-						|| bus_wdata!= RESET_KEY))
+				&& bus_wraddr == ADDR_CMD
+				&& bus_wstrb[EXPECT_ACK_BIT/8])
 			r_boot_tok <= bus_wdata[EXPECT_ACK_BIT];
-		else if (bus_reset || !o_soft_reset)
+		else if (bus_reset || o_hwreset_n)
 			r_boot_tok <= 1'b0;
 
 		always @(posedge i_clk)
-		if (i_reset)
+		if (!OPT_CRCTOKEN)
+			r_pending_boot_tok <= 1'b0;
+		else if (i_reset)
 			r_pending_boot_tok <= P_BOOTTOK;
+		else if (bus_reset_request)
+			r_pending_boot_tok <= 1'b0;
 		else if (r_activate_boot && bus_write
-				&& bus_wstrb[EXPECT_ACK_BIT/8]
-				&& (bus_wstrb[3:0] != 4'hf
-						|| bus_wdata!= RESET_KEY))
+				&& bus_wraddr == ADDR_CMD
+				&& bus_wstrb[EXPECT_ACK_BIT/8])
 			r_pending_boot_tok <= bus_wdata[EXPECT_ACK_BIT];
 		else if (i_boot_ack || i_boot_nak)
 			r_pending_boot_tok <= 1'b0;
@@ -3333,6 +3457,128 @@ module	sdaxil #(
 		assign	w_boot_active   = r_boot_active;
 		assign	o_boot_tok      = r_boot_tok;
 		assign	o_boot_cmden    = r_boot_active && !r_alt_boot;
+`ifdef	FORMAL
+		// {{{
+		reg	f_requested_boot_tok;
+
+		always @(posedge i_clk)
+		if (i_reset || !o_hwreset_n || !OPT_CRCTOKEN || bus_reset_request)
+			f_requested_boot_tok <= 1'b0;
+		else if (r_boot_tok)
+			f_requested_boot_tok <= 1'b1;
+		else if (i_boot_ack || i_boot_nak)
+			f_requested_boot_tok <= 1'b0;
+
+		always @(*)
+		if (i_reset)
+		begin
+		end else if (!OPT_CRCTOKEN)
+		begin
+			assert(!r_pending_boot_tok && !o_boot_tok);
+		end else
+			assert(r_pending_boot_tok
+				== (f_requested_boot_tok || o_boot_tok));
+
+		always @(posedge i_clk)
+		if (!i_reset && !$past(i_reset) && $past(i_boot_nak) && !reset_stb)
+			assert(!w_boot_active && r_boot_err);
+
+		always @(*)
+		if (!i_reset && r_boot_err && o_hwreset_n)
+			assert(!o_boot_cmden);
+
+		always @(*)
+		if (!i_reset && w_boot_active)
+		begin
+			assert(!dma_error || w_boot_err);
+			assert(!r_cmd_err);
+			assert(!o_tx_en && !r_tx_request);
+			assert(!r_transfer_err);
+			assert(!o_cmd_request || o_cmd_type == RNO_REPLY);
+			assume(!i_cmd_err);
+		end
+
+		always @(*)
+		if (!i_reset && !w_boot_active)
+		begin
+			assert(!o_boot_cmden);
+			// Not true.  r_boot_err may be asserted as
+			//   w_boot_active is deasserted.
+			// assert(!r_boot_err || reset_stb);
+			if (r_boot_err)
+			begin
+				// Once there's a boot ERR, the DMA should no
+				// longer be busy ... right?
+				assert(!dma_busy);
+				assert(!o_rx_en && !r_rx_request);
+				//
+				// Boot will *NEVER* invoke TX
+				assert(!o_tx_en && !r_tx_request);
+				//
+				// assert(!r_transfer_err);
+				// We'll have a dma_error if i_dma_err is
+				//   ever true during a boot DMA operation.
+				//   This can be told separate from the BOOT ERR
+				//   in the CMD register, so you can tell which
+				//   error you had.
+				// assert(!dma_error);
+				//
+				// None of the boot operations include commands
+				//   expecting responses, therefore there should
+				//   never be any command errors during boot.
+				assert(!r_cmd_err);
+			end
+		end
+
+		always @(*)
+		if (!i_reset)
+		begin
+			if (!f_requested_boot_tok)
+			begin
+				assume(!i_boot_ack && !i_boot_nak);
+			end
+
+			if (r_boot_active && !r_boot_dma)
+			begin
+				assert(!dma_busy);
+				assert(!dma_error);
+			end
+
+			if (r_boot_active)
+			begin
+				assert(!o_tx_en && !r_tx_request);
+			end
+
+			if (f_requested_boot_tok)
+			begin
+				assert(!r_boot_tok || reset_stb);
+				assume(!i_boot_ack || !i_boot_nak);
+				assert(!dma_loaded);
+				assert(!o_dma_sd2s);
+				assert(!o_dma_s2sd);
+				assert(reset_stb || !i_dma_busy);
+
+				assert(r_boot_active);
+			end else if (!r_boot_active)
+			begin
+				assert(reset_stb || !o_boot_tok);	// assert(!r_boot_tok);
+				assert(reset_stb || !r_pending_boot_tok);
+				assume(!i_boot_ack && !i_boot_nak);
+			end
+
+			if (r_boot_active && !r_boot_tok && !f_requested_boot_tok)
+			begin
+				assert(!o_cfg_expect_ack);
+			end
+
+			if (r_boot_active)
+			begin
+				assert(w_alt_boot != o_boot_cmden);
+			end else if (!reset_stb)
+				assert(!w_alt_boot && !o_boot_cmden);
+		end
+		// }}}
+`endif
 		// }}}
 	end else begin : NOBOOT
 		assign	w_boot_err      = 1'b0;

@@ -37,8 +37,7 @@
 `default_nettype none
 `timescale 1ns / 1ps
 // }}}
-module	tb_wb #(
-		// Local declarations
+module	tb_wb #( // Local declarations
 		// {{{
 		parameter	[0:0]	OPT_SERDES = 1'b1,
 		parameter	[0:0]	OPT_DDR = 1'b0,
@@ -196,7 +195,7 @@ module	tb_wb #(
 	wire	[SW-1:0]	emmcs_data;
 
 	wire		stream_dev, stream_error_flag;
-
+	// }}}
 
 	// sdiow_*
 	// {{{
@@ -301,11 +300,6 @@ module	tb_wb #(
 	wire	[30:0]		sd_ocr;
 	wire			sd_rx_err;
 	wire	[119:0]		sd_cid;
-	// }}}
-
-	// wire	[119:0]	sdio_CID;
-	wire	[31:0]	sdio_OCR;
-	wire		sdio_rx_err;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -504,9 +498,10 @@ module	tb_wb #(
 
 	sdio_top #(
 		// {{{
-		.LGFIFO(9), .NUMIO(4), .DW(DW), .SW(SW),
+		.LGFIFO(9), .NUMIO(4), .SW(SW),
 		.OPT_ISTREAM(OPT_STREAM), .OPT_OSTREAM(OPT_STREAM),
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
+		.DW(DW),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
 		.OPT_CARD_DETECT(1'b1), .LGTIMEOUT(10),
 		.OPT_1P8V(OPT_1P8V),
@@ -575,9 +570,10 @@ module	tb_wb #(
 
 	sdio_top #(
 		// {{{
-		.LGFIFO(12), .NUMIO(8), .DW(DW),
+		.LGFIFO(12), .NUMIO(8),
 		.OPT_ISTREAM(OPT_STREAM), .OPT_OSTREAM(OPT_STREAM),
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
+		.DW(DW),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
 		.OPT_CARD_DETECT(0), .LGTIMEOUT(10),
 		.OPT_1P8V(OPT_1P8V),
@@ -683,7 +679,8 @@ module	tb_wb #(
 		// {{{
 		reg			slv_reset, slv_reset_pipe;
 		reg			slv_clk;
-		wire	[3:0]		wide_dat;
+		wire	[3:0]		wide_sd_dat;
+		wire			w_ds;
 
 		// Local Wishbone
 		wire			slv_cyc, slv_stb, slv_we,
@@ -693,7 +690,7 @@ module	tb_wb #(
 		wire	[DW/8-1:0]	slv_sel;
 		// }}}
 
-		// Bus clock and reset
+		// (Local, slave only ...) Bus clock
 		// {{{
 		localparam	realtime SLVCLK_PERIOD = 11.0;	// 90.9 MHz
 
@@ -706,7 +703,7 @@ module	tb_wb #(
 
 		sdslave_top #(
 			.ADDRESS_WIDTH(ADDRESS_WIDTH),
-			.DW(DW)
+			.DW(DW), .NUMIO(4)
 			// .OPT_DDR(1'b0), .NUMIO(4), .OPT_EMMC(1'b0)
 			// .OPT_EMMC(1'b0)
 		) u_slave (
@@ -730,9 +727,9 @@ module	tb_wb #(
 			// {{{
 			.i_ck(sd_ck),
 			//
-			.io_sd_cmd(sd_cmd),
-			.io_sd_dat({ wide_dat, sd_dat })
-			// .o_sd_ds(w_sd_ds)
+			.io_cmd(sd_cmd),
+			.io_dat( sd_dat ),
+			.o_ds(w_ds)
 			// }}}
 			// }}}
 		);
@@ -775,8 +772,8 @@ module	tb_wb #(
 		);
 		// }}}
 
-		assign	sd_ocr = u_slave.u_slave.u_fsm.OCR;
-		assign	sd_cid = u_slave.u_slave.u_fsm.CID[127:8];
+		assign	sd_ocr = u_slave.u_sdslave.u_fsm.OCR;
+		assign	sd_cid = u_slave.u_sdslave.u_fsm.CID;
 		assign	sd_rx_err = 1'b0;
 
 		// Keep Verilator happy
@@ -1128,10 +1125,10 @@ module	tb_wb #(
 	end endgenerate
 
 	always @(gpio_error_flag)
-		error_flag = error_flag || (!reset && gpio_error_flag);
+		error_flag = (error_flag !== 1'b0)||(!reset && gpio_error_flag === 1'b1);
 
 	always @(stream_error_flag)
-		error_flag = error_flag || (!reset && stream_error_flag);
+		error_flag = (error_flag !== 1'b0)||(!reset && stream_error_flag === 1'b1);
 
 	always @(posedge error_flag)
 	if (!reset)

@@ -42,7 +42,10 @@
 ## }}}
 use Cwd;
 $path_cnt = @ARGV;
+use POSIX qw(setpgid);
 
+## Setup
+## {{{
 $filelist = "dev_files.txt";
 $cpu_files= "cpu_files.txt";
 $testlist = "dev_testcases.txt";
@@ -56,6 +59,18 @@ $testd    = "test/";
 $vivado   = 0;
 $ntasks   = 0;
 $maxtasks = 16;
+
+my @children = ();
+
+$SIG{INT} = sub {
+	print "\nCaught Ctrl-C, killing child processes...\n";
+	foreach my $cpid (@children) {
+		kill 'KILL', -$cpid;	# Force to kill
+	}
+	exit 1;
+};
+
+## }}}
 
 ## Usage: perl sim_sim.pl all
 ##   or
@@ -178,9 +193,21 @@ sub simline($) {
 		$exefile = $testd . $tstname;
 		if (-e $exefile) {
 			unlink $exefile;
+		} if (-e "$testd/$tstname.txt") {
+			unlink "$testd/$tstname.txt";
+		} if (-e "$testd/$tstname.vcd") {
+			unlink "$testd/$tstname.vcd";
+		} if (-e "$testd/$tstname.PASS") {
+			unlink "$testd/$tstname.PASS";
+		} if (-e "$testd/$tstname.FAIL") {
+			unlink "$testd/$tstname.FAIL";
 		}
+		## }}}
 
+		## Create an initial timestamp for this run
+		## {{{
 		$tstamp = timestamp();
+		## }}}
 
 		## Set up the IVerilog command
 		## {{{
@@ -252,22 +279,25 @@ sub simline($) {
 
 		## Build the IVerilog simulation
 		## {{{
-		$cmd = $cmd . " |& tee $sim_log";
+		system "echo \"$tstamp -- Starting build\" | tee $sim_log";
+		$cmd = $cmd . " |& tee -a $sim_log";
 		system "echo \'$cmd\'";
 		system "bash -c \'$cmd\'";
-		$errB= $?;
+		$errB = $?;
 		## }}}
 
 		if ($errB == 0 and -x $exefile) {
 			## Run the simulation
 			## {{{
 			$tstamp = timestamp();
+			system "echo \"$tstamp -- Starting simulation\" | tee -a $sim_log";
+
 			$pid = fork;
 			if ($pid ne 0) {
-				return;
+				setpgid($pid, $pid);
+				return $pid;
 			}
 
-			system "echo \"$tstamp -- Starting simulation\" | tee -a $sim_log";
 			system "$exefile >> $sim_log";
 
 			## Finish the log with another timestamp
@@ -277,8 +307,8 @@ sub simline($) {
 			$msg = sprintf("%s IVerilog  -- %s", $tstamp, $tstname);
 			## }}}
 
-			## Look through the log file(s) for any errors and
-			## report them
+			## Look through the log file(s) for any errors
+			## and report them
 			## {{{
 			system "grep \'ERROR\' $sim_log | sort -u";
 			system "grep -q \'ERROR\' $sim_log";
@@ -296,21 +326,27 @@ sub simline($) {
 			system "grep -iq \'TEST PASS\' $sim_log";
 			$errS = $?;
 
+			$msg = sprintf("%s IVerilog  -- %s", $tstamp, $tstname);
 			if ($errE == 0 or $errA == 0 or $errF == 0) {
 				## ERRORs found, either assertion or other fail
 				$msg = sprintf("ERRORS    %s\n", $msg);
-				push @failed,$tstname;
+				# push @failed,$tstname;
+
+				system "touch $testd/$tstname.FAIL";
 			} elsif ($errT == 0) {
 				# Timing violations present
 				$msg = sprintf("TIMING-ER %s\n", $msg);
-				push @failed,$tstname;
+				# push @failed,$tstname;
+				system "touch $testd/$tstname.FAIL";
 			} elsif ($errS != 0) {
 				# No success (TEST_PASS) message present
 				$msg = sprintf("FAIL      %s\n", $msg);
-				push @failed,$tstname;
+				system "touch $testd/$tstname.FAIL";
+				# push @failed,$tstname;
 			} else {
 				$msg = sprintf("Pass      %s\n", $msg);
-				push @passed,$tstname;
+				system "touch $testd/$tstname.PASS";
+				# push @passed,$tstname;
 			}
 
 			open (SUM,">> $report");
@@ -319,18 +355,20 @@ sub simline($) {
 			print     $msg;
 			## }}}
 
-			exit 0;
+			exit 0;		# Don't allow us to fork twice
 			## }}}
 		} else {
-			## Report that the simulation failed to build
+			## Report that this simulation failed to build
 			## {{{
-			open (SUM,">> $report");
 			$tstamp = timestamp();
 			$msg = sprintf("%s IVerilog  -- %s", $tstamp, $tstname);
+
+			open (SUM, ">> $report");
 			print SUM "BLD-FAIL  $msg\n";
 			print     "BLD-FAIL  $msg\n";
-			push @failed,$tstname;
 			close SUM;
+			# push @failed,$tstname;
+			system "touch $testd/$tstname.FAIL";
 			## }}}
 		}
 		## }}}
@@ -369,42 +407,129 @@ if (!-d $testd) {
 	mkdir $testd;
 }
 
-if ($run_all) {
+if ($run_all) {	## Read the test file, and trigger up to $maxtasks tasks until complete
+	## {{{
 	open(TL, $testlist);
 	while($line = <TL>) {
 		next if ($line =~ /^\s*#/);
+		next if ($line =~ /^\s*$/);
+		# print "TEST LINE: $line";
 
 		if ($ntasks >= $maxtasks) {
-			if (waitpid(-1,0) eq 0) {
+			$fin = waitpid(-1, 0);
+			if ($fin lt 0) {
 				$ntasks = 0;
 			} else {
 				$ntasks = $ntasks - 1;
 			}
 		}
-
-		simline($line);
+		$pid = simline($line);
+		if (defined $pid) {
+			push @children, $pid;
+		}
 		$ntasks = $ntasks + 1;
 	}
+	## }}}
 
-	while(waitpid(-1,0) gt 0) {
+	## Wait for any remaining tasks to complete
+	## {{{
+	while(waitpid(-1, 0) ge 0) {
 		;
 	}
 
 	open(SUM,">> $report");
 	print (SUM "$linestr\nTest run complete\n\n");
 	close SUM;
-} else {
-	foreach $akey (@array) {
-		$line = gettest($akey);
-		next if ($line =~ /FAIL/);
-		simline($line);
+	## }}}
 
-		while(waitpid(-1,0) gt 0) {
-			;
+	# Rewind the test list, check for test status
+	## {{{
+	seek TL, 0, 0;
+	while($lin = <TL>) {
+		next if ($line =~ /^\s*#/);
+		next if ($line =~ /# FAIL/);
+		if ($line =~ /^\s*(\S+)\s+(.*)$/) {
+			$tstname = $1;
+			if (-e "test/$tstname.FAIL") {
+				push @failed,$tstname;
+				$nfail = $nfail + 1;
+			} elsif (-e "test/$tstname.PASS") {
+				$npass = $npass + 1;
+				push @passed,$tstname;
+			}
 		}
 	}
-}
-## }}}
+	close	TL;
+	## }}}
+
+	## Report the result(s)
+	## {{{
+	print "\n\nSimulation complete\n";
+	if ($nfail eq 0) {
+		print "All $npass tests passed\n";
+	} elsif ($npass eq 0) {
+		print "All $nfail tests FAILED!\n";
+} else {
+		print "Passing tests:\n";
+		foreach $akey (@passed) {
+			print " $akey";
+		} print "\nFailing tests:\n";
+		foreach $akey (@failed) {
+			print " $akey";
+		} print "\n";
+	}
+	## }}}
+} else {
+	## Same thing, but this time only for particular named tasks
+	my $found = 0;
+	foreach $akey (@array) {
+		$line = gettest($akey);
+		next if ($line =~ /# FAIL/);
+		# print "TEST LINE: $line";
+		$found = 1;
+		if ($ntasks >= $maxtasks) {
+			$fin = waitpid(-1,0);
+			if ($fin lt 0) {
+				$ntasks = 0;
+			} else {
+				$ntasks = $ntasks - 1;
+			}
+		}
+
+		$pid = simline($line);
+		if (defined $pid) {
+			push @children, $pid;
+		}
+		$ntasks = $ntasks + 1;
+	} if ($found eq 0) {
+		print(" No requested tests found\n");
+		exit 0;
+	}
+
+	## Wait for any remaining tasks to complete
+	## {{{
+	while(waitpid(-1, 0) ge 0) {
+		;
+	}
+	## }}}
+
+	## Check test return status
+	## {{{
+	foreach $akey (@array) {
+		$lin = gettest($akey);
+		next if ($line =~ /# FAIL/);
+		if ($line =~ /^\s*(\S+)\s+(.*)$/) {
+			$tstname = $1;
+			if (-e "test/$tstname.FAIL") {
+				push @failed,$tstname;
+				$nfail = $nfail + 1;
+			} elsif (-e "test/$tstname.PASS") {
+				$npass = $npass + 1;
+				push @passed,$tstname;
+			}
+		}
+	}
+	## }}}
 
 if (@failed) {
 	print "\nFailed testcases:\n$linestr\n";
@@ -422,4 +547,5 @@ if (@passed) {
 
 if (@failed) {
 	die "Not all tests passed\n";
+}
 }

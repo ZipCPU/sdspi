@@ -48,6 +48,7 @@ module sdslave_top #(
 		// as required to access octets of memory.  This is not the word
 		// address width, but the octet/byte address width.
 		parameter	ADDRESS_WIDTH=48,
+		parameter	DW=64,
 `ifdef	SDIO_AXI
 		parameter		AXI_IW=4,
 		parameter [AXI_IW-1:0]	AXI_READ_ID  = 0,
@@ -134,7 +135,6 @@ module sdslave_top #(
 		output	wire	[3:0]		M_AXI_ARCACHE,
 		output	wire	[2:0]		M_AXI_ARPROT,
 		output	wire	[3:0]		M_AXI_ARQOS,
->>>>>>> 32384f9 (SDSLAVE: WB & AXI simulations pass)
 		// AXI Read data
 		input	wire			M_AXI_RVALID,
 		output	wire			M_AXI_RREADY,
@@ -144,15 +144,14 @@ module sdslave_top #(
 		input	wire	[1:0]		M_AXI_RRESP,
 		// }}}
 `else
-<<<<<<< HEAD
-		output	wire			o_dma_cyc, o_dma_stb, o_dma_we,
-		output	wire	[AW-1:0]	o_dma_addr,
-		output	wire	[DW-1:0]	o_dma_data,
-		output	wire	[DW/8-1:0]	o_dma_sel,
-		input	wire			i_dma_stall,
-		input	wire			i_dma_ack,
-		input	wire	[DW-1:0]	i_dma_data,
-		input	wire			i_dma_err,
+		output	wire			o_cyc, o_stb, o_we,
+		output	wire	[AW-1:0]	o_addr,
+		output	wire	[DW-1:0]	o_data,
+		output	wire	[DW/8-1:0]	o_sel,
+		input	wire			i_stall,
+		input	wire			i_ack,
+		input	wire	[DW-1:0]	i_data,
+		input	wire			i_err,
 `endif
 		// }}}
 		// IO interface
@@ -167,6 +166,8 @@ module sdslave_top #(
 
 	// Local declarations
 	// {{{
+	reg		slv_resetn, slv_resetn_pipe;
+
 	wire		tx_cmd, cmd_tristate, tx_ds;
 	wire	[15:0]	tx_data;
 	wire	[7:0]	tx_tristate;
@@ -190,16 +191,16 @@ module sdslave_top #(
 
 	sdslave #(
 		// {{{
-		.NUMIO(NUMIO), .AW(AW), .DW(DW)
-		// , .OPT_DDR(OPT_DDR)
-		// .OPT_DS(OPT_DS),
-		// .OPT_EMMC(OPT_EMMC),
-		// .OPT_1P8V(OPT_1P8V),
+		.ADDRESS_WIDTH(ADDRESS_WIDTH), .DW(DW),
 `ifdef	SDIO_AXI
 		.AXI_IW(AXI_IW), .AXI_READ_ID(AXI_READ_ID),
 		.AXI_WRITE_ID(AXI_WRITE_ID),
 `endif
-		.OPT_DDR(OPT_DDR), .NUMIO(NUMIO)
+		.OPT_DDR(OPT_DDR),
+		.NUMIO(NUMIO) // ,
+		// .OPT_DS(OPT_DS)		// OPT_DS isn't supported here
+		// .OPT_EMMC(OPT_EMMC),
+		// .OPT_1P8V(OPT_1P8V),
 		// }}}
 	) u_sdslave (
 		// {{{
@@ -207,15 +208,9 @@ module sdslave_top #(
 		// DMA interface
 		// {{{
 `ifdef	SDIO_AXI
-		// AXI DMA interface
-		// {{{
-
-		// {{{
-`ifdef	SDIO_AXI
 		// AXI master (DMA) interface
 		// {{{
 		// AXI Write address
->>>>>>> 32384f9 (SDSLAVE: WB & AXI simulations pass)
 		.M_AXI_AWVALID(M_AXI_AWVALID),
 		.M_AXI_AWREADY(M_AXI_AWREADY),
 		.M_AXI_AWID(M_AXI_AWID),
@@ -262,18 +257,19 @@ module sdslave_top #(
 `else
 		// Wishbone master (DMA) interface
 		// {{{
-		.o_dma_cyc(o_dma_cyc),
-		.o_dma_stb(o_dma_stb),
-		.o_dma_we(o_dma_we),
-		.o_dma_addr(o_dma_addr),
-		.o_dma_data(o_dma_data),
-		.o_dma_sel(o_dma_sel),
-		.i_dma_stall(i_dma_stall),
-		.i_dma_ack(i_dma_ack),
-		.i_dma_data(i_dma_data),
-		.i_dma_err(i_dma_err),
+		.o_dma_cyc(o_cyc),
+		.o_dma_stb(o_stb),
+		.o_dma_we(o_we),
+		.o_dma_addr(o_addr),
+		.o_dma_data(o_data),
+		.o_dma_sel(o_sel),
+		.i_dma_stall(i_stall),
+		.i_dma_ack(i_ack),
+		.i_dma_data(i_data),
+		.i_dma_err(i_err),
 		// }}}
 `endif
+		// }}}
 		// Interface to PHY
 		// {{{
 		.i_sd_clk(i_ck),
@@ -293,7 +289,7 @@ module sdslave_top #(
 
 	sdsfrontend #(
 		// {{{
-		.NUMIO(NUMIO) // , .OPT_DS(OPT_DS)
+		.NUMIO(NUMIO), .OPT_DS(OPT_DS)
 		// , .OPT_COLLISION(OPT_COLLISION),
 		// }}}
 	) u_frontend (

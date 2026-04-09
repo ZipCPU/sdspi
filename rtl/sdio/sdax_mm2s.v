@@ -830,32 +830,63 @@ module	sdax_mm2s #(
 		if (r_inc)
 		begin
 			case(r_size)
-			SZ_BYTE: rd_ubursts <= { (rd_uncommitted >= 2<<LCLMAXBURST_SUB),
+			SZ_BYTE: begin
+				rd_ubursts <= {(rd_uncommitted >= 2<<LCLMAXBURST_SUB),
 						(rd_uncommitted >= 1<<LCLMAXBURST_SUB) };
-			SZ_16B:  rd_ubursts <= { (rd_uncommitted >= 4<<LCLMAXBURST_SUB),
+				if (rd_uncommitted >= ar_beats_remaining)
+					rd_ubursts[0] <= 1'b1;
+				end
+			SZ_16B:  begin
+				rd_ubursts <= {(rd_uncommitted >= 4<<LCLMAXBURST_SUB),
 						(rd_uncommitted >= 2<<LCLMAXBURST_SUB) };
+				if (rd_uncommitted >= ar_beats_remaining << 1)
+					rd_ubursts[0] <= 1'b1;
+				end
 			// Verilator lint_off WIDTH
-			SZ_32B:  rd_ubursts <= { (rd_uncommitted >= 8<<LCLMAXBURST_SUB),
+			SZ_32B:  begin
+				rd_ubursts <= {(rd_uncommitted >= 8<<LCLMAXBURST_SUB),
 						(rd_uncommitted >= 4<<LCLMAXBURST_SUB) };
-			SZ_BUS:  rd_ubursts <= {
+				if (rd_uncommitted >= (ar_beats_remaining << 2))
+					rd_ubursts[0] <= 1'b1;
+				end
+			SZ_BUS:  begin
+				rd_ubursts <= {
 					(rd_uncommitted >= 2 * BUS_WIDTH/8
 							* (1<<LCLMAXBURST)),
 					(rd_uncommitted >=     BUS_WIDTH/8
-							* (1<<LCLMAXBURST))
-				};
+							* (1<<LCLMAXBURST)) };
+				if (rd_uncommitted >= (ar_beats_remaining << AXILSB))
+					rd_ubursts[0] <= 1'b1;
+				end
 			// Verilator lint_on  WIDTH
 			endcase
 		end else begin
 			// Verilator lint_off WIDTH
 			case(r_size)
-			SZ_BYTE: rd_ubursts <= { (rd_uncommitted >= 32),
-						(rd_uncommitted >=  16) };
-			SZ_16B: rd_ubursts <= { (rd_uncommitted >=  64),
-						(rd_uncommitted >=  32) };
-			SZ_32B: rd_ubursts <= { (rd_uncommitted >= 128),
-						(rd_uncommitted >=  64) };
-			SZ_BUS: rd_ubursts <= { (rd_uncommitted >= (BUS_WIDTH*4)),
+			SZ_BYTE: begin
+				rd_ubursts <= { (rd_uncommitted >= 2*MAX_FIXED_BURST),
+						(rd_uncommitted >=  MAX_FIXED_BURST) };
+				if (rd_uncommitted >= ar_beats_remaining)
+					rd_ubursts[0] <= 1'b1;
+				end
+			SZ_16B: begin
+				rd_ubursts <= { (rd_uncommitted >=  4*MAX_FIXED_BURST),
+						(rd_uncommitted >=  2*MAX_FIXED_BURST) };
+				if (rd_uncommitted >= ar_beats_remaining << 1)
+					rd_ubursts[0] <= 1'b1;
+				end
+			SZ_32B: begin
+				rd_ubursts <= { (rd_uncommitted >= 8*MAX_FIXED_BURST),
+						(rd_uncommitted >=  4*MAX_FIXED_BURST) };
+				if (rd_uncommitted >= ar_beats_remaining << 2)
+					rd_ubursts[0] <= 1'b1;
+				end
+			SZ_BUS: begin
+				rd_ubursts <= { (rd_uncommitted >= (BUS_WIDTH*4)),
 						(rd_uncommitted >= (BUS_WIDTH*2)) };
+				if (rd_uncommitted >= ar_beats_remaining << AXILSB)
+					rd_ubursts[0] <= 1'b1;
+				end
 			// Verilator lint_on  WIDTH
 			endcase
 		end

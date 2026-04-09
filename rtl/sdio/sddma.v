@@ -236,11 +236,12 @@ module	sddma #(
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.BUS_WIDTH(DW),
 		.AXI_IW(AXI_IW), .AXI_ID(AXI_READ_ID),
-		.LGLENGTH(LGFIFO+1),
+		.LGLENGTH(1+LGFIFO),
+		.LGFIFO(LGFIFO-$clog2(DW/8)),
 		// .OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN),
 		.OPT_LOWPOWER(OPT_LOWPOWER)
 		// }}}
-	) u_s2sd_dma (
+	) u_mm2s (
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset),
 		.i_soft_reset(i_soft_reset),
@@ -290,7 +291,7 @@ module	sddma #(
 		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN),
 		.OPT_LOWPOWER(OPT_LOWPOWER)
 		// }}}
-	) u_s2sd_dma (
+	) u_mm2s (
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset || i_soft_reset),
 		.i_request(i_dma_s2sd && (!OPT_ISTREAM || !i_dma_addr[ADDR_MSB])),

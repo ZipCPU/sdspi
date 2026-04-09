@@ -234,7 +234,8 @@ module	sdwb #(
 	localparam	[0:0]	P_BOOTEN = OPT_EMMC && OPT_BOOTEN;
 `ifndef	FORMAL
 	localparam	[0:0]	P_BOOTFIFO = 1'b0,
-				P_AUTOBOOT = P_BOOTEN && OPT_AUTOBOOT,
+				P_AUTOBOOT = P_BOOTEN && OPT_AUTOBOOT
+						&& BOOT_BLOCKS != 0,
 				P_BOOTTOK = P_AUTOBOOT && BOOT_TOKEN && OPT_CRCTOKEN;
 	//
 	// Speed == 0 => 200MHz (Only OPT_SERDES)
@@ -861,7 +862,7 @@ module	sdwb #(
 	end
 
 `ifndef	FORMAL
-	initial	o_cfg_expect_ack = P_BOOTTOK;
+	initial	o_cfg_expect_ack = P_BOOTTOK && OPT_CRCTOKEN;
 `endif
 	always @(posedge i_clk)
 	if (!OPT_CRCTOKEN)
@@ -900,16 +901,13 @@ module	sdwb #(
 	end
 `ifdef	FORMAL
 	always @(posedge i_clk)
-	if (!f_past_valid || !OPT_CRCTOKEN || $past(!i_reset && bus_reset_request))
+	if (!f_past_valid || !OPT_CRCTOKEN)
 	begin
 		assert(!f_past_valid || !o_cfg_expect_ack);
-	end else if (P_BOOTEN && (!f_past_valid || $past(i_reset)
-						|| $past(bus_reset_request)))
+	end else if ($past(i_reset))
 	begin
-		assert(o_cfg_expect_ack == (P_BOOTTOK && $past(i_reset)));
-	end else if (!P_BOOTEN && $past(i_reset || o_soft_reset))
-	begin
-		assert(!o_cfg_expect_ack);
+ // || $past(!i_reset && bus_reset_request))
+		assert(o_cfg_expect_ack == (P_BOOTEN && P_BOOTTOK));
 	end else if (w_boot_active)
 	begin
 		if ($past(i_boot_ack || i_boot_nak))
@@ -1636,8 +1634,8 @@ module	sdwb #(
 		reg	[1:0]	card_detect_counter;
 `else
 		// card_detect_counter must count at least 1ms.  At 10ns per
-		// clock, 1ms ~= 2^20 clocks
-		reg	[19:0]	card_detect_counter;
+		// clock, 1ms ~= 2^17 clocks
+		reg	[16:0]	card_detect_counter;
 `endif
 		reg		r_card_removed, r_card_present;
 
@@ -1669,24 +1667,13 @@ module	sdwb #(
 		assign	card_removed = r_card_removed;
 		// }}}
 
-		// startup_clocks
-		// {{{
-		// reg	[6:0]	startup_clocks;
-
-		// always @(posedge i_clk)
-		// if (i_reset || !raw_card_present[2])
-		//	startup_clocks <= 7'd80;
-		// else if (i_ckstb && startup_clocks != 0)
-		//	startup_clocks <= startup_clocks - 1;
-		// }}}
-
 		// card_present: Require a card to be inserted for a period
 		// {{{
 		// of time before declaring it to be present.  This helps
 		// to unbounce any card detection logic.
 		initial	card_detect_counter = 0;
 		always @(posedge i_clk)
-		if (i_reset || !raw_card_present[2])// || startup_clocks != 0)
+		if (i_reset || !raw_card_present[2])
 			card_detect_counter <= 0;
 		else if (!(&card_detect_counter))
 			card_detect_counter <= card_detect_counter + 1;

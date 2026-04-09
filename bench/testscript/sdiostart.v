@@ -147,7 +147,13 @@ $display("Done waiting on initial clock change");
 	u_bfm.readio(ADDR_FIFOA, CID[ 31: 0]);
 	$display("READ-CID: %08x:%08x:%08x:%08x",
 		CID[127:96], CID[95:64], CID[63:32], CID[31:0]);
-	assert(CID[127:8] == sd_cid);
+	if (CID[127:8] !== sd_cid)
+	begin
+		$display("ExpctdCID:%08x:%08x:%08x:%08x",
+			sd_cid[127:96], sd_cid[95:64],
+			sd_cid[63:32], sd_cid[31:0]);
+		assert(CID[127:8] == sd_cid);
+	end
 
 	// CMD3	SEND_RELATIVE_ADDR
 	sdcard_send_relative_addr(r6);

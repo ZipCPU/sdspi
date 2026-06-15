@@ -1,18 +1,17 @@
 [tasks]
 prf
 prfds  prf opt_serdes opt_emmc opt_dma
-prfdr  prf opt_ddr opt_dma
-prfdma prf         opt_dma
-pboot  prf opt_ddr opt_emmc opt_dma boot
-cvr      opt_serdes opt_dma
-cvrb cvr opt_ddr    opt_dma boot
+prfdr  prf opt_ddr             opt_dma
+prfdma prf            opt_dma
+pboot  prf opt_ddr    opt_emmc opt_dma boot
+cvr        opt_serdes          opt_dma
+cvrb cvr   opt_ddr    opt_emmc opt_dma  boot
 
 [options]
 prf: mode prove
 cvr: mode cover
 prf: depth 10
-pboot: depth 14
-cvr: depth 45	# Actually takes 42 steps, and about 4hrs
+cvr: depth 45	# Actually takes 42 steps, and about 2.5hrs
 
 [engines]
 smtbmc

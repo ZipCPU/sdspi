@@ -337,9 +337,14 @@ void sdio_clear_fifo(SDIODRV *dev, unsigned fifo) {  // No CMD
 	// {{{
 	unsigned	phy, k, lglen;
 
+	// Get the FIFO length
 	phy = dev->d_dev->sd_phy;
 	lglen = (phy >> 28);
+
+	// Reset the FIFO pointer
 	dev->d_dev->sd_cmd = SDIO_NULLCMD;
+
+	// Now actually clear it.
 	if (fifo) {
 		for(int k=0; k< (1<<lglen); k++)
 			dev->d_dev->sd_fifb = 0;
@@ -773,9 +778,9 @@ static	void	sdio_send_tuning_block(SDIODRV *dev) { // CMD19
 		// {{{
 		txstr("CMD19:   SEND_TUNING_COMMAND, Analysis Complete ----\n");
 		txstr("  Vld msk: "); txhex(vmask);
-		if (vmask == 0)
+		if (vmask == 0) {
 			txstr(" -- Failed\n");
-		else {
+		} else {
 			txstr("\n  BestPh:  "); txdecimal(best_ph); txstr("\n");
 			txstr("  Phy:     "); txhex(dev->d_dev->sd_phy); txstr("\n");
 		}
@@ -1720,12 +1725,18 @@ SDIODRV *sdio_init(SDIO *dev) {
 		// SDPHY_PHASEMSK= 0x001f0000,
 		if (0x010000 & phy) {
 			// OPT_SERDES
+			if (SDDEBUG && SDINFO)
+				txstr("OPT_SERDES\n");
 			clk_phase = 20 << 16;	// 0x16_0000
 		} else if (0x040000 & phy) {
 			// OPT_DDR
+			if (SDDEBUG && SDINFO)
+				txstr("OPT_DDR\n");
 			clk_phase = 16 << 16;
 		} else {
 			// Raw front end I/O
+			if (SDDEBUG && SDINFO)
+				txstr("OPT_RAW\n");
 			clk_phase = 16 << 16;
 		}
 		phy = (dv->d_dev->sd_phy & (~SDPHY_PHASEMSK)) | clk_phase;

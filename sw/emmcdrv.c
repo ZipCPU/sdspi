@@ -168,7 +168,13 @@ static	const	uint32_t
 		SDIO_DMAERR   = 0x01000000,
 		SDIO_HWRESET  = 0x02000000,
 		SDIO_ACK      = 0x04000000,	// Expect a CRC ACK token
+		SDIO_BOOTACTV = 0x08000000,	// ERR|NOCMD|R1b
+		SDIO_BOOTERR  = 0x10000000,	// ERR|NOCMD|R1b
 		SDIO_RESET    = 0x52000000,
+		SDIO_BOOT     = 0x00008300,	// ERR|NOCMD|R1b
+		SDIO_ALTBOOT  = 0x00008040,	// ERR|DMA|CMD0
+		SDIO_ERMASK   = SDIO_ERR | SDIO_BOOTERR | SDIO_DMAERR
+				| SDIO_CMDERR | SDIO_RXERR | SDIO_RXECODE,
 		// PHY enumerations
 		SDPHY_DDR      = 0x00004100,	// Requires CK90
 		SDPHY_DS       = 0x00004300,	// Requires DDR & CK90
@@ -2095,3 +2101,110 @@ int	emmc_ioctl(EMMCDRV *dev, char cmd, char *buf) {
 	return	RES_PARERR;
 }
 // }}}
+
+int	emmc_boot(EMMC *dev, const unsigned count, char *buf) {
+	// {{{
+	if (0 == count)
+		return;
+
+	// Force the device into reset while we configure the hard boot
+	dev->sd_cmd = HWRESET;
+	dev->sd_dma_length = count;
+	dev->sd_dma_addr   = buf;
+	// dev->sd_phy  = ... default settings ...
+	// dev->sd_data = ... irrelevant ...
+#ifdef	OPT_SDIODMA
+	dev->sd_cmd = SDIO_ACK | SDIO_BOOT | SDIO_DMA;
+
+	st = dev->sd_cmd;
+	while(st & SDIO_BUSY)
+		st = dev->sd_cmd;
+	return (st & SDIO_ERR);
+#else
+	unsigned	*dst = buf;
+
+	dev->sd_cmd = SDIO_ACK | SDIO_BOOT | SDIO_MEM;
+	do { st = dev->sd_cmd; } while(st & SDIO_BUSY);
+	// Request the first block
+	dev->sd_cmd = SDIO_MEM;	// FIFO = 0
+	for(unsigned bk=1; (0==(st & SDIO_ERMASK)) && bk<count; bk++) {
+		// Wait 'til we're free
+		do { st = dev->sd_cmd; } while(st & SDIO_BUSY);
+		// Then request the next block
+		dev->sd_cmd = SDIO_MEM | ((bk & 1) ? SDIO_FIFO : 0);
+		if (bk != 0 && (0 == (st & SDIO_ERMASK))) {
+			// Read a block back out
+			unsigned *fifo = (bk & 1) ? dev->sd_fifa : dev->sd_fifb;
+
+			for(unsigned k=0; k<512/4; k++)
+				*dst++ = *fifo;
+		}
+	} do { st = dev->sd_cmd; } while(st & SDIO_BUSY);
+	if (0 == (st & SDIO_ERMASK)) {
+		// Read a block back out
+		unsigned *fifo = (bk & 1) ? dev->sd_fifa : dev->sd_fifb;
+
+		for(unsigned k=0; k<512/4; k++)
+			*dst++ = *fifo;
+	}
+	// Break / end the BOOT MODE
+#endif
+	return (st & SDIO_ERMASK);
+}
+// }}}
+
+int	emmc_altboot(EMMC *dev, const unsigned count, char *buf) {
+	// {{{
+	if (0 == count)
+		return;
+
+	// Force the device into reset while we configure the hard boot
+	dev->sd_cmd = HWRESET;
+	dev->sd_data= 0xfffffffa;
+	dev->sd_dma_length = count;
+	dev->sd_dma_addr   = buf;
+	// dev->sd_phy  = ... default settings ...
+	// dev->sd_data = ... irrelevant ...
+#ifdef	OPT_SDIODMA
+	dev->sd_cmd = SDIO_ACK | SDIO_ALTBOOT | SDIO_DMA;
+
+	do { st = dev->sd_cmd; } while(st & SDIO_BUSY);
+	// We don't need to break from ALT BOOT mode when using the DMA, since
+	//  the DMA will take care of it for us.
+	return (st & SDIO_ERR);
+#else
+	unsigned	*dst = buf;
+
+	dev->sd_cmd = SDIO_ACK | SDIO_ALTBOOT | SDIO_MEM;
+	do { st = dev->sd_cmd; } while(st & SDIO_BUSY);
+	// Request the first block
+	dev->sd_cmd = SDIO_MEM;	// FIFO = 0
+	for(unsigned bk=1; (0==(st & SDIO_ERMASK)) && bk<count; bk++) {
+		// Wait 'til we're free
+		do { st = dev->sd_cmd; } while(st & SDIO_BUSY);
+		// Then request the next block
+		dev->sd_cmd = SDIO_MEM | ((bk & 1) ? SDIO_FIFO : 0);
+		if (bk != 0 && (0 == (st & SDIO_ERMASK))) {
+			// Read blocks 0-N-2 back out
+			unsigned *fifo = (bk & 1) ? dev->sd_fifa : dev->sd_fifb;
+
+			for(unsigned k=0; k<512/4; k++)
+				*dst++ = *fifo;
+		}
+	} do { st = dev->sd_cmd; } while(st & SDIO_BUSY);
+	if (0 == (st & SDIO_ERMASK)) {
+		// Read block N-1 back out
+		unsigned *fifo = (bk & 1) ? dev->sd_fifa : dev->sd_fifb;
+
+		for(unsigned k=0; k<512/4; k++)
+			*dst++ = *fifo;
+	}
+
+	// Break / end the BOOT MODE
+	dev->sd_data= 0;
+	dev->sd_cmd = SDIO_CMD | SDIO_RNONE | SDIO_ERR;
+#endif
+	return (st & SDIO_ERMASK);
+}
+// }}}
+

@@ -31,7 +31,6 @@ document will become obsolete, with the user guide taking precedence.
 - `BOOT_MODE[3]` sets DS (HS400) mode during autoboot.  (eMMC standard says
   HS400 not supported during BOOT operation.)
 
-- Note: BOOT *always* uses the DMA
 - Note: AutoBOOT always enables the DMA interrupt.
   Interrupts are not maskable in the controller.
 - Note: BOOT is always in PUSH/PULL mode for both CMD and DATA.
@@ -58,6 +57,10 @@ There are three ways to enter boot mode.
    argument of `32'hf0f0_f0f0`.  Only after this command will the eMMC be
    expecting the `ffff_fffa` argument.
 
+   Note that the alternate boot requires either the DMA, or the expected
+   acknowledgment token.  Without either, the alternate boot mode is not
+   required and can be activated (or not) with regular commands.
+
 
 ## Commands:
 
@@ -83,6 +86,13 @@ Writing the following to the command register will ...
 
   Sends a CMD0 to start a boot sequence in alternate boot mode.
 
+- `CMD_SWRESET = 32'h52000000` is the soft bus reset command.  Once a manual
+  boot (i.e. w/o DMA) sequence has completed, this command will release the CMD
+  line.
+  
+- A CMD0, with a zero argument, will exit manual alternate boot mode (i.e. w/o
+  the DMA).
+
 ## Registers:
 
 - CMD, as discussed above
@@ -105,9 +115,14 @@ Writing the following to the command register will ...
 ## NOTES:
 
 - Must ensure a minimum of 56 device clocks between BOOT CMD control and the
-  first command.
+  first command.  This is controlled by the STARTUP-CLOCKS parameter in SDCMD.v.
 - What about BOOT without DMA?  This will be known as _manual boot_.  It is
   entered in the same way as before, save that the FIFO bit must be set rather
   than the DMA bit.  For AUTOBOOT, manual boot requires that the block count
-  must be set to zero.
-- How shall manual boot be exited?  With a bus reset command?
+  parameter must be set to zero.
+
+- How shall manual boot be exited?  With a bus reset command?  Yes.
+
+- At present, there's no time out detection for the acknowledgment token.  The
+  design will simply hang.  If detected in software (via a software timeout),
+  issue a reset and fix the underlying cause.

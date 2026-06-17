@@ -52,7 +52,7 @@
 ##		script would be a hex file specifying the software load for
 ##		the test.
 ## Parameters are given in the format of PARAM=X.  As an example, appending
-## OPT_VCD=1 will set the OPT_VCD parameter, thuhs turning on VCD generation.
+## OPT_VCD=1 will set the OPT_VCD parameter, thus turning on VCD generation.
 ## }}}
 ##
 ## SD card checks
@@ -62,6 +62,7 @@ sdioddr		WB  sdiostart	OPT_SERDES=0 OPT_DDR=1
 sdio8x		WB  sdiostart	OPT_SERDES=1 OPT_DDR=1
 sddmachk	WB  sddmachk	OPT_SERDES=1 OPT_DDR=1 OPT_DMA=1
 sdstream	WB  sdstream	OPT_SERDES=1 OPT_DDR=1 OPT_DMA=1 OPT_STREAM=1
+sdinsert        WB  sdinsert    OPT_SERDES=1 OPT_DMA=1 OPT_VCD=1
 axsdioio	AXI sdiostart	OPT_SERDES=0 OPT_DDR=0
 axsdioddr	AXI sdiostart	OPT_SERDES=0 OPT_DDR=1
 axsdio8x	AXI sdiostart	OPT_SERDES=1 OPT_DDR=1

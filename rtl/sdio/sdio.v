@@ -606,6 +606,7 @@ module	sdio #(
 		.OPT_EMMC(OPT_EMMC),
 		.OPT_SERDES(OPT_SERDES),
 		.MW(MW),
+		.LGTIMEOUT(LGTIMEOUT),
 		.LGLEN(LGFIFO-$clog2(MW/8))
 		// }}}
 	) u_sdcmd (
@@ -619,6 +620,7 @@ module	sdio #(
 		.i_cmd_request(cmd_request), .i_cmd_type(cmd_type),
 		.i_cmd_selfreply(cmd_selfreply),
 		.i_cmd(cmd_id), .i_arg(cmd_arg),
+		.i_boot_cmd(w_boot_cmd && OPT_BOOTEN),
 		//
 		.o_busy(cmd_busy), .o_done(cmd_done), .o_err(cmd_err),
 			.o_ercode(cmd_ercode),
@@ -626,7 +628,7 @@ module	sdio #(
 		.o_cmd_en(w_cmd_en), .o_cmd_data(w_cmd_data),
 			.o_cmd_tristate(w_cmd_tristate),
 		.i_cmd_strb(i_cmd_strb), .i_cmd_data(i_cmd_data
-				| {(2){w_boot_cmd}}),
+				| {(2){w_boot_cmd && OPT_BOOTEN}}),
 			.i_cmd_collision(i_cmd_collision),
 		.S_ASYNC_VALID(S_AC_VALID), .S_ASYNC_DATA(S_AC_DATA),
 		//
@@ -638,9 +640,9 @@ module	sdio #(
 		// }}}
 	);
 
-	assign	o_cmd_en       = w_cmd_en || w_boot_cmd;
-	assign	o_cmd_tristate = w_cmd_tristate && !w_boot_cmd;
-	assign	o_cmd_data     = w_cmd_data & {(2){!w_boot_cmd}};
+	assign	o_cmd_en       = w_cmd_en || (w_boot_cmd && OPT_BOOTEN);
+	assign	o_cmd_tristate = w_cmd_tristate && (!w_boot_cmd || !OPT_BOOTEN);
+	assign	o_cmd_data     = w_cmd_data & {(2){!w_boot_cmd || !OPT_BOOTEN}};
 
 	sdtxframe #(
 		// {{{

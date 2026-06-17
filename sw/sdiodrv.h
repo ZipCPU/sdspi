@@ -49,7 +49,7 @@ typedef	struct SDIO_S {
 	// rest of the world).
 #if defined(__SIZEOF_POINTER__) && (__SIZEOF_POINTER__ == 8)
 	// 64b architectures
-	volatile uint32_t	sd_unused;
+	volatile void		*sd_dma_addr;
 #else
 	// 32b architectures, or default if not __SIZEOF_POINTER__ is undefined
   #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)

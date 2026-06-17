@@ -306,6 +306,7 @@ module	sdaxil #(
 				R2_REPLY = 2'b10,
 				R1B_REPLY = 2'b11;
 	// Command register bits
+				// Verilator lint_off UNUSED
 	localparam		BOOT_ACTIVE_BIT  = 27,
 				EXPECT_ACK_BIT   = 26,
 				HWRESET_BIT      = 25,
@@ -313,6 +314,7 @@ module	sdaxil #(
 				CARD_REMOVED_BIT = 18,
 				ERR_BIT          = 15,
 				CMD_BUSY_BIT     = 14,
+				// Verilator lint_on  UNUSED
 				USE_DMA_BIT      = 13,
 				FIFO_ID_BIT      = 12,
 				USE_FIFO_BIT     = 11,
@@ -405,7 +407,7 @@ module	sdaxil #(
 	// BOOT signals
 	wire		w_alt_boot, w_activate_boot, w_boot_active, w_boot_err;
 	reg		bus_reset, reset_stb, bus_reset_request;
-	wire		w_pending_boot_tok, reset_hold;
+	wire		w_pending_boot_tok;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -1452,17 +1454,8 @@ module	sdaxil #(
 		end
 
 		assign	o_hwreset_n = !r_hwreset;
-		assign	reset_hold = r_hwreset && (r_rst_counter > 1);
 `ifdef	FORMAL
 		// {{{
-		always @(posedge i_clk)
-		if (!i_reset && $past(reset_hold))
-		begin
-			assert(r_hwreset);
-		end else if (!i_reset && $past(r_hwreset))
-			// Make sure we can still exit reset anyway
-			cover(!r_hwreset);
-
 		always @(posedge i_clk)
 		if (!i_reset)
 			cover(!r_hwreset);
@@ -1495,7 +1488,6 @@ module	sdaxil #(
 `endif
 	end else begin : NO_HWRESET
 		assign	o_hwreset_n = 1'b1;
-		assign	reset_hold = 1'b0;
 	end endgenerate
 	// }}}
 
@@ -3536,8 +3528,10 @@ module	sdaxil #(
 				// ALL Alternate boots *MUST* use the ACK bit,
 				// else ... there's no purpose in an ALT boot
 				// capability
-				&& (OPT_CRCTOKEN && bus_wstrb[EXPECT_ACK_BIT/8]
+				&& ((OPT_CRCTOKEN && bus_wstrb[EXPECT_ACK_BIT/8]
 					&& bus_wdata[EXPECT_ACK_BIT])
+					||(OPT_DMA && bus_wdata[USE_DMA_BIT]
+							&& !dma_zero_len))
 				&& !bus_wdata[FIFO_WRITE_BIT]
 				&& (bus_wdata[USE_FIFO_BIT]
 					|| (OPT_DMA && bus_wdata[USE_DMA_BIT] && !dma_zero_len))
@@ -3550,8 +3544,7 @@ module	sdaxil #(
 		else if (!bus_cmd_stb || bus_wstrb[1:0] != 2'b11 || r_boot_active)
 			// We *only* activate boot on bus command writes
 			r_activate_boot = 1'b0;
-		else if (r_mem_busy || o_tx_en || dma_busy || cmd_busy
-								|| reset_hold)
+		else if (r_mem_busy || o_tx_en || dma_busy || cmd_busy)
 			// We can't activate boot if we're already busy doing
 			// something else
 			r_activate_boot = 1'b0;
@@ -3598,12 +3591,12 @@ module	sdaxil #(
 		//				&& o_hwreset_n
 		//				&& bus_wdata[HWRESET_BIT])))
 		//	r_boot_active <= 1'b0;
-		else if (r_activate_boot && !r_boot_active)
-			r_boot_active <= 1'b1;
 		else if (bus_reset_request)
 			r_boot_active <= 1'b0;
+		else if (r_activate_boot && !r_boot_active)
+			r_boot_active <= 1'b1;
 		else if (w_pending_boot_tok && (i_boot_nak
-				|| (i_boot_ack && !o_boot_cmden)))
+				|| (i_boot_ack && !o_boot_cmden && !dma_busy)))
 			r_boot_active <= 1'b0;
 		else if (r_boot_dma)
 		begin
@@ -3618,18 +3611,27 @@ module	sdaxil #(
 		always @(posedge i_clk)
 		if (i_reset || reset_stb)
 			r_alt_boot <= 1'b0;
-		else if (bus_write && bus_wraddr == ADDR_CMD
-				&& (&bus_wstrb[3:0]) && bus_wdata == RESET_KEY)
+		else if (bus_reset_request)
 			r_alt_boot <= 1'b0;
 		else if (r_activate_boot && !r_boot_active)
 			r_alt_boot <= activate_alt_boot;
 		else if (w_pending_boot_tok && (i_boot_nak
-				|| (i_boot_ack && !o_boot_cmden)))
+					|| (i_boot_ack && !o_boot_cmden)))
 			r_alt_boot <= 1'b0;
-		else if (!o_dma_sd2s && !cmd_busy && (dma_error
-				|| i_rx_err
+		else // if (r_boot_dma)
+		begin
+			if (!dma_read_active && !cmd_busy
+				&& !dma_write && (dma_error
+				|| (i_dma_err && !r_mem_busy)
 				|| (dma_busy && dma_zero_len && !dma_loaded)))
 			r_alt_boot <= 1'b0;
+		end
+`ifdef	FORMAL
+		always @(*)
+		if (!i_reset && (!o_hwreset_n || o_boot_cmden
+						|| !dma_busy || !r_boot_active))
+			assert(!r_alt_boot);
+`endif
 		// }}}
 
 		// r_boot_dma

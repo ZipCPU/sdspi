@@ -58,6 +58,9 @@ module	tb_wb #( // Local declarations
 		localparam		BFM_DW=32,
 		localparam		VCD_FILE = "trace.vcd",
 		parameter		LGMEMSZ = 16,	// 64kB
+		// Here, we set the log timeout arbitrarily low--simply to help
+		// speed up any simulations and potential simulation errors.
+		parameter		LGTIMEOUT = 18,	// 10ms
 		localparam		ADDRESS_WIDTH = LGMEMSZ + 1
 		// }}}
 `ifdef	VERILATOR
@@ -503,7 +506,7 @@ module	tb_wb #( // Local declarations
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.DW(DW),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
-		.OPT_CARD_DETECT(1'b1), .LGTIMEOUT(10),
+		.OPT_CARD_DETECT(1'b1), .LGTIMEOUT(LGTIMEOUT),
 		.OPT_1P8V(OPT_1P8V),
 		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b0),
 		.HWDELAY(OPT_SERDES ? 9 : 0),
@@ -575,7 +578,7 @@ module	tb_wb #( // Local declarations
 		.ADDRESS_WIDTH(ADDRESS_WIDTH),
 		.DW(DW),
 		.OPT_SERDES(OPT_SERDES), .OPT_DDR(OPT_DDR),
-		.OPT_CARD_DETECT(0), .LGTIMEOUT(10),
+		.OPT_CARD_DETECT(0), .LGTIMEOUT(LGTIMEOUT),
 		.OPT_1P8V(OPT_1P8V),
 		.OPT_DMA(OPT_DMA), .OPT_EMMC(1'b1),
 		.DEF_SAMPLE_SHIFT(EMMC_SHIFT),

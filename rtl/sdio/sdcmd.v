@@ -49,6 +49,7 @@ module	sdcmd #(
 		// OPT_SERDES=1 delays the engagement of any tristate control
 		// by a clock period
 		parameter [0:0]	OPT_SERDES = 1'b0,
+		parameter	STARTUP_CLOCKS = 74,
 		parameter	LGTIMEOUT = 26,	// 500ms expected
 		parameter	LGLEN = 9,
 		parameter	MW = 32
@@ -61,6 +62,8 @@ module	sdcmd #(
 		input	wire			i_cfg_dbl,	// 2Bits/Clk
 		input	wire			i_cfg_pp,	// Push/Pull
 		input	wire			i_ckstb,
+		//
+		input	wire			i_boot_cmd,
 		// Controller interface
 		// {{{
 		input	wire			i_cmd_request,
@@ -107,6 +110,8 @@ module	sdcmd #(
 
 	// Local declarations
 	// {{{
+	localparam		MAXDELAY= STARTUP_CLOCKS > 8 ? STARTUP_CLOCKS:8;
+	localparam		LGDLY = $clog2(MAXDELAY + 1);
 	localparam [1:0]	R_NONE = 2'b00,
 				R_R1   = 2'b01,
 				R_R2   = 2'b10,
@@ -141,8 +146,8 @@ module	sdcmd #(
 	reg	[6:0]	crc_fill;
 	reg		r_busy, new_data;
 
-	reg		r_delay;
-	reg	[3:0]	r_dly_count;
+	reg			r_delay;
+	reg	[LGDLY-1:0]	r_dly_count;
 
 	reg		r_done;
 
@@ -157,7 +162,7 @@ module	sdcmd #(
 
 	initial { active, srcount } = 0;
 	always @(posedge i_clk)
-	if (i_reset)
+	if (i_reset || i_boot_cmd)
 	begin
 		active <= 0;
 		srcount <= 0;
@@ -186,7 +191,7 @@ module	sdcmd #(
 	end
 
 	always @(posedge i_clk)
-	if (i_reset)
+	if (i_reset || i_boot_cmd)
 		tx_sreg <= 48'hffff_ffff_ffff;
 	else if (OPT_EMMC && active && i_cmd_collision)
 	begin
@@ -208,7 +213,7 @@ module	sdcmd #(
 	// any tristate operation 1) drops tristate immediately if necessary,
 	// and 2) lags by one clock cycle when attempting to enable tristate.
 	always @(posedge i_clk)
-	if (i_reset)
+	if (i_reset || i_boot_cmd)
 	begin
 		tx_tristate <= 48'hffff_ffff_ffff;
 		last_tristate <= 1'b1;
@@ -260,7 +265,7 @@ module	sdcmd #(
 	// {{{
 	initial	waiting_on_response = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset)
+	if (i_reset || i_boot_cmd)
 		waiting_on_response <= 1'b0;
 	else if (lcl_accept)
 		waiting_on_response <= (i_cmd_type != R_NONE);
@@ -271,7 +276,7 @@ module	sdcmd #(
 	// cfg_ds, cfg_dbl, cmd_type
 	// {{{
 	always @(posedge i_clk)
-	if (i_reset)
+	if (i_reset || i_boot_cmd)
 		{ cfg_ds, cfg_dbl, cmd_type } <= 4'b0;
 	else if (lcl_accept)
 		{ cfg_ds, cfg_dbl, cmd_type } <= { (i_cfg_ds && OPT_DS), i_cfg_dbl, i_cmd_type };
@@ -527,7 +532,7 @@ module	sdcmd #(
 		// self_request
 		// {{{
 		always @(posedge i_clk)
-		if (i_reset)
+		if (i_reset || i_boot_cmd)
 			r_self_request <= 0;
 		else if (!o_busy || active)
 			r_self_request <= 0;
@@ -538,7 +543,7 @@ module	sdcmd #(
 		// no_timeout
 		// {{{
 		always @(posedge i_clk)
-		if (i_reset)
+		if (i_reset || i_boot_cmd)
 			r_no_timeout <= 0;
 		else if (lcl_accept)
 			// No timeouts for GO_IRQ_STATE commands in eMMC mode
@@ -590,7 +595,7 @@ module	sdcmd #(
 	initial	rx_timeout_counter = -1;
 	always @(posedge i_clk)
 	if (i_reset || !waiting_on_response || active || r_done || no_timeout
-			|| lcl_accept)
+			|| lcl_accept || i_boot_cmd)
 	begin
 		rx_timeout <= 0;
 		rx_timeout_counter <= -1;
@@ -676,7 +681,7 @@ module	sdcmd #(
 
 	initial { o_err, o_ercode } = 3'h0;
 	always @(posedge i_clk)
-	if (i_reset || o_done || w_no_response || lcl_accept)
+	if (i_reset || o_done || w_no_response || lcl_accept || i_boot_cmd)
 		o_err <= 1'b0;
 	else if (rx_timeout && !r_done)
 		o_err <= 1'b1;
@@ -685,7 +690,7 @@ module	sdcmd #(
 
 	initial o_ercode = 2'h0;
 	always @(posedge i_clk)
-	if (i_reset || active || lcl_accept || w_no_response || o_done)
+	if (i_reset || active || lcl_accept || w_no_response || o_done || i_boot_cmd)
 		o_ercode <= 2'b00;
 	else if (!r_done)
 	begin
@@ -706,16 +711,20 @@ module	sdcmd #(
 	// {{{
 	initial	{ r_delay, r_dly_count } = 0;
 	always @(posedge i_clk)
-	if (i_reset)
-		{ r_delay, r_dly_count } <= 0;
-	else if (r_busy)
-		{ r_delay, r_dly_count } <= { 1'b1, 4'h8 };
+	if (i_reset || i_boot_cmd)
+	begin
+		{ r_delay, r_dly_count } <= -STARTUP_CLOCKS;
+	end else if (r_busy)
+		{ r_delay, r_dly_count } <= -8;
 	else if (r_delay && i_ckstb)
 		{ r_delay, r_dly_count } <= { r_delay, r_dly_count } + 1;
 `ifdef	FORMAL
 	always @(posedge i_clk)
-	if (!i_reset && r_busy && !$past(lcl_accept))
-		assert({ r_delay, r_dly_count } == { 1'b1, 4'h8 });
+	if (!i_reset && r_busy && !$past(lcl_accept) && !$past(i_boot_cmd))
+	begin
+		assert(r_delay);
+		assert({ 1'b0, r_dly_count } == (1<<LGDLY) - 8);
+	end
 
 	always @(*)
 	if (r_delay)
@@ -731,7 +740,7 @@ module	sdcmd #(
 	// {{{
 	initial	r_done = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || w_no_response || o_done || lcl_accept)
+	if (i_reset || w_no_response || o_done || lcl_accept || i_boot_cmd)
 		r_done <= 1'b0;
 	else if (w_done || rx_timeout)
 		r_done <= 1'b1;
@@ -743,7 +752,7 @@ module	sdcmd #(
 	// {{{
 	initial	o_done = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset || o_done || lcl_accept)
+	if (i_reset || o_done || lcl_accept || i_boot_cmd)
 		o_done <= 1'b0;
 	else
 		o_done <= (rx_timeout || w_no_response
@@ -755,7 +764,7 @@ module	sdcmd #(
 	// r_busy is a registered true if we are unable to accept a command
 	initial	r_busy = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset)
+	if (i_reset || i_boot_cmd)
 		r_busy <= 1'b0;
 	else if (lcl_accept)
 		r_busy <= 1'b1;
@@ -786,7 +795,7 @@ module	sdcmd #(
 ////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
 	(* anyconst *) reg f_nvr_request, f_nvr_collision;
-	reg		f_past_valid, f_busy, f_cfg_pp;
+	reg		f_past_valid, f_busy, f_cfg_pp, past_boot;
 	reg	[7:0]	f_last_resp_count;
 	reg	[47:0]	f_tx_reg, f_tx_now;
 	wire	[5:0]	f_txshift;
@@ -829,7 +838,7 @@ module	sdcmd #(
 
 	initial	f_busy = 1'b0;
 	always @(posedge i_clk)
-	if (i_reset)
+	if (i_reset || i_boot_cmd)
 		f_busy <= 1'b0;
 	else if (lcl_accept) // i_cmd_request && !o_busy)
 		f_busy <= 1'b1;
@@ -894,7 +903,6 @@ module	sdcmd #(
 		f_cfg_pp <= 5'b0;
 	else if (lcl_accept)
 		f_cfg_pp <= i_cfg_pp;
-	// }}}
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -906,14 +914,14 @@ module	sdcmd #(
 	//
 
 	always @(posedge i_clk)
-	if (f_past_valid && !$past(i_reset) && !$past(i_ckstb))
+	if (f_past_valid && !$past(i_reset || i_boot_cmd) && !$past(i_ckstb))
 	begin
 		assert($stable(o_cmd_en));
 		assert($stable(o_cmd_data));
 	end
 
 	always @(posedge i_clk)
-	if ($past(i_reset || o_cmd_en))
+	if ($past(i_reset || o_cmd_en || i_boot_cmd))
 		assume(!S_ASYNC_VALID && i_cmd_strb == 0);
 
 	always @(*)
@@ -978,8 +986,11 @@ module	sdcmd #(
 	if (!i_reset && (!cfg_dbl || resp_count[0]))
 		assume(i_cmd_strb != 2'b11);
 
+	always @(posedge i_clk)
+		past_boot <= i_boot_cmd;
+
 	always @(*)
-	if (!i_reset && active)
+	if (!i_reset && active && !past_boot)
 		assert(waiting_on_response == (cmd_type != R_NONE));
 
 	always @(*)
@@ -987,7 +998,7 @@ module	sdcmd #(
 		assert(r_busy);
 
 	always @(*)
-	if (!i_reset)
+	if (!i_reset && !past_boot)
 	begin
 		if (active || !waiting_on_response || cmd_type != R_R2)
 			assert(!o_mem_valid);
@@ -997,7 +1008,7 @@ module	sdcmd #(
 
 		if (resp_count < 8+32 || cmd_type != R_R2 || active)
 		begin
-			assert(mem_addr == 0);
+			assert(mem_addr == 0 || past_boot);
 		end else if (r_done && !rx_timeout)
 		begin
 			assert(mem_addr == 4);
@@ -1006,7 +1017,7 @@ module	sdcmd #(
 			assert(mem_addr + o_mem_valid == ((f_last_resp_count-8)>>5));
 		end
 
-		if (cmd_type == R_NONE)
+		if (cmd_type == R_NONE && waiting_on_response)
 		begin
 			assert(resp_count == 0);
 		end
@@ -1109,7 +1120,7 @@ module	sdcmd #(
 		assert(rx_timeout == (rx_timeout_counter == 0));
 
 	always @(*)
-	if (!i_reset && !r_busy)
+	if (!i_reset && !r_busy && !past_boot)
 		assert(!rx_timeout);
 
 	always @(*)
@@ -1117,7 +1128,7 @@ module	sdcmd #(
 		assert(!o_err && o_ercode == 2'b00);
 
 	always @(*)
-	if (!i_reset)
+	if (!i_reset && !past_boot)
 	begin
 		if (!r_busy)
 		begin
@@ -1147,7 +1158,7 @@ module	sdcmd #(
 	end
 
 	always @(*)
-	if (!i_reset)
+	if (!i_reset && !past_boot)
 	begin
 		assert(r_busy == (active || waiting_on_response ||o_done));
 		if (o_done)
@@ -1187,7 +1198,7 @@ module	sdcmd #(
 		cover(i_cmd_type == R_R1 && o_err && o_ercode == ECODE_BADCRC);
 		cover(i_cmd_type == R_R1 && o_err && o_ercode== ECODE_FRAMEERR);
 
-		// Caution!  These will take at least 136+49+2 clocks!
+		// Caution!  These will take at least 136+49+2=187 clocks!
 		cover(i_cmd_type == R_R2 && !o_err);
 		cover(i_cmd_type == R_R2 && o_err && o_ercode == ECODE_BADCRC);
 		cover(i_cmd_type == R_R2 && o_err && o_ercode== ECODE_FRAMEERR);

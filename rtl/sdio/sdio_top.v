@@ -203,6 +203,9 @@ module sdio_top #(
 		// choice.  Examples of what might cause such a timeout failure
 		// include an unplugged card, a malfunctioning card, or a
 		// bad board connection.
+		//
+		// LGTIMEOUT=26 will wait approximately 2^26 or 64Million clock
+		// cycles--about 640ms or so, for a timeout.
 		parameter	LGTIMEOUT = 23,
 		// }}}
 		// DEF_SAMPLE_SHIFT

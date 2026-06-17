@@ -134,7 +134,7 @@ foreach $key (sort (keys %STAT)) {
 open(HTML, "> $htmlfil");
 print HTML "<HTML><HEAD><TITLE>Simulation report</TITLE></HEAD><BODY>\n";
 print HTML "<H1 align=center>SD Controller Simulation Report</H1>\n";
-print HTML "<TABLE>\n";
+print HTML "<P align=center><TABLE border>\n";
 print HTML "<TR><TH>Test</TH><TH>Status</TH><TH>Sim Timestamp</TH><TH>Tool</TH></TR>\n";
 foreach $key (sort (keys %STAT)) {
 	my $lin, $st;
@@ -155,5 +155,5 @@ foreach $key (sort (keys %STAT)) {
 	$lin = sprintf("<TR><TH>%s</TH><TD bgcolor=$clr>%s</TD><TD>$TSTAMP{$key}</TD><TD>$TOOL{$key}</TD></TR>\n", $key, $st);
 	print HTML $lin;
 }
-print HTML "</TABLE></BODY></HTML>\n";
+print HTML "</TABLE></P></BODY></HTML>\n";
 close HTML;

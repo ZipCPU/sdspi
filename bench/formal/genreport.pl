@@ -48,7 +48,7 @@ $dir = ".";
 	"spirxdata",
 	"spitxdata",
 	##
-	"sdio",
+	# "sdio",
 	"sdaxil",
 	"sdwb",
 	"sdcmd",
@@ -71,7 +71,7 @@ $dir = ".";
 	"spirxdata"	=> "SPI Data receive handler",
 	"spitxdata"	=> "SPI Data transmit handler",
 	##
-	"sdio"		=> "Main SDIO controller",
+	# "sdio"		=> "Main SDIO controller",
 	"sdaxil"	=> "SDIO AXI-Lite Bus handler",
 	"sdwb"		=> "SDIO Wishbone Bus handler",
 	"sdcmd"		=> "SDIO CMD wire controller",

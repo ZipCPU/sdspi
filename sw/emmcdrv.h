@@ -41,13 +41,19 @@
 
 typedef	struct EMMC_S {
 	volatile uint32_t	sd_cmd, sd_data, sd_fifa, sd_fifb, sd_phy;
-// #if (sizeof(void *) <= 4) && !defined(__LITTLE_ENDIAN__)
-	volatile uint32_t	sd_unused;
-// #endif
+#if defined(__SIZEOF_POINTER__) && (__SIZEOF_POINTER__ == 8)
+	// 64b architectures
+	volatile void	*sd_dma_addr;
+#else
+	// 32b architectures, or default if __SIZEOF__POINTER__ is undefined
+  #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 	volatile void		*sd_dma_addr;
-// #if (sizeof(void *) <= 4) &&  defined(__LITTLE_ENDIAN__)
-//	volatile uint32_t	sd_unused;
-// #endif
+	volatile uint32_t	sd_unused;
+  #else
+	volatile uint32_t	sd_unused;
+	volatile void		*sd_dma_addr;
+  #endif
+#endif
 	volatile uint32_t	sd_dma_length;
 } EMMC;
 
@@ -57,4 +63,6 @@ extern	struct	EMMCDRV_S *emmc_init(EMMC *dev);
 extern	int	emmc_write(struct EMMCDRV_S *dev, const unsigned sector, const unsigned count, const char *buf);
 extern	int	emmc_read(struct EMMCDRV_S *dev, const unsigned sector, const unsigned count, char *buf);
 extern	int	emmc_ioctl(struct EMMCDRV_S *dev, char cmd, char *buf);
+extern	int	emmc_boot(struct EMMC *dev, const unsigned count, char *buf);
+extern	int	emmc_altboot(struct EMMC *dev, const unsigned count, char *buf);
 #endif

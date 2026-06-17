@@ -171,8 +171,9 @@ $(SDWB)_cvrb/PASS: $(SDWB).sby $(RTL)/sdio/$(SDWB).v fwb_slave.v fwb_register.v
 
 .PHONY: $(SDAXIL)
 ## {{{
-$(SDAXIL): $(SDAXIL)_prf/PASS $(SDAXIL)_cvr/PASS
+$(SDAXIL): $(SDAXIL)_prf/PASS   $(SDAXIL)_cvr/PASS
 $(SDAXIL): $(SDAXIL)_prfds/PASS $(SDAXIL)_prfdr/PASS $(SDAXIL)_prfdma/PASS
+$(SDAXIL): $(SDAXIL)_pboot/PASS $(SDAXIL)_cvrb/PASS
 $(SDAXIL)_prf/PASS: $(SDAXIL).sby $(RTL)/sdio/$(SDAXIL).v faxil_slave.v faxil_register.v
 	$(NOJOBSERVER) sby -f $(SDAXIL).sby prf
 $(SDAXIL)_prfdma/PASS: $(SDAXIL).sby $(RTL)/sdio/$(SDAXIL).v faxil_slave.v faxil_register.v
@@ -181,8 +182,12 @@ $(SDAXIL)_prfds/PASS: $(SDAXIL).sby $(RTL)/sdio/$(SDAXIL).v faxil_slave.v faxil_
 	$(NOJOBSERVER) sby -f $(SDAXIL).sby prfds
 $(SDAXIL)_prfdr/PASS: $(SDAXIL).sby $(RTL)/sdio/$(SDAXIL).v faxil_slave.v faxil_register.v
 	$(NOJOBSERVER) sby -f $(SDAXIL).sby prfdr
+$(SDAXIL)_pboot/PASS: $(SDAXIL).sby $(RTL)/sdio/$(SDAXIL).v faxil_slave.v faxil_register.v
+	$(NOJOBSERVER) sby -f $(SDAXIL).sby pboot
 $(SDAXIL)_cvr/PASS: $(SDAXIL).sby $(RTL)/sdio/$(SDAXIL).v faxil_slave.v faxil_register.v
 	$(NOJOBSERVER) sby -f $(SDAXIL).sby cvr
+$(SDAXIL)_cvrb/PASS: $(SDAXIL).sby $(RTL)/sdio/$(SDAXIL).v faxil_slave.v faxil_register.v
+	$(NOJOBSERVER) sby -f $(SDAXIL).sby cvrb
 ## }}}
 
 .PHONY: $(SDCK)

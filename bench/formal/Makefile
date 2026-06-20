@@ -36,7 +36,7 @@
 ##
 ## }}}
 .PHONY: all
-all:	sdspi llsdspi spicmd spitxdata spirxdata sdcmd sdwb sdaxil sdckgen sdtxframe sdrxframe sdsfsm wbs2mm wbmm2s rxgears txgears report
+all:	sdspi llsdspi spicmd spitxdata spirxdata sdcmd sdwb sdaxil sdckgen sdtxframe sdrxframe sdsfsm wbs2mm wbmm2s rxgears txgears report # axis2mm aximm2s
 
 RTL := ../../rtl
 ## SDSPI components
@@ -308,8 +308,8 @@ $(AXIS2MM)_cvr/PASS: $(RTL)/sdio/$(AXIS2MM).v $(AXIS2MM).sby $(FAXI)
 
 .PHONY: $(AXIMM2S) aximm2s
 ## {{{
-aximm2s: $(AXIMM2s)
-$(AXIMM2S): $(AXIMM2s)_prf/PASS $(AXIMM2s)_cvr/PASS
+aximm2s: $(AXIMM2S)
+$(AXIMM2S): $(AXIMM2S)_prf/PASS $(AXIMM2S)_cvr/PASS
 $(AXIMM2S)_prf/PASS: $(RTL)/sdio/$(AXIMM2S).v $(AXIMM2S).sby $(FAXI)
 	$(NOJOBSERVER) sby -f $(AXIMM2S).sby prf
 $(AXIMM2S)_cvr/PASS: $(RTL)/sdio/$(AXIMM2S).v $(AXIMM2S).sby $(FAXI)

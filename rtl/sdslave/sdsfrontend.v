@@ -55,7 +55,7 @@ module	sdsfrontend #(
 		input	wire	[15:0]	i_tx_data,
 		input	wire	[7:0]	i_tx_data_tristate,
 
-		input	wire		i_tx_ds,
+		input	wire	[1:0]	i_tx_ds,
 		// input	wire		i_ds_tristate,
 		// }}}
 		// Rx path

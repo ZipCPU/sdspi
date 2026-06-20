@@ -44,9 +44,10 @@ VOB := cat
 VOBJ:= obj_dir
 VFLAGS := -MMD -Wall -trace -cc
 SUBMAKE:= $(MAKE) --no-print-directory -C
-SDSPI_FILES := sdspi.v spicmd.v spitxdata.v spirxdata.v llsdspi.v
-SDDMA_FILES := sddma_mm2s.v sddma_rxgears.v sddma_txgears.v sddma_s2mm.v sddma.v sdfifo.v sdskid.v
-SDIO_FILES := sdio.v sdwb.v sdckgen.v sdcmd.v sdrxframe.v sdtxframe.v $(SDDMA_FILES)
+SDSPI_FILES := spi/sdspi.v spi/spicmd.v spi/spitxdata.v spi/spirxdata.v spi/llsdspi.v
+SDDMA_FILES := sddma_mm2s.v sddma_rxgears.v sddma_txgears.v sddma_s2mm.v sdio/sddma.v sdfifo.v sdskid.v
+SDIO_FILES := sdio/sdio.v sdio/sdwb.v sdio/sdckgen.v sdio/sdcmd.v sdio/sdrxframe.v sdio/sdtxframe.v $(SDDMA_FILES)
+SDAXI_FILES:= sdio/sdio.v sdio/sdaxil.v sdskid.v sdio/sdcmd.v sdio/sdckgen.v sdio/sdrxframe.v sdio/sdtxframe.v
 all: rtl export $(VOBJ)/Vsdspi__ALL.so usage
 
 .DELETE_ON_ERROR:
@@ -54,11 +55,11 @@ all: rtl export $(VOBJ)/Vsdspi__ALL.so usage
 .PHONY: rtl
 ## {{{
 rtl: $(VOBJ)/Vsdspi.h $(VOBJ)/Vsdio.h $(VOBJ)/Vsdaxil.h
-$(VOBJ)/Vsdspi.h: sdspi.v llsdspi.v
-	$(VERILATOR) $(VFLAGS) sdspi.v
-$(VOBJ)/Vsdio.h: sdio.v sdwb.v sdcmd.v sdckgen.v sdrxframe.v sdtxframe.v
-	$(VERILATOR) $(VFLAGS) sdio.v
-$(VOBJ)/Vsdaxil.h: sdio.v sdaxil.v sdskid.v sdcmd.v sdckgen.v sdrxframe.v sdtxframe.v
+$(VOBJ)/Vsdspi.h: spi/sdspi.v spi/llsdspi.v
+	$(VERILATOR) -y spi $(VFLAGS) sdspi.v
+$(VOBJ)/Vsdio.h: $(SDIO_FILES)
+	$(VERILATOR) -y sdio $(VFLAGS) sdio.v
+$(VOBJ)/Vsdaxil.h: $(SDAXI_FILES)
 	$(VERILATOR) -DSDIO_AXI --prefix Vsdaxi $(VFLAGS) sdio.v
 ## }}}
 

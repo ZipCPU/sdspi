@@ -244,6 +244,11 @@ module	sdaxil #(
 	// The RESET_KEY *MUST* *SET* the HWRESET_BIT
 	localparam	[31:0]	RESET_KEY = 32'h5200_0000;
 	localparam	[0:0]	P_BOOTEN = OPT_EMMC && OPT_BOOTEN;
+
+	localparam	[1:0]	WIDTH_1W = 2'b00,
+				WIDTH_4W = 2'b01,
+				WIDTH_8W = 2'b10;
+
 `ifndef	FORMAL
 	localparam	[0:0]	P_BOOTFIFO = 1'b0,
 				P_AUTOBOOT = P_BOOTEN && OPT_AUTOBOOT
@@ -328,10 +333,6 @@ module	sdaxil #(
 				PP_DATA_BIT      = 12,
 				DS_BIT           =  9,
 				DDR_BIT          =  8;
-
-	localparam	[1:0]	WIDTH_1W = 2'b00,
-				WIDTH_4W = 2'b01,
-				WIDTH_8W = 2'b10;
 	// localparam	[15:0]	CMD_SELFREPLY = 16'h0028;
 
 	reg	cmd_busy, new_cmd_request, new_data_request, new_tx_request,
@@ -1533,7 +1534,7 @@ module	sdaxil #(
 	end
 
 	always @(posedge i_clk)
-	if (i_reset || o_soft_reset)
+	if (i_reset || reset_stb)
 		o_cfg_shutdown <= 1'b0;
 	else begin
 		o_cfg_shutdown <= r_clk_shutdown;
@@ -1579,7 +1580,7 @@ module	sdaxil #(
 	// mode.
 	initial	{ o_pp_cmd, o_pp_data } = 2'b00;
 	always @(posedge i_clk)
-	if (i_reset || o_soft_reset)
+	if (i_reset || reset_stb)
 		{ o_pp_cmd, o_pp_data } <= 2'b00;
 	else if (w_boot_active)
 		{ o_pp_cmd, o_pp_data } <= 2'b00;
@@ -1608,7 +1609,7 @@ module	sdaxil #(
 
 		initial	r_cfg_dscmd = 1'b0;
 		always @(posedge i_clk)
-		if (i_reset || o_soft_reset)
+		if (i_reset || reset_stb)
 			r_cfg_dscmd <= 1'b0;
 		else if (bus_phy_stb)
 		begin

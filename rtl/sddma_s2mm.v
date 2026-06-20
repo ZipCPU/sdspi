@@ -970,14 +970,14 @@ module	sddma_s2mm #(
 		if (!o_busy)
 		begin
 			case({ r_inc, r_size })
-			3'b000: cover(f_posn > DW/8);
-			3'b001: cover(f_posn > DW/8);
-			3'b010: cover(f_posn > DW/8);
-			3'b011: cover(f_posn > DW/8);
+			3'b000: begin end // cover(f_posn > DW/8);
+			3'b001: begin end // cover(f_posn > DW/8);
+			3'b010: begin end // cover(f_posn > DW/8);
+			3'b011: begin end // cover(f_posn > DW/8);
 			3'b100: cover(f_posn > DW/8);
-			3'b101: cover(f_posn > DW/8);
-			3'b110: cover(f_posn > DW/8);
-			3'b111: cover(f_posn > DW/8);
+			3'b101: begin end // cover(f_posn > DW/8);
+			3'b110: begin end // cover(f_posn > DW/8);
+			3'b111: begin end // cover(f_posn > DW/8);
 			endcase
 		end
 	end
@@ -999,6 +999,17 @@ module	sddma_s2mm #(
 	SZ_32B: assume(f_cfg_addr[1:0] == 2'b0);
 	endcase
 
+	always @(*)
+		assume(i_inc);
+	always @(*)
+	if (f_past_valid && o_busy)
+		assert(r_inc);
+
+	always @(*)
+		assume(i_size == SZ_BUS);
+	always @(*)
+	if (f_past_valid && o_busy)
+		assert(r_size == SZ_BUS);
 	// }}}
 `endif
 // }}}

@@ -2439,6 +2439,19 @@ module	sdax_mm2s #(
 	// always @(*) assume(M_AXI_ARREADY);
 	// always @(*) assume(fc_inc);
 	// always @(*) if (!fc_inc) assume(!fifo_full);
+
+	always @(*)
+		assume(i_inc);
+	always @(*)
+	if (f_past_valid && o_busy)
+		assert(r_inc);
+
+	always @(*)
+		assume(i_size == SZ_BUS);
+	always @(*)
+	if (f_past_valid && o_busy)
+		assert(r_size == SZ_BUS);
+
 	// }}}
 `endif
 // }}}

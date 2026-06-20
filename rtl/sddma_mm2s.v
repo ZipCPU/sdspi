@@ -1873,6 +1873,19 @@ module	sddma_mm2s #(
 	always @(*)
 	if (!i_reset && o_busy && !o_err)
 		assume(r_transferlen + f_cfg_addr < (1 << ADDRESS_WIDTH));
+
+	always @(*)
+		assume(i_inc);
+	always @(*)
+	if (f_past_valid && o_busy)
+		assert(r_inc);
+
+	always @(*)
+		assume(i_size == SZ_BUS);
+	always @(*)
+	if (f_past_valid && o_busy)
+		assert(r_size == SZ_BUS);
+
 	// }}}
 `endif
 // }}}

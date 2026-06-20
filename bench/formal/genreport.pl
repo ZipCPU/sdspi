@@ -60,6 +60,8 @@ $dir = ".";
 	"sddma_txgears",
 	"sddma_mm2s",
 	"sddma_s2mm",
+	"sdax_mm2s",
+	"sdax_s2mm",
 	##
 	"sdsfsm"
 	);
@@ -82,6 +84,8 @@ $dir = ".";
 	"sddma_txgears" => "DMA Receiving gears (from wide)",
 	"sddma_mm2s"	=> "DMA (WB) Memory copy to stream",
 	"sddma_s2mm"	=> "DMA (WB) Stream copy to memory DMA",
+	"sdax_mm2s"	=> "DMA (AXI) Memory copy to stream",
+	"sdax_s2mm"	=> "DMA (AXI) Stream copy to memory DMA",
 	##
 	##
 	"sdsfsm"	=> "SDIO Slave FSM control driver"

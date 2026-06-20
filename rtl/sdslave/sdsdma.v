@@ -94,6 +94,8 @@
 module	sdsdma #(
 		// {{{
 		parameter	ADDRESS_WIDTH=31,
+		parameter	BUS_WIDTH = 64,
+		localparam	DW = BUS_WIDTH,
 `ifdef	SDIO_AXI
 		parameter	AXI_IW=1,
 		parameter [AXI_IW-1:0]	AXI_READ_ID=0,
@@ -104,10 +106,8 @@ module	sdsdma #(
 		localparam	AW = ADDRESS_WIDTH-$clog2(DW/8),
 		parameter [0:0]	OPT_LITTLE_ENDIAN = 1'b0,
 `endif
-		parameter	BUS_WIDTH = 64,
-		parameter	LGMAXBLKSZ = 12,	// 4kB
+		parameter	LGMAXBLKSZ = 12	// 4kB
 		// Abbreviations
-		localparam	DW = BUS_WIDTH
 		// }}}
 	) (
 		// {{{
@@ -214,10 +214,8 @@ module	sdsdma #(
 	localparam	WBLSB = $clog2(DW/8);
 	localparam	LGFLEN = 1+LGMAXBLKSZ-WBLSB;
 
-	reg				r_rtn_valid, r_dma_err, r_dma_busy,
-					r_dma_done;
+	reg				r_rtn_valid;
 	wire				sd_rtn_ready, sd_rtn_valid,
-					dma_done, dma_err,
 					bus_softreset,
 					bus_rtn_valid, bus_rtn_ready,
 					bus_cfg_valid, bus_cfg_ready;

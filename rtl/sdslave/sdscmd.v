@@ -209,4 +209,9 @@ module	sdscmd #(
 			STEPCRC = { fill[5:0], 1'b0 };
 	end endfunction
 	// }}}
+
+	// Verilator lint_off UNUSED
+	wire	unused;
+	assign	unused = &{ 1'b0, sreg[136] };
+	// Verilator lint_on  UNUSED
 endmodule

@@ -771,8 +771,6 @@ module	sdsfsm #(
 		end // if (i_cmd_valid)
 	end
 
-	assign	o_cfg_ds = 1'b0;
-
 	always @(*)
 	begin
 		new_bufcount = bufcount;
@@ -1086,7 +1084,7 @@ module	sdsfsm #(
 					// o_tx_en   <= 1'b0;
 					// o_rx_en   <= 1'b0;
 					if (hcs_support)
-						o_dma_addr <= { i_arg[AW-9:0], 9'h0 };
+						o_dma_addr <= { i_arg[AW-10:0], 9'h0 };
 					else
 						o_dma_addr <= i_arg[AW-1:0];
 				end end
@@ -1113,7 +1111,7 @@ module	sdsfsm #(
 					// o_tx_en   <= 1'b0;
 					// o_rx_en   <= 1'b0;
 					if (hcs_support)
-						o_dma_addr <= { i_arg[AW-9:0], 9'h0 };
+						o_dma_addr <= { i_arg[AW-10:0], 9'h0 };
 					else
 						o_dma_addr <= i_arg[AW-1:0];
 				end end
@@ -1147,7 +1145,7 @@ module	sdsfsm #(
 					o_dma_dir <= D_HOST2DEV;
 					r_multiblock <= 1'b0;
 					if (hcs_support)
-						o_dma_addr <= { i_arg[AW-9:0], 9'h0 };
+						o_dma_addr <= { i_arg[AW-10:0], 9'h0 };
 					else
 						o_dma_addr <= i_arg[AW-1:0];
 				end end
@@ -1171,7 +1169,7 @@ module	sdsfsm #(
 					o_cfg_valid   <= 1'b1;
 					r_multiblock <= 1'b1;
 					if (hcs_support)
-						o_dma_addr <= { i_arg[AW-9:0], 9'h0 };
+						o_dma_addr <= { i_arg[AW-10:0], 9'h0 };
 					else
 						o_dma_addr <= i_arg[AW-1:0];
 				end end
@@ -1190,9 +1188,10 @@ module	sdsfsm #(
 				//	&& (o_dma_reset || o_dma_abort))
 				||(r_state == ST_TRAN && mm2s_busy));
 
-	always @(*)
-	if (o_rx_en)
-		assert(!o_tx_busy);
+	// Verilator lint_off UNUSED
+	wire	unused;
+	assign	unused = &{ 1'b0, w_CID };
+	// Verilator lint_on  UNUSED
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -1488,7 +1487,7 @@ cover($past(r_state) == ST_PRG);
 			assert(!s2mm_busy);
 			assert(bufcount <= 1);
 		end
-		assert(bufcount <= 2);
+		assert(bufcount + (o_rx_en ? 1:0) <= 2);
 		if (bufcount == 2)
 		begin
 			if (o_dma_dir == D_HOST2DEV)

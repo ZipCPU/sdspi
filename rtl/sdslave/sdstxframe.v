@@ -592,7 +592,7 @@ module	sdstxframe #(
 			dsvec <= 2'b00;
 
 		assign	o_ds = dsvec;
-	end else begin
+	end else begin : NO_DS
 		assign	o_ds = 2'b00;
 
 		// Verilator lint_off UNUSED

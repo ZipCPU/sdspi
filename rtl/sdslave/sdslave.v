@@ -191,6 +191,7 @@ module	sdslave #(
 		// .CID(...),
 		.OCR_VOLTAGE(16'hff_80)
 	) u_fsm (
+		// {{{
 		.i_clk(i_sd_clk), .i_reset(sd_reset),
 		//
 		.o_cfg_cmd_pp(cfg_cmd_pp),
@@ -345,12 +346,14 @@ module	sdslave #(
 	//	 64-127	16-31	STATUS		64B
 	//	128-191	32-47	TUNING		64B
 	//
+	integer		ik;
 	reg		lcl_valid, lcl_last;
 	reg	[3:0]	lcl_addr;
 	reg	[31:0]	lcl_ram	[0:63];
 	reg	[31:0]	lcl_data;
 
 	initial begin
+`ifdef	SIMULATION
 		// SCR block
 		// lcl_ram[ 0] = SCR[63:32];
 		// lcl_ram[ 1] = SCR[31: 0];
@@ -428,7 +431,10 @@ module	sdslave #(
 		lcl_ram[61] = $random;
 		lcl_ram[62] = $random;
 		lcl_ram[63] = $random;
-
+`else
+		for(ik=0; ik<64; ik=ik+1)
+			lcl_ram[ik] = 0;
+`endif
 	end
 
 	always @(posedge i_sd_clk)
@@ -462,6 +468,7 @@ module	sdslave #(
 		S_STATUS: lcl_last <= &lcl_addr[3:0];
 		S_SCR:    lcl_last <=  lcl_addr[0];
 		S_TUNING: lcl_last <= &lcl_addr[3:0];
+		default: begin end
 		endcase
 	end
 

@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	rtl/exportspi.v
+// Filename:	rtl/spi/sdspi.v
 // {{{
 // Project:	SD-Card controller
 //
@@ -1036,7 +1036,7 @@ module	sdspi #(
 endmodule
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	rtl/spicmd.v
+// Filename:	rtl/spi/spicmd.v
 // {{{
 // Project:	SD-Card controller
 //
@@ -1048,7 +1048,7 @@ endmodule
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -1549,7 +1549,7 @@ module	spicmd (
 endmodule
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	rtl/spitxdata.v
+// Filename:	rtl/spi/spitxdata.v
 // {{{
 // Project:	SD-Card controller
 //
@@ -1561,7 +1561,7 @@ endmodule
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -2279,7 +2279,7 @@ module spitxdata #(
 endmodule
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	rtl/spirxdata.v
+// Filename:	rtl/spi/spirxdata.v
 // {{{
 // Project:	SD-Card controller
 //
@@ -2293,7 +2293,7 @@ endmodule
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published
@@ -2975,7 +2975,7 @@ module spirxdata #(
 endmodule
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename:	rtl/llsdspi.v
+// Filename:	rtl/spi/llsdspi.v
 // {{{
 // Project:	SD-Card controller
 //
@@ -3038,7 +3038,7 @@ endmodule
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2016-2025, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
 // This program is free software (firmware): you can redistribute it and/or
 // modify it under the terms of the GNU General Public License as published

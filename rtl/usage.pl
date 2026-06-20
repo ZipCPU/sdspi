@@ -7,7 +7,7 @@ my $sdio_nodma  = " -chparam OPT_DMA 1\'b0 -chparam NUMIO 4 -chparam OPT_EMMC 1\
 my $emmc_nodma  = " -chparam OPT_DMA 1\'b0 -chparam NUMIO 8 -chparam OPT_EMMC 1\'b1";
 my $sdio_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_EMMC 1\'b0 -chparam NUMIO 4 -chparam OPT_ISTREAM 1\'b1 -chparam OPT_OSTREAM 1\'b1 -chparam DMA_DW 64";
 my $emmc_dma  = " -chparam OPT_DMA 1\'b1 -chparam OPT_EMMC 1\'b1 -chparam NUMIO 8 -chparam OPT_ISTREAM 1\'b1 -chparam OPT_OSTREAM 1\'b1 -chparam DMA_DW 64";
-my $emmc_boot  = $emmc_dma . " -chparam OPT_BOOTEN 1\'b1 -chparam OPT_AUTOBOOT 1\'b1 BOOT_TOKEN 1\'b1";
+my $emmc_boot  = $emmc_dma . " -chparam OPT_BOOTEN 1\'b1 -chparam OPT_AUTOBOOT 1\'b1 -chparam BOOT_TOKEN 1\'b1";
 
 $emmc_dma = $emmc_dma . " -chparam OPT_BOOTEN 1\'b0";
 ## }}}
@@ -89,12 +89,12 @@ sub	topusage() {
 
 	open(USAGE, "> tmp-usage.txt");
 
-$header = "           iCE40  X7-s   RAW\n"
-	. "Controller  4LUT  6LUT  NANDs\n"
+$header = "              iCE40  X7-s    RAW\n"
+	. "Controller     4LUT  6LUT   NANDs\n"
 	. "-----------------------------------\n";
 	print USAGE $header;
 
-	$line = sprintf("SDIO(AXIL):  %5d %5d %7d\n",
+	$line = sprintf("SDIO(AXIL):   %5d %5d %7d\n",
 			## Synth target, top-level, bus, config, postsynth
 		calcusage($ice40synth, "sdio", "axil", $sdio_nodma,""),
 		calcusage($xilinxsynth,"sdio", "axil", $sdio_nodma,""),
@@ -102,35 +102,35 @@ $header = "           iCE40  X7-s   RAW\n"
 	$result = $line;
 	print USAGE $line;
 
-	$line = sprintf("SDIO(WB):    %5d %5d %7d\n",
+	$line = sprintf("SDIO(WB):     %5d %5d %7d\n",
 		calcusage($ice40synth, "sdio", "wb", $sdio_nodma,""),
 		calcusage($xilinxsynth,"sdio", "wb", $sdio_nodma,""),
 		calcusage($asicsynth,  "sdio", "wb", $sdio_nodma,$asicpost));
 	$result = $result . $line;
 	print USAGE $line;
 
-	$line = sprintf("EMMC(AXIL):  %5d %5d %7d\n",
+	$line = sprintf("EMMC(AXIL):   %5d %5d %7d\n",
 		calcusage($ice40synth, "sdio", "axil", $emmc_nodma,""),
 		calcusage($xilinxsynth,"sdio", "axil", $emmc_nodma,""),
 		calcusage($asicsynth,  "sdio", "axil", $emmc_nodma,$asicpost));
 	$result = $result . $line;
 	print USAGE $line;
 
-	$line = sprintf("EMMC(WB):    %5d %5d %7d\n",
+	$line = sprintf("EMMC(WB):     %5d %5d %7d\n",
 		calcusage($ice40synth, "sdio", "wb", $emmc_nodma,""),
 		calcusage($xilinxsynth,"sdio", "wb", $emmc_nodma,""),
 		calcusage($asicsynth,  "sdio", "wb", $emmc_nodma,$asicpost));
 	$result = $result . $line;
 	print USAGE $line;
 
-	$line = sprintf("SDIO w/DMA:  %5d %5d %7d\n",
+	$line = sprintf("SDIO w/DMA:   %5d %5d %7d\n",
 		calcusage($ice40synth, "sdio", "wb", $sdio_dma,""),
 		calcusage($xilinxsynth,"sdio", "wb", $sdio_dma,""),
 		calcusage($asicsynth,  "sdio", "wb", $sdio_dma,$asicpost));
 	$result = $result . $line;
 	print USAGE $line;
 
-	$line = sprintf("EMMC w/DMA:  %5d %5d %7d\n",
+	$line = sprintf("EMMC w/DMA:   %5d %5d %7d\n",
 		calcusage($ice40synth, "sdio", "wb", $emmc_dma,""),
 		calcusage($xilinxsynth,"sdio", "wb", $emmc_dma,""),
 		calcusage($asicsynth,  "sdio", "wb", $emmc_dma,$asicpost));
@@ -140,18 +140,18 @@ $header = "           iCE40  X7-s   RAW\n"
 	$line = sprintf("EMMC w/BOOT:  %5d %5d %7d\n",
 		calcusage($ice40synth, "sdio", "wb", $emmc_boot,""),
 		calcusage($xilinxsynth,"sdio", "wb", $emmc_boot,""),
-		calcusage($asicsynth,  "sdio", "wb", $emmc_dma,$asicpost));
+		calcusage($asicsynth,  "sdio", "wb", $emmc_boot,$asicpost));
 	$result = $result . $line;
 	print USAGE $line;
 
-	$line = sprintf("SDAXI w/DMA: %5d %5d %7d\n",
+	$line = sprintf("SDAXI w/DMA:  %5d %5d %7d\n",
 		calcusage($ice40synth, "sdio", "axil", $sdio_dma,""),
 		calcusage($xilinxsynth,"sdio", "axil", $sdio_dma,""),
 		calcusage($asicsynth,  "sdio", "axil", $sdio_dma,$asicpost));
 	$result = $result . $line;
 	print USAGE $line;
 
-	$line = sprintf("EMAXI w/DMA: %5d %5d %7d\n",
+	$line = sprintf("EMAXI w/DMA:  %5d %5d %7d\n",
 		calcusage($ice40synth, "sdio", "axil", $emmc_dma,""),
 		calcusage($xilinxsynth,"sdio", "axil", $emmc_dma,""),
 		calcusage($asicsynth,  "sdio", "axil", $emmc_dma,$asicpost));
@@ -165,14 +165,14 @@ $header = "           iCE40  X7-s   RAW\n"
 	$result = $result . $line;
 	print USAGE $line;
 
-	$line = sprintf("SDSPI:       %5d %5d %7d\n",
+	$line = sprintf("SDSPI:        %5d %5d %7d\n",
 		calcusage($ice40synth, "sdspi", "wb", "",""),
 		calcusage($xilinxsynth,"sdspi", "wb", "",""),
 		calcusage($asicsynth,  "sdspi", "wb", "",$asicpost));
 	$result = $result . $line;
 	print USAGE $line;
 
-	$line = sprintf("SDSLAVE(WB): %5d %5d %7d\n",
+	$line = sprintf("SDSLAVE(WB):  %5d %5d %7d\n",
 		calcusage($ice40synth, "sdslave", "wb", "",""),
 		calcusage($xilinxsynth,"sdslave", "wb", "",""),
 		calcusage($asicsynth,  "sdslave", "wb", "",$asicpost));

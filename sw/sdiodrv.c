@@ -424,7 +424,7 @@ void	sdio_dump_cid(SDIODRV *dev) {
 	unsigned sn, md;
 
 	sn = dev->d_CID[2];
-#ifdef	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#if	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 	sn = (((sn >> 24)&0x0ff) << 8)
 		| (((sn >> 16) & 0x0ff) << 16)
 		| (((sn >>  8) & 0x0ff) << 24)
@@ -443,7 +443,7 @@ void	sdio_dump_cid(SDIODRV *dev) {
 "\tProduct Name:     %c%c%c%c%c\n"
 "\tProduct Revision: %x.%x\n"
 "\tSerial Number:    0x%0x\n",
-#ifdef	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#if	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 		(dev->d_CID[0]      )&0x0ff,	// MFR ID
 		(dev->d_CID[0] >>  8)&0x0ff,	// APP ID
 		(dev->d_CID[0] >> 16)&0x0ff,
@@ -754,11 +754,11 @@ static	void	sdio_send_tuning_block(SDIODRV *dev) { // CMD19
 				best_ph += first_eye;
 				best_eye = eyesz;
 
-				if (SDDEBUG && SDINFO) {
-					txstr("New best eye: ");
-					txdecimal(best_ph); txstr(", ");
-					txdecimal(best_eye); txstr("\n");
-				}
+				// if (SDDEBUG && SDINFO) {
+				//	txstr("New best eye: ");
+				//	txdecimal(best_ph); txstr(", ");
+				//	txdecimal(best_eye); txstr("\n");
+				//}
 			}
 
 			first_eye = 0;
@@ -776,6 +776,7 @@ static	void	sdio_send_tuning_block(SDIODRV *dev) { // CMD19
 
 	if (SDINFO && SDDEBUG) {
 		// {{{
+		txstr("\n");
 		txstr("CMD19:   SEND_TUNING_COMMAND, Analysis Complete ----\n");
 		txstr("  Vld msk: "); txhex(vmask);
 		if (vmask == 0) {
@@ -943,7 +944,7 @@ void sdio_read_scr(SDIODRV *dev) {	  // ACMD 51
 
 		uv = dev->d_dev->sd_fifa;
 		if (SDINFO) { txhex(uv); if (k < 4) txstr(":"); }
-#ifdef	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#if	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 		dev->d_SCR[k + 0] = uv & 0x0ff; uv >>= 8;
 		dev->d_SCR[k + 1] = uv & 0x0ff; uv >>= 8;
 		dev->d_SCR[k + 2] = uv & 0x0ff; uv >>= 8;
@@ -1126,7 +1127,7 @@ void sdio_read_csd(SDIODRV *dev) {	  // CMD 9
 
 		uv = dev->d_dev->sd_fifa;
 		if (SDINFO) { txhex(uv); if (k < 12) txstr(":"); }
-#ifdef	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#if	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 		dev->d_CSD[k + 0] = uv & 0x0ff; uv >>= 8;
 		dev->d_CSD[k + 1] = uv & 0x0ff; uv >>= 8;
 		dev->d_CSD[k + 2] = uv & 0x0ff; uv >>= 8;
@@ -1363,6 +1364,15 @@ unsigned sdio_switch(SDIODRV *dev, unsigned swcmd, unsigned *ubuf) {  // CMD6
 	if (ubuf) {
 		for(int k=0; k<512/32; k++)
 			ubuf[k] = dev->d_dev->sd_fifa;
+		if (SDDEBUG && SDINFO) {
+			for(int k=0; k<512/32; k++) {
+				txstr("  @");
+				txhex(k);
+				txstr(":  ");
+				txhex(ubuf[k]);
+				txstr("\n");
+			}
+		}
 	}
 
 	phy &= ~SECTOR_MASK;
@@ -1893,7 +1903,7 @@ SDIODRV *sdio_init(SDIO *dev) {
 			} else {
 				unsigned	spd = 0;
 
-#ifdef	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#if	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 				if (0 != (ubuf[3] & 0x0800)) {
 					// SDR104 supported
 					spd = 4;
@@ -2228,7 +2238,7 @@ SDIODRV *sdio_init(SDIO *dev) {
 				// If HS mode is available, switch to it
 				// {{{
 				if ((0 == (dv->d_dev->sd_cmd & SDIO_ERR))
-#ifdef	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#if	defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 					&& (0 != (ubuf[3] & 0x0200))
 #else
 					&& (0 != (ubuf[3] & 0x020000))

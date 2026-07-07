@@ -139,13 +139,17 @@ Features include:
   - When using the stream interface, the DMA address should be set to -1.  This
     selects the stream interface as either source or destination.  (The actual
     controller command will indicate the direction of the transfer.)
+
   - Any memory source ([MM2S](https://github.com/ZipCPU/wb2axip/blob/master/rtl/aximm2s.v))
     should be configured for the full transfer length--potentially many blocks.
+
   - There is no TLAST stream input (slave).
+
   - When the external (SD or eMMC) device is the data source ([S2MM](https://github.com/ZipCPU/wb2axip/blob/master/rtl/axis2mm.v)),
     the TLAST signal will be set at the end of each 512B block.  This may
     require the external DMA to be configured to transfer data one block at a
     time, or perhaps to ignore the TLAST signal.
+
   - Transfer errors (failing CRCs, non-responsive cards, etc.) may cause the streams to lose synchronization.  To fix, the design may be given a soft reset (if necessary), and the external [MM2S](https://github.com/ZipCPU/wb2axip/blob/master/rtl/aximm2s.v)/[S2MM](https://github.com/ZipCPU/wb2axip/blob/master/rtl/axis2mm.v) DMAs may also need to be given similar resets.
 
 - **C++ Model**: A [Verilator C++ model of an SDIO
@@ -172,8 +176,8 @@ Features include:
 
 - **CRC Tokens**: CRC token's are 5b response values, indicating whether
   or not a page has transferred successfully.
-  The [frontend](rtl/sdio/sdfrontend.v) can successfully recognize those CRC tokens
-  following block write transfers.
+  The [frontend](rtl/sdio/sdfrontend.v) can successfully recognize those CRC
+  tokens following block write transfers.
 
   Failure to receive a CRC token when one is expected will (now) generate an
   error condition, as will receiving a negative CRC acknowledgment.

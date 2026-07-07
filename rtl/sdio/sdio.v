@@ -70,8 +70,8 @@ module	sdio #(
 		//  from a 100MHz clock.
 		parameter [0:0]	OPT_SERDES = 1'b0,
 		parameter [0:0]	OPT_DDR = 1'b0,
-		parameter [0:0]	OPT_DS  = OPT_SERDES,
 		parameter [0:0]	OPT_EMMC = 1'b1,
+		parameter [0:0]	OPT_DS  = OPT_SERDES && OPT_EMMC,
 		parameter [0:0]	OPT_HWRESET = OPT_EMMC,
 		parameter [0:0]	OPT_1P8V= 1'b0,
 		parameter [0:0]	OPT_CARD_DETECT = !OPT_EMMC,
@@ -82,13 +82,13 @@ module	sdio #(
 		// Boot parameters
 		parameter	SWIDE_AW = ADDRESS_WIDTH
 					+ ((OPT_ISTREAM||OPT_OSTREAM)? 1:0),
-		parameter [0:0]		OPT_BOOTEN   = 1'b1,
-		parameter [0:0]		OPT_AUTOBOOT = 1'b1,
-		parameter [0:0]		BOOT_TOKEN   = 1'b1,
-		parameter [3:0]	BOOT_MODE = 4'b0010,	// No DS, SDR, 8b
+		parameter [0:0]		OPT_BOOTEN   = OPT_EMMC,
+		parameter [0:0]		OPT_AUTOBOOT = OPT_BOOTEN,
+		parameter [0:0]		BOOT_TOKEN   = OPT_BOOTEN,
+		parameter [3:0]	BOOT_MODE = OPT_BOOTEN ? 4'b0010 : 4'h0,	// No DS, SDR, 8b
 		parameter [SWIDE_AW-1:0] BOOT_ADDR=0,
-		parameter [31:0]	BOOT_BLOCKS=32'd256,
-		parameter [7:0]		BOOT_SPEED=8'd4,
+		parameter [31:0]	BOOT_BLOCKS= OPT_AUTOBOOT ? 32'd256 : 32'h0,
+		parameter [7:0]		BOOT_SPEED=OPT_EMMC ? 8'd4 : 8'hff,
 		//
 		parameter	SW = 32
 		// }}}
@@ -329,7 +329,7 @@ module	sdio #(
 		.OPT_CRCTOKEN(OPT_CRCTOKEN),
 		.DEF_SAMPLE_SHIFT(L_SAMPLE_SHIFT),
 		// Boot parameters
-		.OPT_BOOTEN(OPT_BOOTEN && OPT_EMMC && OPT_DMA),
+		.OPT_BOOTEN(OPT_BOOTEN && OPT_EMMC),
 		.OPT_AUTOBOOT(OPT_AUTOBOOT),
 		.BOOT_TOKEN(BOOT_TOKEN && OPT_CRCTOKEN),
 		.BOOT_MODE(BOOT_MODE),
@@ -451,7 +451,7 @@ module	sdio #(
 		.LGFIFO(LGFIFO), .NUMIO(NUMIO),
 		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN),
 		.OPT_SERDES(OPT_SERDES),
-		.OPT_DS(OPT_DS),
+		.OPT_DS(OPT_DS && OPT_EMMC),
 		.OPT_DDR(OPT_DDR),
 		.OPT_CARD_DETECT(OPT_CARD_DETECT),
 		.OPT_DMA(OPT_DMA),
@@ -462,7 +462,7 @@ module	sdio #(
 		.OPT_CRCTOKEN(OPT_CRCTOKEN),
 		.DEF_SAMPLE_SHIFT(L_SAMPLE_SHIFT),
 		// Boot parameters
-		.OPT_BOOTEN(OPT_BOOTEN && OPT_EMMC && OPT_DMA),
+		.OPT_BOOTEN(OPT_BOOTEN && OPT_EMMC),
 		.OPT_AUTOBOOT(OPT_AUTOBOOT),
 		.BOOT_TOKEN(BOOT_TOKEN && OPT_CRCTOKEN),
 		.BOOT_MODE(BOOT_MODE),
@@ -602,7 +602,7 @@ module	sdio #(
 
 	sdcmd #(
 		// {{{
-		.OPT_DS(OPT_DS),
+		.OPT_DS(OPT_DS && OPT_EMMC),
 		.OPT_EMMC(OPT_EMMC),
 		.OPT_SERDES(OPT_SERDES),
 		.MW(MW),
@@ -680,7 +680,7 @@ module	sdio #(
 
 	sdrxframe #(
 		// {{{
-		.OPT_DS(OPT_SERDES), .NUMIO(NUMIO),
+		.OPT_DS(OPT_SERDES && OPT_EMMC), .NUMIO(NUMIO),
 		.OPT_LITTLE_ENDIAN(OPT_LITTLE_ENDIAN),
 		.LGLEN(LGFIFO),
 		.MW(MW),

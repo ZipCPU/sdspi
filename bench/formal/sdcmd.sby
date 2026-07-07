@@ -7,7 +7,6 @@ cvr
 prf: mode prove
 cvr: mode cover
 prf: depth 8
-cvr: depth 60
 cvr: depth 200
 
 [engines]
@@ -19,6 +18,9 @@ read -formal sdcmd.v
 cmd = "hierarchy -top sdcmd"
 cmd += " -chparam OPT_EMMC 1"
 cmd += " -chparam OPT_DS %d"  % ( 1 if "opt_ds" in tags else 0)
+cmd += " -chparam STARTUP_CLOCKS %d"  % ( 12 if "cvr" in tags else 80)
+cmd += " -chparam POWERUP_COUNT  %d"  % (  7 if "cvr" in tags else 100000)
+cmd += " -chparam LGTIMEOUT      %d"  % (  4 if "cvr" in tags else 26)
 output(cmd)
 --pycode-end--
 proc -norom

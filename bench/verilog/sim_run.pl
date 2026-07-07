@@ -287,6 +287,8 @@ sub simline($) {
 		## }}}
 
 		if ($errB == 0 and -x $exefile) {
+			my $errE, $errA, $errT, $errF, $errS, $warn;
+
 			## Run the simulation
 			## {{{
 			$tstamp = timestamp();
@@ -323,6 +325,9 @@ sub simline($) {
 			system "grep -iq \'fail\' $sim_log";
 			$errF = $?;
 
+			system "grep -iq \'warni\' $sim_log";
+			$warn = $?;
+
 			system "grep -iq \'TEST PASS\' $sim_log";
 			$errS = $?;
 
@@ -343,6 +348,11 @@ sub simline($) {
 				$msg = sprintf("FAIL      %s\n", $msg);
 				system "touch $testd/$tstname.FAIL";
 				# push @failed,$tstname;
+			} elsif ($warn == 0) {
+				# Warning messages present
+				$msg = sprintf("Warning   %s\n", $msg);
+				system "touch $testd/$tstname.PASS";
+				# push @passed,$tstname;
 			} else {
 				$msg = sprintf("Pass      %s\n", $msg);
 				system "touch $testd/$tstname.PASS";

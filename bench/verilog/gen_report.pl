@@ -38,6 +38,7 @@
 ##
 ## }}}
 $filelist = "dev_files.txt";
+$testlist = "dev_testcases.txt";
 $rawreport= "report.txt";
 $htmlfil= "report.html";
 my $last_mtime = 0;
@@ -49,7 +50,9 @@ my $last_tstamp = "";
 ## {{{
 open(FLIST, $filelist);
 while($line = <FLIST>) {
-	if ($line =~ /\s*(\S+)\s*$/) {
+	if ($line =~ /^\s*#/) {
+		next;
+	} elsif ($line =~ /^\s*(\S+)\s*$/) {
 		$fname = $1;
 	} else {
 		next;
@@ -76,15 +79,42 @@ $last_tstamp = sprintf("%04d/%02d/%02d %02d:%02d:%02d",
 ## {{{
 my $n=0;
 my %STAT;
+my %SCRIPT;
 
 open(REPORT, $rawreport);
 while($line = <REPORT>) {
 	next if ($line =~ /^-/);
-	if ($line =~ /(\S+)\s+(\d\d\d\d.\d\d.\d\d.\d\d:\d\d:\d\d)\s+(\S+)\s+..\s+(\S+)\s*$/) {
+	if ($line =~ /^(\S+)\s+(\d\d\d\d.\d\d.\d\d.\d\d:\d\d:\d\d)\s+(\S+)\s+..\s+(\S+)\s*$/) {
 		$status = $1;
 		$tstamp = $2;
 		$tool = $3;
 		$test = $4;
+		# $SCRIPT{$test} = "../testcases/$test.v";
+
+		open(TESTLIST, $testlist);
+		while($line = <TESTLIST>) {
+			if ($line =~ /^\s*#/) {
+				## Skip any comment lines
+				next;
+			}
+
+			if ($line =~ /^\s*(\S+)\s+(\S+)\s+/) {
+				$simcase = $1;
+				$simsource = $2;
+				if ($simcase eq $test) {
+					$SCRIPT{$test} = "../testcases/$simsource";
+					next;
+				}
+			}
+		} close TESTLIST;
+
+		if ("" eq $SCRIPT{$test}) {
+			# delete $STAT{$test};
+			# delete $TOOL{$test};
+			# delete $TSTAMP{$test};
+			delete $SCRIPT{$test};
+			next;
+		}
 
 		if ("$tstamp" lt "$last_tstamp") {
 			$STAT{$test} = "Out-of-date";
@@ -92,28 +122,54 @@ while($line = <REPORT>) {
 			$TSTAMP{$test} = $tstamp;
 			next;
 		}
+
 		if (exists $STAT{$test}) {
+			## Merge results with a potential prior test
 			my $last_tool, $last_stat;
+			my $last_passing, $passing;
 
 			$last_tool = $TOOL{$test};
 			$last_stat = $STAT{$test};
 
-			if ($last_tool =~ /$tool/) {
+			# Find which results passed
+			## {{{
+			if (($last_stat =~ /pass/i) or ($last_stat =~ /cover/i)) {
+				$last_passing = 1;
 			} else {
-				$TOOL{$test} = "$last_tool, $tool";
+				$last_passing = 0;
 			}
 
-			if ($last_stat =~ /fail/i) {
-			} elsif ($last_stat =~ /error/i) {
-			} elsif ($last_stat =~ /warn/i) {
-				if ($stat =~ /fail/i) {
-					$STAT{$test} = $status;
-				} elsif ($stat =~ /error/i) {
-					$STAT{$test} = $status;
-				}
+			if (($status =~ /pass/i) or ($status =~ /cover/i)) {
+				$passing = 1;
 			} else {
-				$STAT{$test} = $status;
+				$passing = 0;
 			}
+			## }}}
+
+			# If they both passed, merge the tool(s)
+			if ($passing and $last_passing) {
+				## {{{
+				if ($last_tool =~ /$tool/) {
+					## Don't change the tool report line
+					## Same tool, both good statuses ...
+				} else {
+					## Add to the tool list
+					$TOOL{$test} = "$last_tool, $tool";
+				}
+
+				if ($status =~ /cover/i
+						or $last_stat =~ /cover/i) {
+					# Once covered and passing, always covered
+					$status = "Covered";
+				}
+				## }}}
+			} else {
+				## Always report the last failing tool, or the
+				## first passing tool
+				$TOOL{$test} = "$tool";
+			}
+
+			$STAT{$test} = $status;
 		} else {
 			$STAT{$test} = $status;
 			$TOOL{$test} = $tool;
@@ -140,6 +196,7 @@ foreach $key (sort (keys %STAT)) {
 	my $lin, $st;
 
 	$st = $STAT{$key};
+	$scr = $SCRIPT{$key};
 	$clr="white";
 	if ($st =~ /fail/i) {
 		$clr="#ffa4a";
@@ -152,7 +209,12 @@ foreach $key (sort (keys %STAT)) {
 	} elsif ($st =~ /pass/i) {
 		$clr="#caeec8";
 	}
-	$lin = sprintf("<TR><TH>%s</TH><TD bgcolor=$clr>%s</TD><TD>$TSTAMP{$key}</TD><TD>$TOOL{$key}</TD></TR>\n", $key, $st);
+	$lin = sprintf("<TR><TH><A HREF=\"%s\">%s</A></TH>"
+		. "<TD bgcolor=$clr><A HREF=\"%s\">%s</A></TD>"
+		. "<TD>$TSTAMP{$key}</TD>"
+		. "<TD>$TOOL{$key}</TD></TR>\n",
+		$SCRIPT{$key}, $key,
+		"test/" . $key . ".txt", $st);
 	print HTML $lin;
 }
 print HTML "</TABLE></P></BODY></HTML>\n";

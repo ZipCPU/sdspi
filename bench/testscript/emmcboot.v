@@ -41,7 +41,6 @@ task	testscript;
 	reg	[31:0]	read_data, src_data, mem_data, b_addr, phy_data;
 	integer		iw;
 begin
-	u_mcchip.randmize_boot;
 	@(posedge clk);
 	while(reset !== 1'b0)
 		@(posedge clk);
@@ -57,6 +56,7 @@ begin
 	////////////////////////////////////////////////////////////////////////
 	$display("BOOT TEST #1: Automatic boot following a system RESET");
 
+	u_mcchip.randmize_boot;
 	if (OPT_DMA)
 	begin
 		$display("  Waiting ...");
@@ -183,6 +183,9 @@ begin
 	$display("BOOT TEST #2: Automatic boot following a user commanded RESET");
 	if (!error_flag)
 	begin
+		// Need to re-randomize memory, lest the last random memory
+		// get counted valid again
+		u_mcchip.randmize_boot;
 
 		// Control setup
 		// {{{
@@ -204,8 +207,8 @@ begin
 		// Whether or not to use DDR
 		phy_data[ 8] = BOOT_MODE[2];
 		phy_data[14] = BOOT_MODE[2];	// CLK90, always when using DDR
-		// Whether or not to use DS
-		phy_data[9] = BOOT_MODE[3];	// HS400 mode w/ DS (Disallowed by spec)
+		// Whether or not to use DS (The eMMC spec disallows this ...)
+		phy_data[9] = BOOT_MODE[3];	// HS400 mode w/ DS
 		// ... as will the width
 		phy_data[11:10] = BOOT_MODE[1:0];
 		// ... and the block size (512Bytes)
@@ -322,7 +325,15 @@ begin
 				$display("  Final CMD word: 0x%08x", read_data);
 		end
 
-		if (0 && !error_flag)
+		// Send a CMD0 : Go IDLE
+		// {{{
+		// This is to check if we properly produce 74 clocks following
+		// any reset, before any command takes place.
+		emmc_go_idle;
+		// }}}
+
+
+		if (!error_flag)
 		begin
 			for(iw=0; error_flag === 1'b0 && iw<(1<<(EMMC_LGBOOTSZ-2)); iw=iw+1)
 			begin
@@ -360,6 +371,9 @@ begin
 	$display("BOOT TEST #3: Boot mode following CMD0");
 	if (!error_flag)
 	begin
+		// Need to re-randomize memory, lest the last random memory
+		// get counted valid again
+		u_mcchip.randmize_boot;
 
 		// Control setup
 		// {{{
@@ -472,9 +486,13 @@ begin
 	// {{{
 	////////////////////////////////////////////////////////////////////////
 
+	$display("BOOT TEST #4: Alt-boot, following CMD0/FFFF-FFFA");
 	if (!error_flag)
 	begin
-		$display("BOOT TEST #4: Alt-boot, following CMD0/FFFF-FFFA");
+		// Need to re-randomize memory, lest the last random memory
+		// get counted valid again
+		u_mcchip.randmize_boot;
+
 
 		// Control setup
 		// {{{
@@ -558,7 +576,8 @@ begin
 			if (error_flag)
 				$display("  Final CMD word: 0x%08x", read_data);
 		end
-	end
+	end else
+		$display(" -- Skipped");
 
 	if (!error_flag)
 	begin

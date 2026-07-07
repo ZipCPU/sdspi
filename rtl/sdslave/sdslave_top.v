@@ -301,7 +301,7 @@ module sdslave_top #(
 		.i_tx_cmd_tristate(cmd_tristate),
 		//
 		.i_tx_data(tx_data), .i_tx_data_tristate(tx_tristate),
-			.i_tx_ds(tx_ds),
+			.i_tx_ds({ tx_ds, 1'b0 }),
 		// }}}
 		// Synchronous Rx path
 		// {{{

@@ -780,7 +780,7 @@ module	sdwb #(
 		// too long, but it's just a timeout.  If the device actually
 		// indicates a busy (like it's supposed to), then we'll be
 		// busy until the device releases.
-		reg	[LGCARDBUSY-1:0]	r_busy_counter;
+		reg	[LGCARDBUSY-1:0]	r_busy_timeout;
 		reg		r_expect_busy, r_card_busy;
 
 		initial	r_expect_busy = 1'b0;
@@ -791,7 +791,7 @@ module	sdwb #(
 			r_expect_busy <= 1'b1;
 		else if (new_cmd_request)
 			r_expect_busy <= (bus_wdata[9:8] == R1B_REPLY);
-		else if (!cmd_busy && (i_card_busy || r_busy_counter == 0))
+		else if (!cmd_busy && (i_card_busy || r_busy_timeout == 0))
 			r_expect_busy <= 1'b0;
 
 		initial	r_card_busy = 1'b0;
@@ -805,34 +805,39 @@ module	sdwb #(
 		else if (!i_card_busy && !r_expect_busy && !cmd_busy)
 			r_card_busy <= 1'b0;
 
-		initial	r_busy_counter = 0;
+		initial	r_busy_timeout = 0;
 		always @(posedge i_clk)
 		if (i_reset || o_soft_reset || o_boot_cmden)
-			r_busy_counter <= 0;
+			r_busy_timeout <= 0;
 		else if (o_rx_en || i_card_busy
 				|| (cmd_busy && !r_expect_busy && !o_tx_en))
-			r_busy_counter <= 0;
+			// Busy is either here, or irrelevant, zero the timeout
+			r_busy_timeout <= 0;
 		else if ((cmd_busy && r_expect_busy) || o_tx_en)
 		begin
-			r_busy_counter <= -1;
+			// Expect a busy from the device.  Set an appropriate
+			// timeout to wait until we get one.
+			r_busy_timeout <= -1;
 
 			if (r_ckspeed < 4)
 				// Max clock rate is 25/3 => 12.5MHz, or 8 cycls
-				r_busy_counter <= 16;	// 2 clock periods
+				r_busy_timeout <= 16;	// 2 clock periods
 			else if (r_ckspeed < 8)
 				// Max clock rate is 25/5 => 5MHz or 20cycles
-				r_busy_counter <= 72;	// 3.5 clock periods
+				r_busy_timeout <= 72;	// 3.5 clock periods
 			else if (r_ckspeed < 16)
 				// Max clock rate is 25/13 => 52 cycles
-				r_busy_counter <= 192;	// 3.6 clock periods
+				r_busy_timeout <= 192;	// 3.6 clock periods
 			else if (r_ckspeed < 32)
 				// Max clock rate is 25/29 => 116 cycles
-				r_busy_counter <= 3*128;	// 3.3 clks
-		end else if (r_busy_counter != 0)
-			r_busy_counter <= r_busy_counter - 1;
+				r_busy_timeout <= 3*128;	// 3.3 clks
+		end else if (r_busy_timeout != 0)
+			// If no busy shows before timeout==0, there wont be any
+			r_busy_timeout <= r_busy_timeout - 1;
 
 		assign	w_card_busy = r_card_busy;
 `ifdef	FORMAL
+		// {{{
 		// We need to stay officially busy as long as we are waiting
 		// for a response from the card
 		always @(*)
@@ -843,7 +848,7 @@ module	sdwb #(
 		// before it takes place
 		always @(*)
 		if (!i_reset && !r_expect_busy && !cmd_busy)
-			assert(r_busy_counter == 0);
+			assert(r_busy_timeout == 0);
 
 		always @(*)
 		if (!i_reset && w_boot_active && !o_boot_cmden)
@@ -856,9 +861,10 @@ module	sdwb #(
 		if (!i_reset && !o_soft_reset && !o_hwreset_n)
 		begin
 			assert(r_expect_busy == 1'b0);
-			assert(r_busy_counter == 0);
+			assert(r_busy_timeout == 0);
 			assert(r_card_busy == 1'b0);
 		end
+		// }}}
 `endif
 	end else begin : DIRECT_CARD_BUSY
 		assign	w_card_busy = i_card_busy;
@@ -954,6 +960,8 @@ module	sdwb #(
 			assert(!o_cfg_expect_ack);
 		end else
 			assert(!$past(w_boot_active)||$stable(o_cfg_expect_ack));
+
+		assert(w_boot_active || !w_pending_boot_tok);
 	end else if (!w_boot_active && !dma_busy && (o_rx_en || r_rx_request))
 	begin
 		assert(!o_cfg_expect_ack);
@@ -1176,7 +1184,8 @@ module	sdwb #(
 		w_cmd_word[28] = w_boot_err;
 		w_cmd_word[27] = w_boot_active;
 		//
-		w_cmd_word[26] = o_cfg_expect_ack;
+		w_cmd_word[26] = w_boot_active ? w_pending_boot_tok
+					: o_cfg_expect_ack;
 		w_cmd_word[25] = !o_hwreset_n;
 		w_cmd_word[24] = dma_error;
 		w_cmd_word[23] = r_ecode;
@@ -1672,6 +1681,9 @@ module	sdwb #(
 		w_phy_ctrl[13]    = o_pp_cmd;	// Push-pull CMD line
 		w_phy_ctrl[12]    = o_pp_data;	// Push-pull DAT line(s)
 		w_phy_ctrl[11:10] = r_width;
+		// CAN'T DO ANYTHING WITH r_width=2'b1x here, since testcases
+		// depend upon r_width != 2'b11
+		// if (r_width[1]) w_phy_ctrl[10] = o_cfg_shutdown;
 		w_phy_ctrl[9:8]   = { o_cfg_ds, o_cfg_ddr };
 		w_phy_ctrl[7:0]   = i_ckspd; // r_ckspeed;
 	end

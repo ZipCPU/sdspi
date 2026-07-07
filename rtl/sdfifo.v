@@ -1,8 +1,8 @@
 ////////////////////////////////////////////////////////////////////////////////
 //
-// Filename: 	sdfifo.v
+// Filename:	rtl/sdfifo.v
 // {{{
-// Project:	Zip CPU -- a small, lightweight, RISC CPU soft core
+// Project:	SD-Card controller
 //
 // Purpose:	A synchronous data FIFO.
 //
@@ -11,15 +11,14 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 // }}}
-// Copyright (C) 2023-2026, Gisselquist Technology, LLC
+// Copyright (C) 2016-2026, Gisselquist Technology, LLC
 // {{{
-// This file is part of the ETH10G project.
+// This program is free software (firmware): you can redistribute it and/or
+// modify it under the terms of the GNU General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or (at
+// your option) any later version.
 //
-// The ETH10G project contains free software and gateware, licensed under the
-// terms of the 3rd version of the GNU General Public License as published by
-// the Free Software Foundation.
-//
-// This project is distributed in the hope that it will be useful, but WITHOUT
+// This program is distributed in the hope that it will be useful, but WITHOUT
 // ANY WARRANTY; without even the implied warranty of MERCHANTIBILITY or
 // FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
 // for more details.

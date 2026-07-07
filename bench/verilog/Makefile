@@ -38,6 +38,7 @@
 RTL := ../../rtl
 CPU := $(HOME)/work/rnd/zipcpu/trunk
 
+all: report
 tb_sdckgen: $(RTL)/sdio/sdckgen.v tb_sdckgen.v
 	iverilog -g2012 $^ -o $@
 
@@ -58,3 +59,8 @@ test_txframe: tb_txframe
 .PHONY: test
 test: test_txframe test_ckgen
 	perl sim_run.pl all
+	perl gen_report.pl
+
+.PHONY: report
+report:
+	perl gen_report.pl

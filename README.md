@@ -193,13 +193,12 @@ could still be made, as listed below:
 - **C++ Model**: The design is missing a C++ model for testing the eMMC
   interface.  A C++ model exists for testing the SDIO interface, just not
   the eMMC interface.  The difference between the two would be the commands
-  supported and their meanings.
+  supported and their meanings.  More significant differences include both
+  BOOT mode, and HS400 which requires the DS.
 
-- **eMMC HS400 Data Strobe**: Although support exists for the data strobe, it
-  has not been tested in hardware.  There are reasons to believe the data strobe
-  front end implementation might not work in hardware, and specifically reasons
-  to believe it won't close timing.  As a result, this feature is awaiting
-  hardware which will support testing with the data strobe.
+- **eMMC HS400 Data Strobe**: Data strobe testing has had some limited success
+  in hardware.  I would welcome you try it.  Extended throughput testing
+  remains pending.
 
 - **Better time modeling**: After reviewing various specifications, it is
   apparent the design needs better IO time modeling.  An ideal solution would
@@ -208,7 +207,7 @@ could still be made, as listed below:
   by the open source tool chain(s).
 
 - **eMMC Boot mode**: An initial draft of the eMMC boot mode now exists.
-  It hasn't yet been tested.
+  It has yet to pass testing.
 
   Some (untested, preliminary) support exists for boot mode in the Verilog
   [eMMC model](bench/verilog/mdl_emmc.v).

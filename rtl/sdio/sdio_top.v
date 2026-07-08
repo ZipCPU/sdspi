@@ -239,7 +239,7 @@ module sdio_top #(
 		// {{{
 		input	wire		S_AXIL_AWVALID,
 		output	wire		S_AXIL_AWREADY,
-		input	wire	[4:0]	S_AXIL_AWADDR,
+		input	wire	[5:0]	S_AXIL_AWADDR,
 		input	wire	[2:0]	S_AXIL_AWPROT,
 		//
 		input	wire		S_AXIL_WVALID,
@@ -253,7 +253,7 @@ module sdio_top #(
 		//
 		input	wire		S_AXIL_ARVALID,
 		output	wire		S_AXIL_ARREADY,
-		input	wire	[4:0]	S_AXIL_ARADDR,
+		input	wire	[5:0]	S_AXIL_ARADDR,
 		input	wire	[2:0]	S_AXIL_ARPROT,
 		//
 		output	wire		S_AXIL_RVALID,
@@ -264,7 +264,7 @@ module sdio_top #(
 `else
 		// Control (Wishbone) interface
 		input	wire		i_wb_cyc, i_wb_stb, i_wb_we,
-		input	wire	[2:0]	i_wb_addr,
+		input	wire	[3:0]	i_wb_addr,
 		input	wire [MW-1:0]	i_wb_data,
 		input	wire [MW/8-1:0]	i_wb_sel,
 		//
@@ -371,6 +371,7 @@ module sdio_top #(
 	// {{{
 	wire		cfg_ddr, cfg_ds, cfg_dscmd, expect_token;
 	wire	[4:0]	cfg_sample_shift;
+	wire	[39:0]	cfg_phy_trim;
 	wire	[7:0]	sdclk;
 	wire		w_crcack, w_crcnak;
 		//
@@ -385,8 +386,10 @@ module sdio_top #(
 	wire	[1:0]	rx_strb;
 	wire	[15:0]	rx_data;
 		//
+	wire		w_ac_reset_n;
 	wire		AC_VALID;
 	wire	[1:0]	AC_DATA;
+	wire		w_ad_reset_n;
 	wire		AD_VALID;
 	wire	[31:0]	AD_DATA;
 	// }}}
@@ -547,6 +550,7 @@ module sdio_top #(
 		// {{{
 		.o_cfg_ddr(cfg_ddr), .o_cfg_ds(cfg_ds), .o_cfg_dscmd(cfg_dscmd),
 		.o_cfg_sample_shift(cfg_sample_shift),
+		.o_cfg_phy_trim(cfg_phy_trim),
 		.o_expect_token(expect_token),
 		.o_sdclk(sdclk),
 		//
@@ -564,7 +568,9 @@ module sdio_top #(
 		.i_rx_data(rx_data),
 		.i_crcack(w_crcack), .i_crcnak(w_crcnak),
 		//
+		.o_ac_reset_n(w_ac_reset_n),
 		.S_AC_VALID(AC_VALID), .S_AC_DATA(AC_DATA),
+		.o_ad_reset_n(w_ad_reset_n),
 		.S_AD_VALID(AD_VALID), .S_AD_DATA(AD_DATA)
 		// }}}
 		// }}}
@@ -583,6 +589,7 @@ module sdio_top #(
 		.i_cfg_ddr(cfg_ddr), .i_cfg_ds(cfg_ds), .i_cfg_dscmd(cfg_dscmd),
 		.i_sample_shift(cfg_sample_shift),
 		.i_expect_token(expect_token),
+		.i_phy_trim(cfg_phy_trim),
 		// Tx path
 		// {{{
 		// MSB "first" incoming data.
@@ -608,7 +615,9 @@ module sdio_top #(
 		// }}}
 		// Async Rx path
 		// {{{
+		.i_ac_reset_n(w_ac_reset_n),
 		.MAC_VALID(AC_VALID), .MAC_DATA(AC_DATA),
+		.i_ad_reset_n(w_ad_reset_n),
 		.MAD_VALID(AD_VALID), .MAD_DATA(AD_DATA),
 		// }}}
 		// I/O ports

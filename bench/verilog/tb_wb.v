@@ -519,7 +519,7 @@ module	tb_wb #( // Local declarations
 		// WB Control/data interface
 		// {{{
 		.i_wb_cyc(sdio_cyc),    .i_wb_stb(sdio_stb),  .i_wb_we(sdio_we),
-		.i_wb_addr(sdio_addr[2:0]), .i_wb_data(sdio_data),
+		.i_wb_addr(sdio_addr[3:0]), .i_wb_data(sdio_data),
 			.i_wb_sel(sdio_sel),
 		.o_wb_stall(sdio_stall),.o_wb_ack(sdio_ack),.o_wb_data(sdio_idata),
 		// }}}
@@ -594,7 +594,7 @@ module	tb_wb #( // Local declarations
 		// WB Control/data interface
 		// {{{
 		.i_wb_cyc(emmc_cyc),    .i_wb_stb(emmc_stb),  .i_wb_we(emmc_we),
-		.i_wb_addr(emmc_addr[2:0]), .i_wb_data(emmc_data),
+		.i_wb_addr(emmc_addr[3:0]), .i_wb_data(emmc_data),
 			.i_wb_sel(emmc_sel),
 		.o_wb_stall(emmc_stall),.o_wb_ack(emmc_ack),.o_wb_data(emmc_idata),
 		// }}}

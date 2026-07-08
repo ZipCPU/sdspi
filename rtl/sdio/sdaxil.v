@@ -105,6 +105,7 @@ module	sdaxil #(
 		// to), then we'll only be busy until the device releases.
 		parameter	LGCARDBUSY = 12,
 		parameter [4:0]	DEF_SAMPLE_SHIFT = 5'h18,
+		parameter [39:0] DEF_TRIM = 40'h40_0000_0000,	// DS,CMD,DATA
 		// BOOT parameters
 		parameter [0:0]	OPT_BOOTEN   = 1'b1,
 		parameter [3:0]	BOOT_MODE    = 4'b1010,
@@ -123,7 +124,7 @@ module	sdaxil #(
 		// {{{
 		input	wire			S_AXIL_AWVALID,
 		output	wire			S_AXIL_AWREADY,
-		input	wire	[4:0]		S_AXIL_AWADDR,
+		input	wire	[5:0]		S_AXIL_AWADDR,
 		input	wire	[2:0]		S_AXIL_AWPROT,
 
 		input	wire			S_AXIL_WVALID,
@@ -137,7 +138,7 @@ module	sdaxil #(
 
 		input	wire			S_AXIL_ARVALID,
 		output	wire			S_AXIL_ARREADY,
-		input	wire	[4:0]		S_AXIL_ARADDR,
+		input	wire	[5:0]		S_AXIL_ARADDR,
 		input	wire	[2:0]		S_AXIL_ARPROT,
 
 		output	wire			S_AXIL_RVALID,
@@ -150,6 +151,8 @@ module	sdaxil #(
 		output	reg			o_cfg_clk90,
 		output	wire	[7:0]		o_cfg_ckspeed,
 		output	reg			o_cfg_shutdown,
+		output	reg	[39:0]		o_cfg_phy_trim,
+		output	reg	[3:0]		o_cfg_rxck_trim,
 		output	wire	[1:0]		o_cfg_width,
 		output	wire			o_cfg_ds, o_cfg_dscmd,
 		output	reg			o_cfg_ddr,
@@ -299,11 +302,13 @@ module	sdaxil #(
 
 	localparam	LGFIFO32 = LGFIFO - $clog2(32/8);
 
-	localparam	[2:0]	ADDR_CMD = 0,
+	localparam	[3:0]	ADDR_CMD = 0,
 				ADDR_ARG = 1,
 				ADDR_FIFOA = 2,
 				ADDR_FIFOB = 3,
-				ADDR_PHY   = 4;
+				ADDR_PHY   = 4,
+				ADDR_TRIM  = 8,
+				ADDR_RXTRIM= 9;
 
 	localparam	[1:0]	CMD_PREFIX = 2'b01,
 				NUL_PREFIX = 2'b00;
@@ -342,21 +347,21 @@ module	sdaxil #(
 
 	wire		axil_write_ready;
 	wire		awskd_valid;
-	wire	[2:0]	awskd_addr;
+	wire	[3:0]	awskd_addr;
 
 	wire		wskd_valid;
 	wire	[31:0]	wskd_data;
 	wire	[3:0]	wskd_strb;
 
 	wire		arskd_valid;
-	wire	[2:0]	arskd_addr;
+	wire	[3:0]	arskd_addr;
 
 	reg		bus_wrvalid, bus_rdvalid;
 	reg	[31:0]	bus_rddata;
 	wire		bus_write, bus_read;
 	wire	[31:0]	bus_wdata;
 	wire	[3:0]	bus_wstrb;
-	wire	[2:0]	bus_wraddr, bus_rdaddr;
+	wire	[3:0]	bus_wraddr, bus_rdaddr;
 
 	wire		bus_cmd_stb, bus_phy_stb;
 	reg	[6:0]	r_cmd;
@@ -424,13 +429,13 @@ module	sdaxil #(
 `ifdef	FORMAL
 		.OPT_PASSTHROUGH(1'b1),
 `endif
-		.OPT_OUTREG(1'b0), .DW(3)
+		.OPT_OUTREG(1'b0), .DW(4)
 		// }}}
 	) awskd(
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset),
 		.i_valid(S_AXIL_AWVALID), .o_ready(S_AXIL_AWREADY),
-			.i_data( S_AXIL_AWADDR[4:2]),
+			.i_data( S_AXIL_AWADDR[5:2]),
 		.o_valid(awskd_valid), .i_ready(axil_write_ready),
 			.o_data( awskd_addr)
 		// }}}
@@ -461,14 +466,13 @@ module	sdaxil #(
 `ifdef	FORMAL
 		.OPT_PASSTHROUGH(1'b1),
 `endif
-		.OPT_OUTREG(1'b0),
-		.DW(3)
+		.OPT_OUTREG(1'b0), .DW(4)
 		// }}}
 	) arskd(
 		// {{{
 		.i_clk(i_clk), .i_reset(i_reset),
 		.i_valid(S_AXIL_ARVALID), .o_ready(S_AXIL_ARREADY),
-			.i_data( S_AXIL_ARADDR[4:2]),
+			.i_data( S_AXIL_ARADDR[5:2]),
 		.o_valid(arskd_valid), .i_ready(bus_read),
 			.o_data( arskd_addr)
 		// }}}
@@ -497,17 +501,16 @@ module	sdaxil #(
 	// o_soft_reset
 	// {{{
 	always @(*)
-	begin
+	if (!bus_write || bus_wraddr != ADDR_CMD)
 		bus_reset_request = 1'b0;
-
-		if (OPT_HWRESET && bus_wstrb[HWRESET_BIT/8])
-			bus_reset_request = bus_wdata[HWRESET_BIT];
-
+	else if (OPT_HWRESET)
+	begin
+		bus_reset_request = bus_wstrb[HWRESET_BIT/8]
+						&& bus_wdata[HWRESET_BIT];
+	end else begin
 		// This only works if the RESET_KEY includes the HWRESET_BIT
-		if (!OPT_HWRESET && (&bus_wstrb[3:0]) && bus_wdata == RESET_KEY)
-			bus_reset_request = 1'b1;
-		if (!bus_write || bus_wraddr != ADDR_CMD)
-			bus_reset_request = 1'b0;
+		bus_reset_request = ((&bus_wstrb[3:0])
+						&& bus_wdata == RESET_KEY);
 	end
 
 	initial	reset_stb = 1'b0;
@@ -990,25 +993,15 @@ module	sdaxil #(
 			new_tx_request = 1'b0;
 	end
 
-`ifndef	FORMAL
-	initial	o_cfg_expect_ack = P_BOOTTOK && OPT_CRCTOKEN;
-`endif
 	always @(posedge i_clk)
 	if (!OPT_CRCTOKEN)
 		o_cfg_expect_ack <= 1'b0;
 	else if (i_reset)
-		o_cfg_expect_ack <= P_BOOTTOK;
-	else if (bus_reset_request)
+		o_cfg_expect_ack <= 1'b0;
+	else if (bus_reset_request || w_activate_boot || w_boot_active
+					|| (OPT_HWRESET && !o_hwreset_n))
 	begin
 		o_cfg_expect_ack <= 1'b0;
-	end else if (w_activate_boot)
-	begin
-		o_cfg_expect_ack <= bus_wstrb[EXPECT_ACK_BIT/8]
-					&& bus_wdata[EXPECT_ACK_BIT];
-	end else if (w_boot_active)
-	begin
-		if  (i_boot_ack || i_boot_nak)
-			o_cfg_expect_ack <= 1'b0;
 	end else if (r_rx_request || o_rx_en || (dma_busy && !dma_tx))
 	begin
 		o_cfg_expect_ack <= 1'b0;
@@ -1019,13 +1012,13 @@ module	sdaxil #(
 	begin
 		if (bus_wstrb[EXPECT_ACK_BIT/8])
 			o_cfg_expect_ack <= bus_wdata[EXPECT_ACK_BIT];
-		if (!w_activate_boot && bus_wstrb[FIFO_WRITE_BIT/8]
+		if (bus_wstrb[FIFO_WRITE_BIT/8]
 				&& !bus_wdata[FIFO_WRITE_BIT])
+			// No TX ACK if we're not transmitting
 			o_cfg_expect_ack <= 1'b0;
-		if (!w_activate_boot
-				&& (bus_wstrb[USE_FIFO_BIT/8]
-						&& !bus_wdata[USE_FIFO_BIT])
+		if ((bus_wstrb[USE_FIFO_BIT/8] && !bus_wdata[USE_FIFO_BIT])
 				&&(!OPT_DMA || !bus_wdata[USE_DMA_BIT]))
+			// No TX ACK if we're not doing a data transfer
 			o_cfg_expect_ack <= 1'b0;
 	end
 `ifdef	FORMAL
@@ -1035,20 +1028,11 @@ module	sdaxil #(
 		assert(!f_past_valid || !o_cfg_expect_ack);
 	end else if ($past(i_reset))
 	begin
- // || $past(!i_reset && bus_reset_request))
-		assert(o_cfg_expect_ack == (P_BOOTEN && P_BOOTTOK));
+		assert(!o_cfg_expect_ack);
 	end else if (w_boot_active || $past(w_boot_active))
 	begin
-		if (reset_stb)
-		begin
-		end else if ($past(i_boot_ack || i_boot_nak))
-		begin
-			assert(!o_cfg_expect_ack);
-		end else
-			assert(!$past(w_boot_active)||$stable(o_cfg_expect_ack));
-
-		assert(w_boot_active || !w_pending_boot_tok);
-	end else if (!w_boot_active && !dma_busy && (o_rx_en || r_rx_request))
+		assert(!o_cfg_expect_ack);
+	end else if (o_rx_en || r_rx_request || (dma_busy && !dma_tx))
 	begin
 		assert(!o_cfg_expect_ack);
 	end else if (o_tx_en || (dma_busy && $past(dma_busy)) || $past(r_tx_request))
@@ -1553,7 +1537,7 @@ module	sdaxil #(
 			o_cfg_shutdown <= 1'b1;
 		if (w_card_busy)
 			o_cfg_shutdown <= 1'b0;
-		if (r_tx_request || r_rx_request
+		if (r_tx_request // || r_rx_request
 				|| (w_pending_boot_tok && !i_boot_ack))
 			o_cfg_shutdown <= 1'b0;
 		if (o_tx_en && !i_tx_done)
@@ -1773,6 +1757,50 @@ module	sdaxil #(
 		w_phy_ctrl[9:8]   = { o_cfg_ds, o_cfg_ddr };
 		w_phy_ctrl[7:0]   = i_ckspd; // r_ckspeed;
 	end
+	// }}}
+
+	// TRIM register(s)
+	// {{{
+	// pre_data <= o_cfg_phy_trim[31:0];
+	// pre_data <= { 20'h0, o_cfg_rxck_trim[3:0],
+	//			o_cfg_phy_trim[39:32] };
+
+	// o_cfg_phy_trim
+	// {{{
+	initial	o_cfg_phy_trim = DEF_TRIM;
+	always @(posedge i_clk)
+	if (i_reset)
+		o_cfg_phy_trim <= DEF_TRIM;
+	else if (bus_write && bus_wraddr == ADDR_TRIM)
+	begin
+		if (bus_wstrb[0])
+			o_cfg_phy_trim[ 7: 0] <= bus_wdata[ 7: 0];
+		if (bus_wstrb[1])
+			o_cfg_phy_trim[15: 8] <= bus_wdata[15: 8];
+		if (bus_wstrb[2])
+			o_cfg_phy_trim[23:16] <= bus_wdata[23:16];
+		if (bus_wstrb[3])
+			o_cfg_phy_trim[31:24] <= bus_wdata[31:24];
+	end else if (bus_write && bus_wraddr == ADDR_RXTRIM)
+	begin
+		if (bus_wstrb[0])
+			o_cfg_phy_trim[39:32] <= bus_wdata[ 7: 0];
+	end
+	// }}}
+
+	// o_cfg_rxck_trim
+	// {{{
+	initial	o_cfg_rxck_trim = 4'h0;
+	always @(posedge i_clk)
+	if (i_reset)
+		o_cfg_rxck_trim <= 4'h0;
+	else if (bus_write && bus_wraddr == ADDR_RXTRIM)
+	begin
+		if (bus_wstrb[1])
+			o_cfg_rxck_trim[ 3: 0] <= bus_wdata[11:8];
+	end
+	// }}}
+
 	// }}}
 
 	assign	o_crc_en = 1'b1;
@@ -3694,9 +3722,13 @@ module	sdaxil #(
 				&& bus_wraddr == ADDR_CMD
 				&& bus_wstrb[EXPECT_ACK_BIT/8])
 			r_boot_tok <= bus_wdata[EXPECT_ACK_BIT];
-		else if (bus_reset || o_hwreset_n)
+		else if (o_hwreset_n)
+			// The SDFRONTEND expects r_boot_tok to be a pulse,
+			// and not held.
 			r_boot_tok <= 1'b0;
 
+		// Since we can't hold r_boot_tok, we need r_pending_boot_tok
+		// to know if we should be expecting a boot token.
 		always @(posedge i_clk)
 		if (!OPT_CRCTOKEN)
 			r_pending_boot_tok <= 1'b0;
@@ -3866,7 +3898,7 @@ module	sdaxil #(
 				assume(!i_boot_ack && !i_boot_nak);
 			end
 
-			if (r_boot_active && !r_boot_tok && !f_requested_boot_tok)
+			if (r_boot_active)
 			begin
 				assert(!o_cfg_expect_ack);
 			end
@@ -3950,16 +3982,19 @@ module	sdaxil #(
 		pre_data <= 0;
 
 		case(bus_rdaddr)
-		ADDR_CMD: pre_data[31:0] <= w_cmd_word;
-		ADDR_ARG: pre_data[31:0] <= r_arg;
-		ADDR_PHY: pre_data[31:0] <= w_phy_ctrl;
-		// 3'h3: pre_data <= w_ffta_word;
-		// 3'h4: pre_data <= w_fftb_word;
-		3'h5: pre_data[31:0] <= (OPT_LITTLE_ENDIAN)
+		ADDR_CMD: pre_data <= w_cmd_word;
+		ADDR_ARG: pre_data <= r_arg;
+		ADDR_PHY: pre_data <= w_phy_ctrl;
+		// 4'h3: pre_data <= w_ffta_word;
+		// 4'h4: pre_data <= w_fftb_word;
+		4'h5: pre_data <= (OPT_LITTLE_ENDIAN)
 			? dma_addr_return[31:0] : dma_addr_return[63:32];
-		3'h6: pre_data[31:0] <= (OPT_LITTLE_ENDIAN)
+		4'h6: pre_data <= (OPT_LITTLE_ENDIAN)
 			? dma_addr_return[63:32] : dma_addr_return[31:0];
-		3'h7: pre_data[31:0] <= dma_len_return;
+		4'h7: pre_data <= dma_len_return;
+		ADDR_TRIM:   pre_data <= o_cfg_phy_trim[31:0];
+		ADDR_RXTRIM: pre_data <= { 20'h0, o_cfg_rxck_trim[3:0],
+				o_cfg_phy_trim[39:32] };
 		default: begin end
 		endcase
 
@@ -4012,8 +4047,23 @@ module	sdaxil #(
 	assign	S_AXIL_RRESP = 2'b00;
 	// }}}
 
-	/*
-	assign	o_debug = { w_cmd_word[ERR_BIT], w_card_busy,		// 1b
+/*
+	wire	[6:0]	tx_debug, boot_debug;
+	wire	[5:0]	rx_debug;
+
+	assign	boot_debug = { w_boot_active, w_pending_boot_tok,
+				dma_write, dma_loaded, dma_zero_len,
+				bus_reset, !o_hwreset_n };
+
+	assign	tx_debug = { o_tx_mem_valid, o_tx_mem_valid && i_tx_mem_ready,
+			o_tx_mem_last, o_tx_en, r_tx_request, i_tx_done,
+			i_tx_err };
+	assign	rx_debug = { i_rx_mem_valid, i_rx_done, i_rx_err,
+			o_rx_en ? i_rx_ercode : i_tx_ercode,
+			r_rx_request, o_rx_en };
+
+	assign	o_debug = { w_cmd_word[ERR_BIT],
+			w_card_busy || w_boot_active,		// 1b
 		// Command:
 		o_cmd_request, cmd_busy || (i_cmd_busy && o_cmd_request),
 					i_cmd_done,			// 7b
@@ -4022,13 +4072,10 @@ module	sdaxil #(
 		i_dma_busy, i_dma_err, o_dma_abort,			// 3b
 		o_dma_sd2s, o_sd2s_valid, i_sd2s_ready, o_sd2s_last,	// 4b
 		o_dma_s2sd, i_s2sd_valid, o_s2sd_ready,			// 3b
-		// TX:
-		o_tx_mem_valid, o_tx_mem_valid && i_tx_mem_ready, o_tx_mem_last,		// 7b
-				o_tx_en, r_tx_request, i_tx_done, i_tx_err,
+		// BOOT : TX
+		w_boot_active ? boot_debug : tx_debug,
 		// RX:
-		i_rx_mem_valid, i_rx_done, i_rx_err,			// 6b
-			o_rx_en ? i_rx_ercode : i_tx_ercode,
-			r_rx_request, o_rx_en
+		rx_debug
 	};
 	*/
 
@@ -4068,7 +4115,7 @@ module	sdaxil #(
 				faxil_aroutstanding;
 
 	faxil_slave #(
-		.C_AXI_ADDR_WIDTH(5), .F_LGDEPTH(3)
+		.C_AXI_ADDR_WIDTH(6), .F_LGDEPTH(3)
 	) faxil (
 		// {{{
 		.i_clk(i_clk), .i_axi_reset_n(!i_reset),
@@ -4561,7 +4608,7 @@ module	sdaxil #(
 
 	faxil_register #(
 		// {{{
-		.AW(5), .ADDR({ ADDR_PHY, 2'b00 }),
+		.AW(6), .ADDR({ ADDR_PHY, 2'b00 }),
 		.MASK(32'h0018_b100
 			| (OPT_1P8V   ? 32'h0040_0000 : 32'h00)
 			| (OPT_SERDES ? 32'h001f_0000 : 32'h00)
@@ -4609,7 +4656,55 @@ module	sdaxil #(
 		assert(lgblk <= LGFIFO);
 		assert(lgblk >= 2);
 	end
+	// }}}
 
+	// TRIM register
+	// {{{
+	faxil_register #(
+		// {{{
+		.AW(6), .ADDR({ ADDR_TRIM, 2'b00 }),
+		.MASK(32'h0), .FIXED_BIT_MASK(32'h0)
+		// }}}
+	) faxil_trim (
+		// {{{
+		.S_AXI_ACLK(i_clk), .S_AXI_ARESETN(!i_reset),
+		.S_AXIL_AWW(bus_write),
+		.S_AXIL_AWADDR({ bus_wraddr, 2'b00 }),
+		.S_AXIL_WDATA(bus_wdata),
+		.S_AXIL_WSTRB(bus_wstrb),
+		.S_AXIL_BVALID(S_AXIL_BVALID),
+		.S_AXIL_AR(bus_read),
+		.S_AXIL_ARADDR(bus_rdaddr),
+		.S_AXIL_RVALID(pre_valid),
+		.S_AXIL_RDATA(pre_data),
+		.i_register(o_cfg_phy_trim[31:0])
+		// }}}
+	);
+	// }}}
+
+	// RXTRIM register
+	// {{{
+	faxil_register #(
+		// {{{
+		.AW(6), .ADDR({ ADDR_RXTRIM, 2'b00 }),
+		.MASK(32'h0), .FIXED_BIT_MASK(32'hffff_f000)
+		// }}}
+	) faxil_rxtrim (
+		// {{{
+		.S_AXI_ACLK(i_clk), .S_AXI_ARESETN(!i_reset),
+		.S_AXIL_AWW(bus_write),
+		.S_AXIL_AWADDR({ bus_wraddr, 2'b00 }),
+		.S_AXIL_WDATA(bus_wdata),
+		.S_AXIL_WSTRB(bus_wstrb),
+		.S_AXIL_BVALID(S_AXIL_BVALID),
+		.S_AXIL_AR(bus_read),
+		.S_AXIL_ARADDR(bus_rdaddr),
+		.S_AXIL_RVALID(pre_valid),
+		.S_AXIL_RDATA(pre_data),
+		.i_register({ 20'h0, o_cfg_rxck_trim[3:0],
+						o_cfg_phy_trim[39:32] })
+		// }}}
+	);
 	// }}}
 
 	// }}}

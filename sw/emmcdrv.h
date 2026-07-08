@@ -41,20 +41,29 @@
 
 typedef	struct EMMC_S {
 	volatile uint32_t	sd_cmd, sd_data, sd_fifa, sd_fifb, sd_phy;
+
+	// The next two 32b words are allocated to a 64b pointer.
+	// If pointers are 32b, then we only need to allocate one of them
+	// to this purpose.  Which one we allocated will depend upon whether
+	// we are big-endian (ZipCPU) or little-endian (AXI, and much of the
+	// rest of the world).
 #if defined(__SIZEOF_POINTER__) && (__SIZEOF_POINTER__ == 8)
 	// 64b architectures
-	volatile void	*sd_dma_addr;
+	volatile void		*sd_dma_addr;
 #else
 	// 32b architectures, or default if __SIZEOF__POINTER__ is undefined
   #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+	// Little-Endian
 	volatile void		*sd_dma_addr;
 	volatile uint32_t	sd_unused;
   #else
+	// Big-Endian, the default if __BYTE_ORDER__ is undefined
 	volatile uint32_t	sd_unused;
 	volatile void		*sd_dma_addr;
   #endif
 #endif
 	volatile uint32_t	sd_dma_length;
+	volatile uint32_t	sd_trim, sd_rxtrim;
 } EMMC;
 
 struct	EMMCDRV_S;
@@ -63,6 +72,6 @@ extern	struct	EMMCDRV_S *emmc_init(EMMC *dev);
 extern	int	emmc_write(struct EMMCDRV_S *dev, const unsigned sector, const unsigned count, const char *buf);
 extern	int	emmc_read(struct EMMCDRV_S *dev, const unsigned sector, const unsigned count, char *buf);
 extern	int	emmc_ioctl(struct EMMCDRV_S *dev, char cmd, char *buf);
-extern	int	emmc_boot(struct EMMC *dev, const unsigned count, char *buf);
-extern	int	emmc_altboot(struct EMMC *dev, const unsigned count, char *buf);
+extern	int	emmc_boot(struct EMMCDRV_S *dev, const unsigned count, char *buf);
+extern	int	emmc_altboot(struct EMMCDRV_S *dev, const unsigned count, char *buf);
 #endif

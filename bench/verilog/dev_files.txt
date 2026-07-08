@@ -30,6 +30,7 @@ wb2axip/wbxbar.v
 wb2axip/wbxclk.v
 ##
 ../../rtl/afifo.v
+../../rtl/xsddelay.v
 ../../rtl/xsdddr.v
 ../../rtl/xsdserdes8x.v
 ../../rtl/sdskid.v

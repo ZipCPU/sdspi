@@ -57,6 +57,7 @@ module	sdrxframe #(
 		//
 		input	wire			i_cfg_ds, i_cfg_ddr,
 		input	wire	[1:0]		i_cfg_width,
+		input	wire	[3:0]		i_cfg_trim,
 		//
 		input	wire			i_rx_en,
 		input	wire			i_crc_en,
@@ -65,6 +66,7 @@ module	sdrxframe #(
 		input	wire	[1:0]		i_rx_strb,
 		input	wire	[15:0]		i_rx_data,
 
+		output	reg			o_ad_reset_n,
 		input	wire			S_ASYNC_VALID,
 		input	wire	[31:0]		S_ASYNC_DATA,
 
@@ -73,10 +75,11 @@ module	sdrxframe #(
 		output	wire	[LGLENW-1:0]	o_mem_addr,	// Word address
 		output	wire	[MW-1:0]	o_mem_data,	// Outgoing data
 
-		output	reg			o_active,
 		output	reg			o_done,
 		output	reg			o_err,
-		output	reg			o_ercode
+		output	reg			o_ercode,
+		output	reg			o_active,
+		output	reg			o_ckactive
 		// }}}
 	);
 
@@ -432,7 +435,7 @@ module	sdrxframe #(
 		load_crc   <= 0;
 		data_phase <= 0;
 		last_strb  <= 0;
-	end else if (!busy && i_rx_en)
+	end else if (!busy)
 	begin
 		// {{{
 		// Verilator lint_off WIDTH
@@ -454,8 +457,6 @@ module	sdrxframe #(
 		if (i_rx_strb == 2'b11)
 		begin
 			// {{{
-			rail_count <= rail_count - 2;
-			last_strb  <= (rail_count == 3);
 			if (!i_crc_en)
 			begin
 				data_phase <= (rail_count > 2);
@@ -469,15 +470,15 @@ module	sdrxframe #(
 				load_crc   <= (rail_count <= 18)&&(rail_count > 2) && i_crc_en;
 			end
 
+			last_strb  <= (rail_count == 3);
 			if (rail_count < 2)
 				rail_count <= 0;
+			else
+				rail_count <= rail_count - 2;
 			// }}}
 		end else if (i_rx_strb[1])
 		begin
 			// {{{
-			rail_count <= rail_count - 1;
-			last_strb  <= (rail_count == 2);
-
 			if (!i_crc_en)
 			begin
 				data_phase <= (rail_count > 1);
@@ -491,8 +492,12 @@ module	sdrxframe #(
 				load_crc   <= (rail_count <= 17)&&(rail_count > 1);
 			end
 
-			if (rail_count < 1)
+			last_strb  <= (rail_count == 2);
+
+			if (rail_count <= 1)
 				rail_count <= 0;
+			else
+				rail_count <= rail_count - 1;
 			// }}}
 		end
 	end else if (S_ASYNC_VALID)
@@ -519,14 +524,17 @@ module	sdrxframe #(
 		// }}}
 	end
 
+	// pending_crc
+	// {{{
 	always @(posedge i_clk)
 	if (i_reset || o_done || !i_rx_en || !i_crc_en)
 	begin
 		pending_crc <= 1'b0;
-	end else if ((i_rx_en && !busy) || load_crc || data_phase)
+	end else if (load_crc || data_phase)
 		pending_crc <= 1'b1;
 	else if (!load_crc)
 		pending_crc <= 1'b0;
+	// }}}
 
 	always @(*)
 	begin
@@ -546,6 +554,8 @@ module	sdrxframe #(
 	else if (w_done)
 		busy <= 1'b0;
 
+	// o_active: Enabling the clock, and reception in the front end
+	// {{{
 	always @(posedge i_clk)
 	if (i_reset)
 		o_active <= 1'b0;
@@ -556,6 +566,74 @@ module	sdrxframe #(
 	else
 		o_active <= (rail_count > (S_ASYNC_VALID ? 4:0));
 	// }}}
+
+	// o_ckactive: Enabling the clock, and reception in the front end
+	// {{{
+	always @(posedge i_clk)
+	if (i_reset)
+		o_ckactive <= 1'b0;
+	else if (!busy)
+		o_ckactive <= i_rx_en && i_length > 0 && !o_done;
+	else if (!i_cfg_ds || !OPT_DS)
+	begin
+		if (i_rx_strb != 2'b00)
+		begin
+			// Stop the clock TRIM strobes before completion
+			o_ckactive <= (rail_count > (i_rx_strb[0] ? 1:0)
+				+ (i_rx_strb[1] ? 1:0) + { 9'h0, i_cfg_trim });
+		end
+	end else if (S_ASYNC_VALID)
+		// Stop the clock TRIM clocks before we are finished
+		o_ckactive <= (rail_count > 4 + { 7'h0, i_cfg_trim, 2'h0 });
+`ifdef	FORMAL
+	(* anyconst *) reg	fln_long;
+	always @(*)
+	if (fln_long)
+	begin
+		assume(i_length > 8 + i_cfg_trim);
+		if (i_cfg_ds)
+			assume(i_length > 8 + { i_cfg_trim, 2'b00 });
+	end
+
+	always @(*)
+	if (!i_reset && !o_active)
+		assert(!o_ckactive);
+
+	always @(posedge i_clk)
+	if (!i_reset && $rose(o_active))
+		assert(o_ckactive);
+
+	always @(*)
+	if (!i_reset && fln_long && i_cfg_ds)
+	begin
+		if (i_cfg_ds && OPT_DS)
+		begin
+			assert(o_ckactive==(rail_count > { i_cfg_trim, 2'b0 }));
+		end else
+			assert(o_ckactive == (rail_count > i_cfg_trim));
+	end
+`endif
+	// }}}
+
+
+	// o_ad_reset_n, resetting the DS-based front-end asynchronous FIFO
+	// {{{
+	always @(posedge i_clk)
+	if (i_reset || !i_cfg_ds || !OPT_DS)
+		o_ad_reset_n <= 1'b0;
+	else if (!busy)
+		o_ad_reset_n <= i_rx_en && i_length > 0 && !o_done;
+	else
+		o_ad_reset_n <= (rail_count > (S_ASYNC_VALID ? 4:0));
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset)
+	begin
+		assert(o_ad_reset_n == (o_active && i_cfg_ds && OPT_DS));
+	end
+`endif
+	// }}}
+	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
 	// CRC checking
@@ -564,6 +642,8 @@ module	sdrxframe #(
 	//
 	//
 
+	// err[], a per-rail, per edge CRC error signal
+	// {{{
 	generate for(gk=0; gk<NUMIO; gk=gk+1)
 	begin : GEN_RAIL_CRC
 		reg	[15:0]		pedge_crc,
@@ -655,7 +735,10 @@ module	sdrxframe #(
 		assign	err[gk] = lcl_err[0];
 		assign	err[gk+NUMIO] = lcl_err[1];
 	end endgenerate
+	// }}}
 
+	// o_done, o_ercode, o_err
+	// {{{
 	initial	o_done = 0;
 	always @(posedge i_clk)
 	if (i_reset || !i_rx_en || o_done || !busy)
@@ -666,15 +749,18 @@ module	sdrxframe #(
 		o_err  <= (|err) || r_watchdog;
 		o_ercode <= !r_watchdog;
 	end
+	// }}}
 
 	function automatic [NCRC-1:0]	STEPCRC(input [NCRC-1:0] prior,
 						input i_crc_data);
+		// {{{
 	begin
 		if (prior[NCRC-1] ^ i_crc_data)
 			STEPCRC = { prior[NCRC-2:0], 1'b0 } ^ CRC_POLYNOMIAL;
 		else
 			STEPCRC = { prior[NCRC-2:0], 1'b0 };
 	end endfunction
+	// }}}
 
 	// }}}
 	////////////////////////////////////////////////////////////////////////
@@ -748,6 +834,7 @@ module	sdrxframe #(
 	// {{{
 	(* anyconst *)	reg		f_cfg_ds, f_cfg_ddr, f_cfg_crc;
 	(* anyconst *)	reg	[1:0]	f_cfg_width;
+	(* anyconst *)	reg	[3:0]	f_cfg_trim;
 
 	always @(*)
 	if (i_rx_en)
@@ -756,6 +843,7 @@ module	sdrxframe #(
 		assume(i_cfg_ddr   == f_cfg_ddr);
 		assume(i_cfg_width == f_cfg_width);
 		assume(i_crc_en    == f_cfg_crc);
+		assume(i_cfg_trim  == f_cfg_trim);
 
 		if (f_cfg_ds)
 			assume(f_cfg_ddr);
@@ -821,6 +909,12 @@ module	sdrxframe #(
 	always @(posedge i_clk)
 	if (!i_reset && !r_watchdog)
 	begin
+		if (!f_state)
+		begin
+			assert(!busy);
+			assert(!o_done);
+		end
+
 		if (busy || data_phase || load_crc || o_done
 				|| s2_valid || o_mem_valid)
 		begin
@@ -1040,7 +1134,7 @@ module	sdrxframe #(
 			assert(load_crc   == (rail_count <= 16 && rail_count>0));
 		end
 
-		if (i_crc_en && (load_crc || data_phase))
+		if (i_crc_en && load_crc)
 			assert(pending_crc);
 		assert(last_strb == (rail_count == 1));
 	end

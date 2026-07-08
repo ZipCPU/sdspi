@@ -1392,7 +1392,7 @@ module	tb_axi #( // Design configuration parameters
 		// {{{
 		.S_AXIL_AWVALID( SDIO_AWVALID),
 		.S_AXIL_AWREADY( SDIO_AWREADY),
-		.S_AXIL_AWADDR( SDIO_AWADDR[4:0]),
+		.S_AXIL_AWADDR( SDIO_AWADDR[5:0]),
 		.S_AXIL_AWPROT( SDIO_AWPROT),
 		//
 		.S_AXIL_WVALID( SDIO_WVALID),
@@ -1406,7 +1406,7 @@ module	tb_axi #( // Design configuration parameters
 		//
 		.S_AXIL_ARVALID( SDIO_ARVALID),
 		.S_AXIL_ARREADY( SDIO_ARREADY),
-		.S_AXIL_ARADDR( SDIO_ARADDR[4:0]),
+		.S_AXIL_ARADDR( SDIO_ARADDR[5:0]),
 		.S_AXIL_ARPROT( SDIO_ARPROT),
 		//
 		.S_AXIL_RVALID( SDIO_RVALID),
@@ -1518,7 +1518,7 @@ module	tb_axi #( // Design configuration parameters
 		// {{{
 		.S_AXIL_AWVALID( EMMC_AWVALID),
 		.S_AXIL_AWREADY( EMMC_AWREADY),
-		.S_AXIL_AWADDR( EMMC_AWADDR[4:0]),
+		.S_AXIL_AWADDR( EMMC_AWADDR[5:0]),
 		.S_AXIL_AWPROT( EMMC_AWPROT),
 		//
 		.S_AXIL_WVALID( EMMC_WVALID),
@@ -1532,7 +1532,7 @@ module	tb_axi #( // Design configuration parameters
 		//
 		.S_AXIL_ARVALID( EMMC_ARVALID),
 		.S_AXIL_ARREADY( EMMC_ARREADY),
-		.S_AXIL_ARADDR( EMMC_ARADDR[4:0]),
+		.S_AXIL_ARADDR( EMMC_ARADDR[5:0]),
 		.S_AXIL_ARPROT( EMMC_ARPROT),
 		//
 		.S_AXIL_RVALID( EMMC_RVALID),

@@ -101,6 +101,7 @@ module	sdcmd #(
 		input	wire			i_cmd_collision,
 		// input	wire		i_dat_busy,
 
+		output	reg			o_ac_reset_n,
 		input	wire			S_ASYNC_VALID,
 		input	wire	[1:0]		S_ASYNC_DATA,
 		// }}}
@@ -346,6 +347,34 @@ module	sdcmd #(
 	always @(*)
 	if (!i_reset)
 		assert(response_active == (resp_count != 0));
+`endif
+	// }}}
+
+	// Register the reset for the asynchronous (i.e. DS) command FIFO
+	// {{{
+	always @(posedge i_clk)
+	if (i_reset || !OPT_DS || !cfg_ds || !waiting_on_response || lcl_accept
+					|| i_boot_cmd || o_done || !r_busy)
+	begin
+		o_ac_reset_n <= 1'b0;
+	end else if (i_ckstb)
+	begin
+		if (cfg_dbl)
+			o_ac_reset_n <= (srcount <= 2);
+		else
+			o_ac_reset_n <= (srcount <= 1);
+	end
+
+`ifdef	FORMAL
+	always @(*)
+	if (!i_reset)
+	begin
+		if (!cfg_ds || !OPT_DS || !waiting_on_response)
+		begin
+			assert(!o_ac_reset_n);
+		end else
+			assert(o_ac_reset_n != active);
+	end
 `endif
 	// }}}
 
@@ -749,16 +778,31 @@ module	sdcmd #(
 	if (i_reset || i_boot_cmd)
 	begin
 		{ r_delay, r_dly_count } <= -STARTUP_CLOCKS;
+	end else if (self_request)
+	begin
+		{ r_delay, r_dly_count } <= 0;
 	end else if (r_busy)
 		{ r_delay, r_dly_count } <= -8;
 	else if (r_delay && i_ckstb && (!r_powerup_stall || !(&r_dly_count)))
 		{ r_delay, r_dly_count } <= { r_delay, r_dly_count } + 1;
 `ifdef	FORMAL
+	// {{{
+	// Formal checks on the r_delay register and powerup_stall
+	always @(posedge i_clk)
+	if (!i_reset)
+		assert(r_powerup_stall == (r_powerup_count > 0));
+
+	always @(posedge i_clk)
+	if (!i_reset && self_request)
+		assert(!r_powerup_stall);
+
 	always @(posedge i_clk)
 	if (!i_reset && !r_delay)
 		assert(r_dly_count == 0);
+
 	always @(posedge i_clk)
-	if (!i_reset && r_busy && !$past(lcl_accept) && !$past(i_boot_cmd))
+	if (!i_reset && r_busy && !$past(lcl_accept) && !$past(i_boot_cmd)
+			&& !$past(self_request))
 	begin
 		assert(r_delay);
 		assert({ 1'b0, r_dly_count } == (1<<LGDLY) - 8);
@@ -800,6 +844,7 @@ module	sdcmd #(
 
 	always @(posedge i_clk)
 		cover(!r_delay && !i_reset);
+	// }}}
 `endif
 	// }}}
 
@@ -1260,7 +1305,6 @@ module	sdcmd #(
 	//
 	//
 
-
 	always @(posedge i_clk)
 	if (!i_reset && o_done)
 		cover(i_cmd_type == R_NONE);
@@ -1282,16 +1326,20 @@ module	sdcmd #(
 	begin : EMMC_CVR
 		always @(posedge i_clk)
 		if (!i_reset && r_busy && i_cmd_selfreply)
-			cover(!o_busy);		// !!!
+			cover(!o_busy);
 		always @(posedge i_clk)
 		if (!i_reset && r_busy && i_cmd_selfreply)
 			cover(self_request);
 		always @(posedge i_clk)
 		if (!i_reset)
+			cover(!r_delay);
+
+		always @(posedge i_clk)
+		if (!i_reset)
 		begin
 			cover(r_busy && self_request);
-			cover((r_busy && self_request) && !r_delay); // !!!
-			cover((r_busy && self_request) && !r_delay && !i_ckstb);
+			cover(r_busy && self_request && !r_delay);
+			cover(r_busy && self_request && !r_delay && !i_ckstb);
 		end
 	end endgenerate
 

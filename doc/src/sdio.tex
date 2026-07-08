@@ -65,7 +65,7 @@
 %
 % Revision level.  If you change this, be sure to change the revision history
 % to match it
-\revision{Rev.~1.96}
+\revision{Rev.~2.0pre}
 \begin{document}
 \pagestyle{gqtekspecplain}
 \titlepage
@@ -96,7 +96,7 @@ with this program.  If not, see \texttt{http://www.gnu.org/licenses/} for a copy
 1.94 & 9/05/2024 & Gisselquist & Note that ACKs should always be expected on block writes.\\\hline
 1.95 & 11/25/2024 & Gisselquist & The design now fully supports AXI in addition to Wishbone, to include an (optional) AXI DMA\\\hline
 1.96 & 12/06/2024 & Gisselquist & Added the 1.8V feedback wire\\\hline
-1.97 & 6/17/2026 & Gisselquist & eMMC Boot support\\\hline
+2.0pre & 7/08/2026 & Gisselquist & eMMC Boot support, and trim registers\\\hline
 \end{revisionhistory}
 % Revision History
 % Table of Contents, named Contents
@@ -930,6 +930,8 @@ response to expect--whether to expect no response at all, a 48-bit (R1)
 response, a 48-bit response followed by a busy (R1b), or a 136-bit (R2)
 response.
 
+%% TODO from here ...
+
 When issuing a command, you also want to be aware of the error bit.  If the
 error bit gets set, no commands will be accepted until the error bit is cleared.
 Hence, you'll want to clear the error bit at the beginning of any command
@@ -1683,6 +1685,8 @@ PHY     &{\tt 0x04} & 32 & R/W & Front end configuration register\\\hline
 DMA Addr&{\tt 0x05} & 32 & R/W & DMA address bits[31:0]\\\hline
 DMA Addr&{\tt 0x06} & 32 & R/W & DMA address bits[63:32]\\\hline
 DMA LEN &{\tt 0x07} & 32 & R/W & DMA transfer length in blocks\\\hline
+PHY TRIM&{\tt 0x08} & 32 & R/W & Control sub-clock input delays\\\hline
+RX TRIM &{\tt 0x09} & 32 & R/W & Controls RX clock pre-shutdown\\\hline
 \end{reglist}
 \caption{(Big-Endian) I/O Peripheral Registers}\label{tbl:ioregs}
 \end{center}\end{table}
@@ -1734,7 +1738,7 @@ Fig.~\ref{fig:CMD}.
 The various fields of this register are explained in Tbls.~\ref{tbl:CMD1}
 \begin{table}\begin{center}
 %% {{{
-\begin{tabular}{|p{1.2in}|p{0.5in}|p{4.0in}|}\hline
+\begin{tabular}{|p{1.2in}|p{0.5in}|p{3.5in}|}\hline
 	\rowcolor[gray]{0.85} Name & Width & Description\\\hline\hline
 P$_B$ &1& {\tt OPT\_BOOTEN}, can be used to tell if the design has been
 	built with the BOOT capability enabled.  \\
@@ -1787,7 +1791,7 @@ R & 1 & Card removed.  This bit will be set if both the {\tt OPT\_CARD\_DETECT}
 and~\ref{tbl:CMD2}.
 \begin{table}\begin{center}
 %% {{{
-\begin{tabular}{|p{1.2in}|p{0.5in}|p{4.0in}|}\hline
+\begin{tabular}{|p{1.2in}|p{0.5in}|p{3.5in}|}\hline
 	\rowcolor[gray]{0.85} Name & Width & Description\\\hline\hline
 C$_C$&2& Command error code.  Indicates the type of error, if any, received
 	from the last command.  This is separate from any potential bus or
@@ -2128,8 +2132,8 @@ any transmission.  The fields of this register are shown in Fig.~\ref{fig:PHY}.
 and explained in Tbl.~\ref{tbl:PHY}.
 \begin{table}\begin{center}
 %% {{{
-\begin{tabular}{|p{1.2in}|p{0.5in}|p{4.0in}|}\hline
-	\rowcolor[gray]{0.85} Name & Description\\\hline\hline
+\begin{tabular}{|p{1.2in}|p{0.5in}|p{3.5in}|}\hline
+	\rowcolor[gray]{0.85} Name & Width & Description\\\hline\hline
 LgFSz & 4 & Reflects the {\tt LGFIFO} parameter, and hence the log based two
 	of the maximum transfer block size in bytes. \\
 LgBlk & 4 & Log based two of the transfer block size.  Set to 9 for 512~Byte
@@ -2394,6 +2398,126 @@ a zero argument.  Otherwise, all DMA operations will be terminated with a
 CMD12 ({\tt STOP\_TRANSMISSION}).
 
 %% }}}
+\section{PHY TRIM}
+%% {{{
+When sampling via the DS source clock, it may be a challenge to get timing
+done properly.  For this reason, the PHY TRIM register exists--to allow
+the timing associated with each.  As shown in Fig.~\ref{fig:TRIM},
+\begin{figure}\begin{center}
+%% {{{
+\begin{bytefield}[endianness=big,bitwidth=0.03\linewidth]{32}
+\bitheader{0-31}\\
+\bitbox{4}{Dly[7]}
+\bitbox{4}{Dly[6]}
+\bitbox{4}{Dly[5]}
+\bitbox{4}{Dly[4]}
+\bitbox{4}{Dly[3]}
+\bitbox{4}{Dly[2]}
+\bitbox{4}{Dly[1]}
+\bitbox{4}{Dly[0]}
+\end{bytefield}
+%% }}}
+\caption{PHY Front end configuration register}\label{fig:TRIM}
+\end{center}\end{figure}
+and Tbl.~\ref{tbl:PHY},
+\begin{table}\begin{center}
+%% {{{
+\begin{tabular}{|p{1.2in}|p{0.5in}|p{3.5in}|}\hline
+	\rowcolor[gray]{0.85} Name & Width & Description\\\hline\hline
+Dly[$x$] & 4 & Controls a per--IO bit sub--clock delay, for the purpose of
+	adjusting sampling timing.\\\hline
+\end{tabular}
+%% }}}
+\caption{PHY Front end configuration register fields}\label{tbl:TRIM}
+\end{center}\end{table}
+each IO bit is allowed a delay from 0--15.
+
+In the case of a Xilinx FPGA, the delay values are used to control the bottom
+5~bits of an {\tt IDELAYE2} module.
+
+The default (nominal) value of 0 should be good enough for most purposes.
+%% }}}
+
+\section{RX TRIM}
+%% {{{
+The receive trim register is designed to allow a configuration to exist which
+will shut down the clock prior to all data being received.  The goal of this
+approach is to help stop the clock on a dime once all data has been requested,
+and once the rest of any incoming data remains in the pipeline.
+Apart from this capability, it is possible for an external device to begin
+sending a next block of data as part of a multi--block read operation before
+the controller is ready for it.  This is a particular issue at higher speeds,
+such as HS400.  If this happens, the controller will likely miss the start
+bit of that second block and (assuming it's not all ones) then fail its CRC.
+To prevent this from happening, the clock must stop long enough between blocks
+to allow the controller to reset itself prior to receiving the next block.
+This control helps to make sure the clock stops early enough at higher speeds.
+
+The PHY TRIM register controls the incoming delays across all of the data pins
+associated with the design.  The RX TRIM register finishes the optional
+delays, by allowing for a user controlled pre-sample delay for both the CMD
+and DS pins.
+
+Fig.~\ref{fig:RXTRIM},
+\begin{figure}\begin{center}
+%% {{{
+\begin{bytefield}[endianness=big,bitwidth=0.03\linewidth]{32}
+\bitheader{0-31}\\
+\bitbox{20}{(Reserved)}
+\bitbox{4}{Rx Trim}
+\bitbox{4}{DS Dly}
+\bitbox{4}{CMD Dly}
+\end{bytefield}
+%% }}}
+\caption{PHY Front end configuration register}\label{fig:RXTRIM}
+\end{center}\end{figure}
+and Tbl.~\ref{tbl:PHY},
+\begin{table}\begin{center}
+%% {{{
+\begin{tabular}{|p{1.2in}|p{0.5in}|p{3.5in}|}\hline
+	\rowcolor[gray]{0.85} Name & Width & Description\\\hline\hline
+Rx TRIM & 4 & Once the controller is this many clock cycles prior to receiving
+	the last data, a clock shut down will be enabled (assuming it is
+	also enabled in the PHY register).\\\hline
+DS Dly & 4 & Controls an incoming delay on the DS. \\\hline
+CMD Dly & 4 & Controls an incoming, pre--sample delay on the CMD wire.\\
+	\\\hline
+\end{tabular}
+%% }}}
+\caption{PHY Front end configuration register fields}\label{tbl:RXTRIM}
+\end{center}\end{table}
+show the allocation of the bits for both the RX TRIM and the two remaining
+incoming pin delay controls.
+
+The command pin's delay should nominally be identical to the IO pin delays
+from the TRIM register.
+
+The DS pin's delay is different.  This should nominally be set to achieve
+a 90~degree phase shift in the clock--so that the DS clock would sample
+incoming data in the center of the eye.
+
+Turning to the RX TRIM register, with zero RX TRIM, the receive clock will
+stop once the last incoming clock's worth of data is registered.  This
+includes both data and CRC.  Hence, in 1b mode, a 512 Byte sector will require
+4112~clocks containing return data, whereas in 8b mode the same sector would
+require 528~clocks.  Once this number, less the RX TRIM, has been received,
+a flag will be set to allow the clock to stop.  From that point on, no more
+clocks will be generated for this receive block.
+
+In the case of HS400, the number of 100~MHz system clock cycles of return
+data per block would be 132 (at a 200~MHz clock).  Adjusting the receive trim
+register will shut the clock down before this number has been received, by
+however much the trim value is set to.
+
+The ``correct'' value for the RX TRIM is a matter of active research.  If this
+delay is too large, the controller will likely hang on every block.  (A soft
+reset should be able to resolve this, to allow proper testing.)  If this delay
+is too small, it is possible for the external device to start sending a
+subsequent block in a multi--block transfer prior to the controller being
+ready.  It is quite likely that this ``correct'' value will be clock rate
+dependent.
+%% }}}
+
 %% }}}
 \chapter{Interrupts}\label{ch:int}
 %% {{{
@@ -2439,7 +2563,7 @@ Tbl.~\ref{tbl:wishbone}
 Revision level of Wishbone & WB B4 spec \\\hline
 Type of interface & Slave, (Block/pipelined) Read/Write \\\hline
 Port size & 32--bit \\\hline
-Port granularity & 32--bit \\\hline
+Port granularity & 8--bit \\\hline
 Maximum Operand Size & 32--bit \\\hline
 Data transfer ordering & (Optional)\\\hline
 Clock constraints & (See below)\\\hline
@@ -2449,7 +2573,7 @@ Signal Names & \begin{tabular}{ll}
 		{\tt i\_wb\_cyc} & {\tt CYC\_I} \\
 		{\tt i\_wb\_stb} & {\tt STB\_I} \\
 		{\tt i\_wb\_we} & {\tt WE\_I} \\
-		{\tt i\_wb\_addr} & {\tt ADR\_I} \\
+		{\tt i\_wb\_addr[3:0]} & {\tt ADR\_I} \\
 		{\tt i\_wb\_data} & {\tt DAT\_I} \\
 		{\tt i\_wb\_sel} & {\tt SEL\_I} \\
 		{\tt o\_wb\_ack} & {\tt ACK\_O} \\

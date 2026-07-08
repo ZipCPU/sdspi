@@ -51,7 +51,7 @@ typedef	struct SDIO_S {
 	// 64b architectures
 	volatile void		*sd_dma_addr;
 #else
-	// 32b architectures, or default if not __SIZEOF_POINTER__ is undefined
+	// 32b architectures, or default if __SIZEOF__POINTER__ is undefined
   #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 	// Little-Endian
 	volatile void		*sd_dma_addr;
@@ -63,6 +63,7 @@ typedef	struct SDIO_S {
   #endif
 #endif
 	volatile uint32_t	sd_dma_length;
+	volatile uint32_t	sd_trim, sd_rxtrim;
 } SDIO;
 
 struct	SDIODRV_S;

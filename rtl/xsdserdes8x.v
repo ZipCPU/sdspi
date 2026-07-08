@@ -48,7 +48,8 @@
 // }}}
 module	xsdserdes8x #(
 		// Verilator lint_off UNUSED
-		parameter [0:0]		OPT_BIDIR = 1'b1
+		parameter [0:0]		OPT_BIDIR = 1'b1,
+		parameter [0:0]		OPT_TRIM = 1'b1
 		// Verilator lint_on  UNUSED
 	) (
 		// {{{
@@ -175,7 +176,9 @@ module	xsdserdes8x #(
 			// {{{
 			.BITSLIP(1'b0), .CE1(1'b1), // .CE2(),
 			.CLK(i_hsclk), .CLKB(!i_hsclk), .CLKDIV(i_clk), .CLKDIVP(1'b0),
-			.D(w_in), .DYNCLKDIVSEL(1'b0), .DYNCLKSEL(1'b0), // .DDLY()
+			.D(OPT_TRIM ? 1'b0 : w_in),
+			.DDLY(OPT_TRIM ? w_in : 1'b0),
+			.DYNCLKDIVSEL(1'b0), .DYNCLKSEL(1'b0),
 			.OCLK(1'b0), .OCLKB(1'b0), .O(o_raw), // .OFB(),
 			.Q1(o_wide[0]),	.Q2(o_wide[1]),
 			.Q3(o_wide[2]),	.Q4(o_wide[3]),

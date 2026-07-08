@@ -1689,6 +1689,11 @@ SDIODRV *sdio_init(SDIO *dev) {
 		return NULL;
 	}
 
+
+	if ((SDDEBUG && SDINFO)) {
+		txstr("SDIO INIT: Address = 0x"); txhex(dev); txstr("\r\n");
+	}
+
 	dv->d_dev = dev;
 	dv->d_RCA = 0;
 	dv->d_sector_count = 0;
@@ -1719,6 +1724,10 @@ SDIODRV *sdio_init(SDIO *dev) {
 
 		if (dv->d_dev->sd_cmd & SDIO_REMOVED)
 			dv->d_dev->sd_cmd = SDIO_NULLCMD | SDIO_REMOVED;
+	} else {
+		// No hard reset available.  Issue a soft reset
+		dv->d_dev->sd_cmd = SDIO_RESET;
+		dv->d_dev->sd_cmd = SDIO_REMOVED | SDIO_NULLCMD;
 	}
 
 	// If we were actually reset, the speed would've changed to the
@@ -1748,7 +1757,8 @@ SDIODRV *sdio_init(SDIO *dev) {
 			if (SDDEBUG && SDINFO)
 				txstr("OPT_RAW\n");
 			clk_phase = 16 << 16;
-		}
+		} if (SDDEBUG && SDINFO) {
+			txhex(clk_phase); txstr(" -- PHASE\n");	}
 		phy = (dv->d_dev->sd_phy & (~SDPHY_PHASEMSK)) | clk_phase;
 		dv->d_dev->sd_phy = phy;
 	}

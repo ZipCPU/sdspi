@@ -2015,7 +2015,7 @@ module	sdax_s2mm #(
 			SZ_32B:  assert(faxi_eob_addr[LCLMAXBURST_SUB+1:0] == 0
 					|| (faxi_eob_addr[LCLMAXBURST_SUB+1:2] + ((|faxi_eob_addr[1:0]) ? 1:0) == faxi_len+1));
 			SZ_BUS:  assert(faxi_eob_addr[LCLMAXBURST+AXILSB-1:0] == 0
-					|| (faxi_eob_addr[LCLMAXBURST+AXILSB-1:0]
+					|| (faxi_eob_addr[LCLMAXBURST+AXILSB-1:AXILSB]
 						+ ((|faxi_eob_addr[AXILSB-1:0]) ? 1:0) == faxi_len+1));
 			endcase
 		end else begin

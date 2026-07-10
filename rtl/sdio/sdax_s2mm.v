@@ -2970,18 +2970,35 @@ module	sdax_s2mm #(
 	// always @(*) assume(f_cfg_inc);
 	always @(*) assume(!cmd_abort);
 
+	////////////////////////////////////////////////////////////////////////
+	//
+	// SDDMA specific assumptions
+	// {{{
+	// These assumptions are made here to speed up the proof--not because
+	// the DMA requires them for accuracy.
 
+	// When accessing the bus, increment will *ALWAYS* be set.
 	always @(*)
 		assume(i_inc);
 	always @(*)
 	if (f_past_valid && o_busy)
 		assert(r_inc);
 
+	// Incoming stream data will either be from a 32b source (full bytes)
+	//   or a full bus size source.  We can simplify that here by
+	//   requiring all 32b alignment.
+	always @(*)
+	if (S_VALID)
+		assume(S_BYTES[1:0] == 2'b00);
+
+	// The size facing memory will *ALWAYS* be SZ_BUS when used w/in the
+	//   SDDMA
 	always @(*)
 		assume(i_size == SZ_BUS);
 	always @(*)
 	if (f_past_valid && o_busy)
 		assert(r_size == SZ_BUS);
+	// }}}
 	// }}}
 `endif
 // }}}

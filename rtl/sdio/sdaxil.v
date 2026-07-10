@@ -74,7 +74,9 @@ module	sdaxil #(
 		parameter [0:0]	OPT_DDR = 1'b0,
 		parameter [0:0]	OPT_EMMC = 1'b1,
 		parameter [0:0]	OPT_CARD_DETECT = !OPT_EMMC,
+`ifndef	FORMAL
 		parameter [0:0]	OPT_CRCTOKEN = 1'b1,
+`endif
 		localparam	LGFIFOW=LGFIFO-$clog2(MW/8),
 		parameter [0:0]	OPT_DMA = 1'b0,
 		parameter	DMA_AW = 30,
@@ -109,11 +111,13 @@ module	sdaxil #(
 		// BOOT parameters
 		parameter [0:0]	OPT_BOOTEN   = 1'b1,
 		parameter [3:0]	BOOT_MODE    = 4'b1010,
+`ifndef	FORMAL
 		parameter [0:0]	OPT_AUTOBOOT = OPT_BOOTEN,
 		parameter [0:0]	BOOT_TOKEN   = 1'b1,
 		parameter [DMA_AW-1:0] BOOT_ADDR = 0,
 		parameter [31:0] BOOT_BLOCKS = 32'd256,	// == 128kB
 		parameter [7:0] BOOT_SPEED = 8'd4,
+`endif
 		//
 		parameter [0:0]	OPT_LOWPOWER = 1'b0
 		// }}}

@@ -155,7 +155,7 @@ module	sdcmd #(
 	reg	[LGTIMEOUT-1:0]	rx_timeout_counter;
 
 	reg	[6:0]	crc_fill;
-	reg		r_busy, new_data;
+	reg		r_busy, new_data, dbl_data;
 
 	reg			r_delay;
 	reg	[LGDLY-1:0]	r_dly_count;
@@ -297,11 +297,17 @@ module	sdcmd #(
 	// {{{
 	always @(posedge i_clk)
 	if (i_reset || !waiting_on_response || active)
+	begin
 		new_data <= 0;
-	else if (OPT_DS && cfg_ds)
+		dbl_data <= 0;
+	end else if (OPT_DS && cfg_ds)
+	begin
 		new_data <= S_ASYNC_VALID;
-	else
+		dbl_data <= 0;
+	end else begin
 		new_data <= |i_cmd_strb;
+		dbl_data <= (&i_cmd_strb) && resp_count[0] && resp_count < 135;
+	end
 	// }}}
 
 	// resp_count
@@ -389,22 +395,14 @@ module	sdcmd #(
 			rx_sreg <= { rx_sreg[37:0], S_ASYNC_DATA[1:0] };
 	end else if (cmd_type == R_R1 || cmd_type == R_R1b)
 	begin
-		if (resp_count < 47 && i_cmd_strb[1])
-		begin
-			if (i_cmd_strb[0])
-				rx_sreg <= { rx_sreg[37:0], i_cmd_data[1:0] };
-			else
-				rx_sreg <= { rx_sreg[38:0], i_cmd_data[1] };
-		end else if (resp_count < 48 && i_cmd_strb[1])
+		if (resp_count < 47 && i_cmd_strb == 2'b11)
+			rx_sreg <= { rx_sreg[37:0], i_cmd_data[1:0] };
+		else if (resp_count < 48 && i_cmd_strb[1])
 			rx_sreg <= { rx_sreg[38:0], i_cmd_data[1] };
 	end else begin
-		if (resp_count < 135 && i_cmd_strb[1])
-		begin
-			if (i_cmd_strb[0])
-				rx_sreg <= { rx_sreg[37:0], i_cmd_data[1:0] };
-			else
-				rx_sreg <= { rx_sreg[38:0], i_cmd_data[1] };
-		end else if (resp_count < 136 && i_cmd_strb[1])
+		if (resp_count < 135 && i_cmd_strb == 2'b11)
+			rx_sreg <= { rx_sreg[37:0], i_cmd_data[1:0] };
+		else if (resp_count < 136 && i_cmd_strb[1])
 			rx_sreg <= { rx_sreg[38:0], i_cmd_data[1] };
 	end
 	// }}}
@@ -438,6 +436,8 @@ module	sdcmd #(
 		o_resp <= 6'b0;
 	else if (resp_count == 8)
 		o_resp <= rx_sreg[5:0];
+	else if (resp_count == 9)
+		o_resp <= rx_sreg[6:1];
 
 	initial	o_arg = 32'h0;
 	always @(posedge i_clk)
@@ -466,7 +466,8 @@ module	sdcmd #(
 		o_mem_valid <= 1'b0;
 	else
 		o_mem_valid <= !o_mem_valid && new_data
-			&& (resp_count[4:0] == 8 && resp_count[7:5] != 0);
+			&& (resp_count[4:0] == { 4'h4, dbl_data})
+			&& resp_count[7:5] != 0;
 	// }}}
 
 	// o_mem_strb
@@ -503,8 +504,13 @@ module	sdcmd #(
 	// o_mem_data
 	// {{{
 	always @(posedge i_clk)
-	if (resp_count[4:0] == 8 && resp_count[7:5] != 0)
-		o_mem_data <= {(MW/32){rx_sreg[31:0]}};
+	if (resp_count[4:0] == { 4'h4, dbl_data } && resp_count[7:5] != 0)
+	begin
+		if (dbl_data)
+			o_mem_data <= {(MW/32){rx_sreg[32:1]}};
+		else
+			o_mem_data <= {(MW/32){rx_sreg[31:0]}};
+	end
 	// }}}
 
 	// Frame error detection
@@ -516,6 +522,8 @@ module	sdcmd #(
 	else if (lcl_accept)
 		r_frame_err <= 1'b0;
 	else if (resp_count == 2 && rx_sreg[1:0] != 2'b00)
+		r_frame_err <= 1'b1;
+	else if (resp_count == 3 && rx_sreg[2:1] != 2'b00)
 		r_frame_err <= 1'b1;
 
 	assign	frame_err = r_frame_err || (waiting_on_response
@@ -907,7 +915,8 @@ module	sdcmd #(
 ////////////////////////////////////////////////////////////////////////////////
 `ifdef	FORMAL
 	(* anyconst *) reg f_nvr_request, f_nvr_collision;
-	reg		f_past_valid, f_busy, f_cfg_pp, past_boot, past_done;
+	reg		f_past_valid, f_busy, f_cfg_pp, past_boot, past_done,
+			f_past_doublet, f_resp_dbl;
 	reg	[7:0]	f_last_resp_count;
 	reg	[47:0]	f_tx_reg, f_tx_now;
 	wire	[5:0]	f_txshift;
@@ -931,6 +940,12 @@ module	sdcmd #(
 	always @(*)
 	if (!OPT_EMMC || f_nvr_collision)
 		assume(!i_cmd_collision);
+
+	always @(posedge i_clk)
+	if (i_reset || o_cmd_en || !r_busy)
+		f_past_doublet <= 0;
+	else
+		f_past_doublet <= (&i_cmd_strb);
 
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -1089,6 +1104,8 @@ module	sdcmd #(
 	// }}}
 	always @(posedge i_clk)
 		f_last_resp_count <= resp_count;
+	always @(posedge i_clk)
+		f_resp_dbl <= dbl_data;
 
 	always @(*)
 	if (!i_reset && r_busy)
@@ -1099,7 +1116,7 @@ module	sdcmd #(
 		assert(!resp_count[0]);
 
 	always @(*)
-	if (!i_reset && (!cfg_dbl || resp_count[0]))
+	if (!i_reset && !cfg_dbl)
 		assume(i_cmd_strb != 2'b11);
 
 	always @(posedge i_clk)
@@ -1133,7 +1150,8 @@ module	sdcmd #(
 			assert(mem_addr == 4);
 		end else if (waiting_on_response && !rx_timeout)
 		begin
-			assert(mem_addr + o_mem_valid == ((f_last_resp_count-8)>>5));
+			// f_past_doublet <= (&i_cmd_strb);
+			assert(mem_addr + o_mem_valid == ((f_last_resp_count-f_resp_dbl-8)>>5));
 		end
 
 		if (cmd_type == R_NONE && waiting_on_response)

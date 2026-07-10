@@ -55,6 +55,7 @@ module	mdl_sdio #(
 
 	// Local declarations
 	// {{{
+	localparam realtime	tODLY = 1.5;	// ns
 	// Maximum allowable busy time is 250ms.
 	// localparam realtime	WRITE_TIME = 250_000_000.0;
 	// A 250ms timeout is unreasonable for simulations, however, so we'll
@@ -119,8 +120,9 @@ module	mdl_sdio #(
 	// Command wire handler
 	// {{{
 
-	mdl_sdcmd
-	tb_sdcmd (
+	mdl_sdcmd #(
+		.tODLY(tODLY)
+	) tb_sdcmd (
 		// {{{
 		.rst_n(1'b1),		// Not used in SDIO mode
 		.sd_clk(sd_clk), .sd_cmd(sd_cmd),
@@ -162,8 +164,9 @@ module	mdl_sdio #(
 	// {{{
 	reg	r_crcack, r_crcnak;
 
-	mdl_sdtx
-	tb_sdtx (
+	mdl_sdtx #(
+		.tODLY(tODLY)
+	) tb_sdtx (
 		// {{{
 		.rst_n(1'b1),		// Not used in SDIO mode
 		.sd_clk(sd_clk), .sd_dat({ ign_dat, sd_dat }),

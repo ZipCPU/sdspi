@@ -463,12 +463,15 @@ module	sdrxframe #(
 				load_crc   <= 1'b0;
 			end else if (i_cfg_ddr)
 			begin
-				data_phase <= (rail_count > 16*2+2);
-				load_crc   <= (rail_count <= 16*2+2)&&(rail_count > 2) && i_crc_en;
+				data_phase <= (rail_count  > 16*2+2);
+				load_crc   <= (rail_count <= 16*2+2);
 			end else begin
-				data_phase <= (rail_count > 18);
-				load_crc   <= (rail_count <= 18)&&(rail_count > 2) && i_crc_en;
+				data_phase <= (rail_count  > 18);
+				load_crc   <= (rail_count <= 18);
 			end
+
+			if (!i_crc_en || (rail_count <= 2))
+				load_crc <= 1'b0;
 
 			last_strb  <= (rail_count == 3);
 			if (rail_count < 2)
@@ -1877,7 +1880,7 @@ cover(fc_posn == 0 && fc_data == 8'h7e);
 			// 4'b0101: cover(1);
 			// 4'b0110: cover(1);
 			4'b1110: begin
-				cover(!i_crc_en);		// !!!
+				cover(!i_crc_en);
 				cover(o_err);
 				cover(i_crc_en && !o_err);
 				end

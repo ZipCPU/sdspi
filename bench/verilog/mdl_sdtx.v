@@ -38,7 +38,7 @@
 `timescale 1ns/1ps
 // }}}
 module mdl_sdtx #(
-		parameter realtime FF_HOLD  = 1.25
+		parameter realtime tODLY  = 1.25
 	) (
 		// {{{
 		input	wire		rst_n,
@@ -70,6 +70,7 @@ module mdl_sdtx #(
 	reg	[31:0]	ddr_idata;
 	reg	[15:0]	crc	[15:0];
 	reg	[79:0]	tx_sreg;
+	reg	[7:0]	tx_out;
 	reg	[5:0]	r_count;
 	reg		r_crc, r_active, ds;
 	reg		r_ready, r_token, r_ddr_started, pedge_token, pedge_active;
@@ -120,7 +121,7 @@ module mdl_sdtx #(
 				i_data[ 8], i_data[ 0] };
 	// }}}
 
-	// tx_sreg, r_count, r_crc r_active: positive edge of the clock
+	// tx_sreg, tx_out, r_count, r_crc r_active: positive edge of the clock
 	// {{{
 	// Setup for the positive clock edge
 	initial	r_active = 1'b0;
@@ -142,14 +143,21 @@ module mdl_sdtx #(
 		r_active <= 0;
 
 		if (r_count > 1)
-			ds <= #FF_HOLD 1'b1;
+			ds <= #tODLY 1'b1;
 
 		if (i_width[0]) // 4b
-			tx_sreg <= #FF_HOLD { tx_sreg[75:0], 4'hf };
-		else if (i_width[1]) // 8b
-			tx_sreg <= #FF_HOLD { tx_sreg[71:0], 8'hff };
-		else
-			tx_sreg <= #FF_HOLD { tx_sreg[78:0], 1'b1 };
+		begin
+			tx_sreg <= { tx_sreg[75:0], 4'hf };
+			tx_out  <= #tODLY { 4'hf, tx_sreg[75:72] };
+		end else if (i_width[1]) // 8b
+		begin
+			tx_sreg <= { tx_sreg[71:0], 8'hff };
+			tx_out  <= #tODLY tx_sreg[71:64];
+		end else
+		begin
+			tx_sreg <= { tx_sreg[78:0], 1'b1 };
+			tx_out  <= #tODLY { 7'h7f, tx_sreg[78] };
+		end
 		// }}}
 	end else if (i_crcack || i_crcnak)
 	begin // Receive a request to send a token
@@ -162,63 +170,75 @@ module mdl_sdtx #(
 		// BOOT to wait until the token has been received and processed
 		r_count  <= i_ddr ? (6'd10 + 6'd4) : (6'd5 + 6'd2);
 
-		ds <= #FF_HOLD 1'b1;
+		ds <= #tODLY 1'b1;
 
 		if (i_width[0]) // 4b
 		begin
 			// {{{
 			if (i_ddr)
-				tx_sreg  <= #FF_HOLD { 8'hee,
+			begin
+				tx_sreg  <= { 8'hee,
 					(i_crcnak) ? 4'hf : 4'he, 4'hx,
 					(i_crcnak) ? 4'he : 4'hf, 4'hx,
 					(i_crcnak) ? 4'hf : 4'he, 4'hx,
 					4'hf, 4'hx, 40'hff_ffff_ffff };
-			else
-				tx_sreg  <= #FF_HOLD { 4'he,
+				tx_out <= #tODLY { 4'hf, 4'he };
+			end else begin
+				tx_sreg  <= { 4'he,
 					(i_crcnak) ? 4'hf : 4'he,
 					(i_crcnak) ? 4'he : 4'hf,
 					(i_crcnak) ? 4'hf : 4'he,
 					4'hf, {(60){1'b1}} };
+			end
+
+			tx_out <= #tODLY { 4'hf, 4'he };
 			// }}}
 		end else if (i_width[1]) // 8b
 		begin
 			// {{{
 			if (i_ddr)
-				tx_sreg  <= #FF_HOLD { 16'hfefe,
+			begin
+				tx_sreg  <= { 16'hfefe,
 					(i_crcnak) ? 8'hff : 8'hfe, 8'hx,
 					(i_crcnak) ? 8'hfe : 8'hff, 8'hx,
 					(i_crcnak) ? 8'hff : 8'hfe, 8'hx,
 					8'hff, 8'hx };
-			else
-				tx_sreg  <= #FF_HOLD { 8'hfe,
+			end else begin
+				tx_sreg  <= { 8'hfe,
 					(i_crcnak) ? 8'hff : 8'hfe,
 					(i_crcnak) ? 8'hfe : 8'hff,
 					(i_crcnak) ? 8'hff : 8'hfe,
 					8'hff, {(40){1'b1}} };
+			end
+
+			tx_out <= #tODLY { 8'hfe };
 			// }}}
 		end else if (i_ddr)
 		begin // 1b DDR
 			// {{{
-			tx_sreg  <= #FF_HOLD { 2'h0,
+			tx_sreg  <= { 2'h0,
 					(i_crcnak) ? 1'b1 : 1'b0, 1'hx,
 					(i_crcnak) ? 1'b0 : 1'b1, 1'hx,
 					(i_crcnak) ? 1'b1 : 1'b0, 1'hx,
 					1'b1, 1'hx, {(70){1'b1}} };
+			tx_out <= #tODLY { 7'h7f, 1'b0 };
 			// }}}
 		end else begin // 1b SDR
 			// {{{
-			tx_sreg  <= #FF_HOLD { 1'h0,
+			tx_sreg  <= { 1'h0,
 					(i_crcnak) ? 1'b1 : 1'b0,
 					(i_crcnak) ? 1'b0 : 1'b1,
 					(i_crcnak) ? 1'b1 : 1'b0,
 					1'b1, {(75){1'b1}} };
+			tx_out <= #tODLY { 7'h7f, 1'b0 };
 			// }}}
 		end
 		// }}}
 	end else if (!i_en)
 	begin
 		// {{{
-		tx_sreg <= #FF_HOLD {(80){1'b1}};
+		tx_sreg <= {(80){1'b1}};
+		tx_out  <= #tODLY 8'hff;
 		r_count <= 0;
 		r_crc   <= 0;
 		ds      <= 0;
@@ -228,7 +248,7 @@ module mdl_sdtx #(
 	end else if (i_valid && o_ready)
 	begin // New data
 		// {{{
-		ds <= #FF_HOLD 1'b1;
+		ds <= #tODLY 1'b1;
 
 		if (!r_active)
 		begin // New data, plus a start bit
@@ -236,27 +256,36 @@ module mdl_sdtx #(
 			if (i_width[0])
 			begin // 4b width
 				if (i_ddr)
-					tx_sreg  <= #FF_HOLD { 4'b0, 4'bx, ddr_idata, 8'hff, 32'hffff_ffff };
+					tx_sreg  <= { 4'b0, 4'bx, ddr_idata, 8'hff, 32'hffff_ffff };
 				else
-					tx_sreg  <= #FF_HOLD { 4'b0, i_data, 12'hfff, 32'hffff_ffff };
+					tx_sreg  <= { 4'b0, i_data, 12'hfff, 32'hffff_ffff };
+				tx_out <= #tODLY { 4'hf, 4'h0 };
 				r_count  <= 9 + (i_ddr ? 1:0);
 			end else if (i_width[1])
 			begin // 8b width
 				if (i_ddr)
-					tx_sreg  <= #FF_HOLD { 8'b0, 8'bx, ddr_idata, 32'hffff_ffff };
+					tx_sreg  <= { 8'b0, 8'bx, ddr_idata, 32'hffff_ffff };
 				else
-					tx_sreg  <= #FF_HOLD { 8'b0, i_data, 8'hff, 32'hffff_ffff };
+					tx_sreg  <= { 8'b0, i_data, 8'hff, 32'hffff_ffff };
+				tx_out <= #tODLY 8'h00;
 				r_count  <= 5 + (i_ddr ? 1:0);
 			end else begin // 1b width
 				if (i_ddr)
-					tx_sreg  <= #FF_HOLD { 1'b0, 1'bx, ddr_idata, 6'h3f, 8'hff, 32'hffff_ffff };
+					tx_sreg  <= { 1'b0, 1'bx, ddr_idata, 6'h3f, 8'hff, 32'hffff_ffff };
 				else
-					tx_sreg  <= #FF_HOLD { 1'b0, i_data, 7'h7f, 8'hff, 32'hffff_ffff };
+					tx_sreg  <= { 1'b0, i_data, 7'h7f, 8'hff, 32'hffff_ffff };
+				tx_out <= #tODLY { 7'h7f, 1'b0 };
 				r_count  <= 33 + (i_ddr ? 1:0);
 			end
 			// }}}
 		end else begin
-			tx_sreg  <= #FF_HOLD { ddr_idata, 16'hffff, 32'hffff_ffff };
+			tx_sreg  <= { ddr_idata, 16'hffff, 32'hffff_ffff };
+			if (i_width[0])
+				tx_out <= #tODLY { 4'hf, ddr_idata[31:28] };
+			else if (i_width[1])
+				tx_out <= #tODLY ddr_idata[31:24];
+			else // if (i_width == 2'b00)
+				tx_out <= { 7'h7f, ddr_idata[31] };
 			r_count  <= (i_width[0]) ? 8 : (i_width[1]) ? 4 : 32;
 		end
 		r_active <= 1'b1;
@@ -264,30 +293,45 @@ module mdl_sdtx #(
 		// }}}
 	end else if (r_active)
 	begin
-		ds <= #FF_HOLD 1'b1;
+		ds <= #tODLY 1'b1;
 
 		r_count <= r_count - 1;
 		if (i_width[0])
-			tx_sreg <= #FF_HOLD { tx_sreg[75:0], 4'hf };
-		else if (i_width[1])
-			tx_sreg <= #FF_HOLD { tx_sreg[71:0], 8'hff };
-		else
-			tx_sreg <= #FF_HOLD { tx_sreg[78:0], 1'b1 };
+		begin
+			tx_sreg <= { tx_sreg[75:0], 4'hf };
+			tx_out  <= #tODLY { 4'hf, tx_sreg[75:72] };
+		end else if (i_width[1])
+		begin
+			tx_sreg <= { tx_sreg[71:0], 8'hff };
+			tx_out  <= #tODLY tx_sreg[71:64];
+		end else begin
+			tx_sreg <= { tx_sreg[78:0], 1'b1 };
+			tx_out  <= #tODLY { 7'h7f, tx_sreg[78] };
+		end
 
 		if (r_crc || (!r_crc && r_count <= 1))
 		begin
 			if (i_width[0])
-				tx_sreg <= #FF_HOLD { crc[3][15],
+			begin
+				tx_sreg <= { crc[3][15],
 					crc[2][15], crc[1][15], crc[0][15],
 					44'hfff_ffff_ffff, 32'hffff_ffff };
-			else if (i_width[1])
-				tx_sreg <= #FF_HOLD {
+				tx_out <= #tODLY { crc[3][15],
+					crc[2][15], crc[1][15], crc[0][15] };
+			end else if (i_width[1])
+			begin
+				tx_sreg <= {
 				crc[7][15], crc[6][15], crc[5][15], crc[4][15],
 				crc[3][15], crc[2][15], crc[1][15], crc[0][15],
 					40'hff_ffff_ffff, 32'hffff_ffff };
-			else
-				tx_sreg <= #FF_HOLD { crc[0][15], 7'h7f,
+				tx_out <= #tODLY {
+				crc[7][15], crc[6][15], crc[5][15], crc[4][15],
+				crc[3][15], crc[2][15], crc[1][15], crc[0][15]};
+			end else begin
+				tx_sreg <= { crc[0][15], 7'h7f,
 					40'hff_ffff_ffff, 32'hffff_ffff };
+				tx_out <= #tODLY { 7'h7f, crc[0][15] };
+			end
 		end
 
 		if (r_count <= 1)
@@ -297,7 +341,7 @@ module mdl_sdtx #(
 				r_crc <= 1'b1;
 				r_count <= 16 + (i_ddr ? 16:0);
 			end else
-				r_active <= #FF_HOLD 1'b0;
+				r_active <= #tODLY 1'b0;
 		end
 	end
 	// }}}
@@ -306,7 +350,7 @@ module mdl_sdtx #(
 	// {{{
 	always @(posedge sd_clk)
 	if (rst_n)
-		ds <= #FF_HOLD 1'b0;
+		ds <= #tODLY 1'b0;
 
 	always @(posedge sd_clk or negedge rst_n)
 	if (!rst_n)
@@ -328,29 +372,46 @@ module mdl_sdtx #(
 	begin
 	end else if (i_ddr && ((r_active && (r_ddr_started || w_dat[0] === 1'b0)) || r_token))
 	begin
-		r_count <= #FF_HOLD r_count - 1;
-		if (i_width[0])
-			tx_sreg <= #FF_HOLD { tx_sreg[75:0], 4'hf };
-		else if (i_width[1])
-			tx_sreg <= #FF_HOLD { tx_sreg[71:0], 8'hff };
-		else
-			tx_sreg <= #FF_HOLD { tx_sreg[78:0], 1'b1 };
+		r_count <= r_count - 1;
+		if (i_width[0])			// 4b
+		begin
+			tx_sreg <= { tx_sreg[75:0], 4'hf };
+			tx_out  <= #tODLY { 4'hf, tx_sreg[75:72] };
+		end else if (i_width[1])	// 8b
+		begin
+			tx_sreg <= { tx_sreg[71:0], 8'hff };
+			tx_out  <= #tODLY tx_sreg[71:64];
+		end else begin
+			tx_sreg <= { tx_sreg[78:0], 1'b1 };
+			tx_out  <= #tODLY { 7'h7f, tx_sreg[78] };
+		end
 
 		if (r_crc)
 		begin // Insert the CRC
 			// {{{
 			if (i_width[0])
-				tx_sreg <= #FF_HOLD { crc[11][15],
+			begin
+				tx_sreg <= { crc[11][15],
 					crc[10][15], crc[9][15], crc[8][15],
 					44'hfff_ffff_ffff, 32'hffff_ffff };
+				tx_out <= #tODLY { 4'hf, crc[11][15],
+					crc[10][15], crc[9][15], crc[8][15] };
+			end
 			else if (i_width[1])
-				tx_sreg <= #FF_HOLD {
+			begin
+				tx_sreg <= {
 				crc[15][15],crc[14][15],crc[13][15],crc[12][15],
 				crc[11][15],crc[10][15],crc[ 9][15],crc[ 8][15],
 					40'hff_ffff_ffff, 32'hffff_ffff };
-			else
-				tx_sreg <= #FF_HOLD { crc[8][15], 7'h7f,
+				tx_out <= #tODLY {
+				crc[15][15],crc[14][15],crc[13][15],crc[12][15],
+				crc[11][15],crc[10][15],crc[ 9][15],crc[ 8][15]
+					};
+			end else begin
+				tx_sreg <= { crc[8][15], 7'h7f,
 					40'hff_ffff_ffff, 32'hffff_ffff };
+				tx_out  <= #tODLY { 7'h7f, crc[8][15] };
+			end
 			// }}}
 		end
 
@@ -360,24 +421,26 @@ module mdl_sdtx #(
 			if (r_token)
 			begin
 				if (r_count > 1)
-					r_token <= #FF_HOLD 1'b0;
+					r_token <= #tODLY 1'b0;
 			end else if (!r_crc)
 			begin
-				r_crc <= #FF_HOLD 1'b1;
-				r_count <= #FF_HOLD 32;
+				r_crc <= #tODLY 1'b1;
+				r_count <= #tODLY 32;
 			end else
-				r_active <= #FF_HOLD 0;
+				r_active <= #tODLY 0;
 			// }}}
 		end
 	end
 	// }}}
 
-	assign	w_dat[0] = (i_width[0]) ? tx_sreg[76]
-			: (i_width[1]) ? tx_sreg[72] : tx_sreg[79];
+	assign	w_dat[0] = tx_out[0];
+		// (i_width[0]) ? tx_out[76]
+		//	: (i_width[1]) ? tx_out[72] : tx_out[79];
 
-	assign	w_dat[3:1] = i_width[0] ? tx_sreg[79:77]
-						: tx_sreg[75:73];
-	assign	w_dat[7:4] = tx_sreg[79:76];
+	assign	w_dat[3:1] = tx_out[3:1];
+			// i_width[0] ? tx_sreg[79:77] : tx_sreg[75:73];
+	assign	w_dat[7:4] = tx_out[7:4];
+			// tx_sreg[79:76];
 
 	assign	w_drive = r_active || r_token;
 	assign	sd_dat[0] = (!w_drive || (!i_ppull && w_dat[0])) ? 1'bz : w_dat[0];

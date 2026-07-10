@@ -40,7 +40,7 @@
 `timescale 1ns/1ps
 // }}}
 module	mdl_sdcmd #(
-		parameter realtime FF_HOLD = 1.2
+		parameter realtime tODLY = 1.2
 	) (
 		// {{{
 		input	wire		rst_n,
@@ -218,10 +218,10 @@ module	mdl_sdcmd #(
 	if (!rst_n)
 		ds <= 1'b0;
 	else if (r_outgoing || (i_valid && !o_busy))
-		ds <= #FF_HOLD 1'b1;
+		ds <= #tODLY 1'b1;
 
 	always @(posedge sd_clk)
-		ds <= #FF_HOLD 1'b0;
+		ds <= #tODLY 1'b0;
 
 	assign	sd_ds = ds;
 	// }}}
@@ -233,8 +233,8 @@ module	mdl_sdcmd #(
 		r_cmd    <= 1'b1;
 	end else if (r_outgoing)
 	begin
-		r_cmd    <= #FF_HOLD oreg[135];
-		r_active <= #FF_HOLD 1'b1;
+		r_cmd    <= #tODLY oreg[135];
+		r_active <= #tODLY 1'b1;
 	end else begin
 		r_active <= 1'b0;
 		r_cmd    <= 1'b1;

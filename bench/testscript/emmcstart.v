@@ -83,9 +83,9 @@ begin
 	end else if (2'b00 == read_data[17:16])
 	begin // DDR
 		sample_shift = { 11'h0, 5'h0c, 16'h0 };
-	end else begin
-		// SERDES
-		sample_shift = { 11'h0, 5'h0a, 16'h0 };
+	end else begin // SERDES
+		// sample_shift = { 11'h0, 5'h0a, 16'h0 };	// For 1.25 delay
+		sample_shift = { 11'h0, 5'h0c, 16'h0 };	// For 3.75 delay
 	end
 	// }}}
 

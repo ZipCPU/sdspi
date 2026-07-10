@@ -297,7 +297,7 @@ module mdl_sdtx #(
 				r_crc <= 1'b1;
 				r_count <= 16 + (i_ddr ? 16:0);
 			end else
-				r_active <= 0;
+				r_active <= #FF_HOLD 1'b0;
 		end
 	end
 	// }}}

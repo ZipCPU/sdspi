@@ -76,6 +76,12 @@ module	mdl_emmc #(
 
 	// Local declarations
 	// {{{
+	// tIO is the time between when the card/chip sees the clock edge, and
+	//   when it's data is first valid.  This is used by both mdl_sdcmd and
+	//   mdl_sdtx.  Given that mdl_sdtx references the outputs on the next
+	//   clock edge, this value *must* be less than 2.5ns (until we build
+	//   a more resilient mdl_sdtx ...).
+	parameter realtime	tIO = 1.25;	// ns
 	localparam	[3:0]	EMMC_IDLE		= 4'h0,
 				EMMC_READY		= 4'h1,
 				EMMC_IDENTIFICATION	= 4'h2,
@@ -260,8 +266,9 @@ $display("Randomize boot data");
 			sdcmd_reset_n = 1'b0;
 	end
 
-	mdl_sdcmd
-	tb_sdcmd (
+	mdl_sdcmd #(
+		.FF_HOLD(tIO)
+	) tb_sdcmd (
 		// {{{
 		.rst_n(sdcmd_reset_n),
 			.sd_clk(sd_clk), .sd_cmd(sd_cmd),
@@ -304,8 +311,9 @@ $display("Randomize boot data");
 	reg	r_crcack, r_crcnak;
 	reg	pending_ack, pending_nak;
 
-	mdl_sdtx
-	tb_sdtx (
+	mdl_sdtx #(
+		.FF_HOLD(tIO)
+	) tb_sdtx (
 		// {{{
 		.rst_n(rst_n && (!boot_mode || alt_boot_mode || sd_cmd === 1'b0)),
 			.sd_clk(sd_clk), .sd_dat( sd_dat ), .sd_ds(tx_ds),

@@ -229,6 +229,7 @@ static	const	uint32_t
 		SECTOR_MASK  = 0x0f000000,
 		//
 		SDIO_CMD     = 0x00000040,
+		SDIO_NULLCMD = 0x00000080,
 		SDIO_READREG  = SDIO_CMD | SDIO_R1 | SDIO_ERR,
 		SDIO_READREGb = SDIO_CMD | SDIO_R1b,
 		SDIO_READR2  = (SDIO_CMD | SDIO_R2),
@@ -255,6 +256,7 @@ static	unsigned	EXCSD_HS_TIMING      = 185,
 
 static	void	emmc_wait_while_busy(EMMCDRV *dev);
 static	void	emmc_go_idle(EMMCDRV *dev);
+static	void	emmc_clear_fifo(EMMCDRV *dev, unsigned fifo);
 static	void	emmc_all_send_cid(EMMCDRV *dev);
 static	uint32_t emmc_send_rca(EMMCDRV *dev);
 static	void	emmc_select_card(EMMCDRV *dev);	// CMD7
@@ -348,6 +350,30 @@ void	emmc_go_idle(EMMCDRV *dev) {			// CMD0
 		txstr("  Cmd:     "); txhex(c); txstr("\n");
 		txstr("  Data:    "); txhex(r); txstr("\n");
 	}
+}
+// }}}
+
+void	emmc_clear_fifo(EMMCDRV *dev, unsigned fifo) {	// No CMD
+	// {{{
+	unsigned	phy, lglen;
+
+	// Get the FIFO length
+	phy = dev->d_dev->sd_phy;
+	lglen = (phy >> 28);
+
+	// Reset the FIFO pointer
+	dev->d_dev->sd_cmd = SDIO_NULLCMD;
+
+	// Now actually clear it
+	if (fifo) {
+		for(int k=0; k< (1<<lglen); k++)
+			dev->d_dev->sd_fifb = 0;
+	} else
+		for(int k=0; k< (1<<lglen); k++)
+			dev->d_dev->sd_fifa = 0;
+
+	// We could reset the FIFO pointer now that we're done, but ... it
+	// should just wrap around the end, so no reset should be necessary.
 }
 // }}}
 
@@ -1271,7 +1297,7 @@ int	emmc_write_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 24
 	if (err) {
 		TRIGGER_SCOPE;
 		if (EMMCDEBUG)
-			txstr("EMMC-READ -> ERR\n");
+			txstr("EMMC-WRITE -> ERR\n");
 		return RES_ERROR;
 	} return RES_OK;
 }
@@ -1344,7 +1370,7 @@ int	emmc_read_block(EMMCDRV *dev, uint32_t sector, uint32_t *buf){// CMD 17
 		TRIGGER_SCOPE;
 		err = 1;
 		if (EMMCDEBUG) {
-			txstr("\tEMMC-READ -> ERR: ");
+			txstr("\tEMMC-READBK -> ERR: ");
 			txhex(dev_stat);
 			txstr(":");
 			txhex(card_stat);
@@ -1813,6 +1839,7 @@ void	emmc_hsddr(EMMCDRV *dev) {
 // }}}
 
 unsigned const	emmc_pattern8b[] = {
+	// {{{
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 		0xff00ffff, 0x0000ffff, 0xccccffff, 0xcccc33cc,
 		0xcc3333cc, 0xffffcccc, 0xffffeeff, 0xffeeeeff,
@@ -1833,28 +1860,31 @@ unsigned const	emmc_pattern8b[] = {
 		0xbbbbffff, 0xff77ffff, 0xff7777ff, 0x77bbddee
 #endif
 	};
+// }}}
 
 /*
 unsigned const	emmc_pattern4b[] = {
+	// {{{
 		// This pattern has been neither verified nor tested,
 		// so it may or may not work ...
 #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+		0x00ff0fff, 0xccc3ccff, 0xffcc3cc3, 0xeffefffe,
+		0xddffdfff, 0xfbfffbff, 0xff7fffbf, 0xefbdf777,
+		0xf0fff0ff, 0x3cccfc0f, 0xcfcc33cc, 0xeeffefff,
+		0xfdfffdff, 0xffbfffdf, 0xfff7ffbb, 0xde7b7ff7
 #else
-		0xf0ff, 0x00ff, 0xccff, 0xcc3c,
-		0xc33c, 0xffcc, 0xffef, 0xfeef,
-		0xfdff, 0xddff, 0xbfff, 0xbfff,
-		0xfffb, 0xfff7, 0x7f77, 0xfedb,
-		0x0fff, 0x0fff, 0xcff0, 0xc3cc,
-		0x33cc, 0xfccc, 0xfeff, 0xeeff,
-		0xdfff, 0xdfff, 0xfffd, 0xfffb,
-		0xffbb, 0xff7f, 0xf77f, 0xedb7
+		0xff0fff00, 0xffccc3cc, 0xc33cccff, 0xfefffeef,
+		0xffdfffdd, 0xfffbfffb, 0xbfff7fff, 0x77f7bdef,
+		0xfff0fff0, 0x0ffccc3c, 0xcc33cccf, 0xffefffee,
+		0xfffdfffd, 0xdfffbfff, 0xbbfff7ff, 0xf77f7bde
 #endif
 	};
+	// }}}
 */
 
 void	emmc_tuning(EMMCDRV *dev) {	// CMD21
 	// {{{
-	int	first, lastv, bestph;
+	int	first, lastv, bestph, bestw;
 	unsigned	c, d, phy;
 
 	if (EMMCDEBUG) txstr("EMMC-SEND-TUNING(BLK)\n");
@@ -1871,8 +1901,14 @@ void	emmc_tuning(EMMCDRV *dev) {	// CMD21
 
 	// Now loop over blocks ...
 	bestph = (phy >> 16) & 0x01f; first = -2; lastv = 0;
+	bestw  = 0;
 	for(unsigned phase = 0; phase < 24; phase++) {
 		unsigned	match;
+
+		// Clear the FIFO, to make *sure* we get a valid response
+		// {{{
+		emmc_clear_fifo(dev, 0);
+		// }}}
 
 		// Set the test phase
 		// {{{
@@ -1881,10 +1917,13 @@ void	emmc_tuning(EMMCDRV *dev) {	// CMD21
 		dev->d_dev->sd_phy = phy;
 		// }}}
 
-		// txstr("Testing phase: 0x"); txhex(phy); txstr("\n");
+		// txstr("Testing phase: 0x"); txhex(phy); txstr(" -| 0x");
+		//	txhex(dev->d_dev->sd_phy); txstr("\n");
 
 		// Send the CMD21 and wait for a response
 		// {{{
+		// txstr("   PRE-CMD:    0x"); txhex(dev->d_dev->sd_cmd);
+		//					txstr("\n");
 		dev->d_dev->sd_data = 0;
 		dev->d_dev->sd_cmd  =(SDIO_CMD | SDIO_R1b | SDIO_MEM | SDIO_ERR)
 				+ 21;
@@ -1895,10 +1934,13 @@ void	emmc_tuning(EMMCDRV *dev) {	// CMD21
 		// Check for errors
 		// {{{
 		c = dev->d_dev->sd_cmd;
-		// txstr("   CMD-Return: 0x"); txhex(c); txstr("\n");
-		if (c & SDIO_ERR) {
-			if (lastv)
-				bestph = (phase - first)/2;
+		// txstr("   "); tx8h(phase);
+		// txstr(" -- CMD-Return: 0x"); txhex(c); txstr("\n");
+		if ((c & SDIO_ERR) || (21 != (c & 0x0ff))) {
+			if ((lastv)&& (phase - first > bestw)) {
+					bestph = first + ((phase - first)/2);
+					bestw = phase - first;
+			}
 			lastv = 0;
 			continue;
 		}
@@ -1914,11 +1956,11 @@ void	emmc_tuning(EMMCDRV *dev) {	// CMD21
 			m = dev->d_dev->sd_fifa;
 
 			// if (EMMCINFO && EMMCDEBUG)
-			// printf("CHK(%2d,%2d): %08x ?= %08x\n",
-			//	phase, k, p, m);
+			//	printf("CHK(%2d,%2d): %08x ?= %08x\n",
+			//		phase, k, p, m);
 			if (p != m) {
-				// if (EMMCINFO && EMMCDEBUG)
-				//	txstr(" -- FAIL\n");
+				if (EMMCINFO && EMMCDEBUG)
+				txstr(" -- FAIL\n");
 				match = 0;
 				break;
 			}
@@ -1926,26 +1968,34 @@ void	emmc_tuning(EMMCDRV *dev) {	// CMD21
 
 		if (match && !lastv)
 			first = phase;
-		else if (!match && lastv)
-			bestph = (phase - first)/2;
+		else if ((!match && lastv) && (phase - first > bestw)) {
+			bestph = first + ((phase - first)/2);
+			bestw = phase - first;
+		}
 
 		lastv = match;
 		// }}}
 	}
 
+	// See if we ended on a valid phase we might use
+	// {{{
+	if (lastv && 24-first > bestw) {
+		bestph = first + ((24 - first)/2);
+		// bestw = phase - first;
+	}
+	// }}}
+
 	// Set for the best phase match
 	// {{{
-	if (0 != (0x1f & (bestph ^ (phy >> 16)))) {
-		if (EMMCDEBUG && EMMCINFO) {
-			txstr("  Chosen tuning: ");
-			txdecimal(bestph);
-			txstr("\n");
-		}
-
-		phy  = (phy & ~SDPHY_PHASEMSK);
-		phy |= (bestph << 16);
-		dev->d_dev->sd_phy = phy;
+	if (EMMCDEBUG && EMMCINFO) {
+		txstr("  Chosen tuning: ");
+		txdecimal(bestph);
+		txstr("\n");
 	}
+
+	phy  = (phy & ~SDPHY_PHASEMSK);
+	phy |= (bestph << 16);
+	dev->d_dev->sd_phy = phy;
 	// }}}
 }
 // }}}
@@ -2129,15 +2179,18 @@ void	emmc_setup(EMMCDRV *dev) {
 
 		if ((0x40 & cap)&& (dev->d_EXCSD[184])) {	// HS400+
 			// Switch to HS400, enhanced STB
+			// NOTE: HS400 has had issues in testing
 			emmc_hs400en(dev);
 		} else if (0x40 & cap) {		// Switch to HS400
+			// NOTE: HS400 has had issues in testing
 			emmc_hs400(dev);
 		} else if (0x10 & cap) {		// Switch to HS200
+			// NOTE: HS200 has had issues in testing
 			SET_SCOPE;
 			emmc_hs200(dev);
 			// Run tuning--only works in HS200 mode
 			emmc_tuning(dev);
-		} else if (0 && (0x04 & cap)) {		// Switch to HSDDR
+		} else if (0x04 & cap) {		// Switch to HSDDR
 			emmc_hsddr(dev);
 		} else if (0x02 & cap) {		// Switch to HS
 			// Here, we can keep the interface slow enough
@@ -2146,8 +2199,9 @@ void	emmc_setup(EMMCDRV *dev) {
 		} // else
 		//	No timing changes
 	} else if (0x2 & dev->d_EXCSD[196]) {
+		// Switch to HS -- highest speed supported in 3.3V
 		emmc_hs(dev);
-		emmc_tuning(dev);
+		// emmc_tuning(dev);	// Would only work in HS200 mode
 	}
 	// }}}
 }
@@ -2648,6 +2702,7 @@ int	emmc_ioctl(EMMCDRV *dev, char cmd, char *buf) {
 // }}}
 
 int	emmc_boot(EMMCDRV *dev, const unsigned count, char *buf) {
+	// NOTE: emmc_boot has had issues during testing
 	// {{{
 	if (0 == count)
 		return 0;
@@ -2747,6 +2802,7 @@ int	emmc_boot(EMMCDRV *dev, const unsigned count, char *buf) {
 // }}}
 
 int	emmc_altboot(EMMCDRV *dev, const unsigned count, char *buf) {
+	// NOTE: emmc_altboot has had issues during testing
 	// {{{
 	if (0 == count)
 		return 0;

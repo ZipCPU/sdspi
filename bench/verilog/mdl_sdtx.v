@@ -73,7 +73,8 @@ module mdl_sdtx #(
 	reg	[7:0]	tx_out;
 	reg	[5:0]	r_count;
 	reg		r_crc, r_active, ds;
-	reg		r_ready, r_token, r_ddr_started, pedge_token, pedge_active;
+	reg		r_ready, r_token, r_ddr_started,
+			pedge_token, pedge_active, r_start_bit;
 
 	wire		w_drive;
 	wire	[7:0]	w_dat;
@@ -134,6 +135,7 @@ module mdl_sdtx #(
 		ds      <= 0;
 		r_active<= 0;
 		r_token <= 0;
+		r_start_bit <= 1'b0;
 	end else if (r_token)
 	begin // We're sending a token
 		// {{{
@@ -141,6 +143,7 @@ module mdl_sdtx #(
 		r_token  <= (r_count > 1);
 		r_crc    <= 0;
 		r_active <= 0;
+		r_start_bit <= 1'b0;
 
 		if (r_count > 1)
 			ds <= #tODLY 1'b1;
@@ -165,6 +168,7 @@ module mdl_sdtx #(
 		r_token  <= 1;
 		r_crc    <= 0;
 		r_active <= 0;
+		r_start_bit <= 1'b0;
 		// r_count  <= i_ddr ? 6'd10 : 6'd5;
 		// Force us to be busy for longer than the token, to force
 		// BOOT to wait until the token has been received and processed
@@ -182,7 +186,6 @@ module mdl_sdtx #(
 					(i_crcnak) ? 4'he : 4'hf, 4'hx,
 					(i_crcnak) ? 4'hf : 4'he, 4'hx,
 					4'hf, 4'hx, 40'hff_ffff_ffff };
-				tx_out <= #tODLY { 4'hf, 4'he };
 			end else begin
 				tx_sreg  <= { 4'he,
 					(i_crcnak) ? 4'hf : 4'he,
@@ -244,15 +247,18 @@ module mdl_sdtx #(
 		ds      <= 0;
 		r_active<= 0;
 		r_token <= 0;
+		r_start_bit <= 1'b0;
 		// }}}
 	end else if (i_valid && o_ready)
 	begin // New data
 		// {{{
 		ds <= #tODLY 1'b1;
+		r_start_bit <= 1'b0;
 
 		if (!r_active)
 		begin // New data, plus a start bit
 			// {{{
+			r_start_bit <= 1'b1;
 			if (i_width[0])
 			begin // 4b width
 				if (i_ddr)
@@ -294,8 +300,11 @@ module mdl_sdtx #(
 	end else if (r_active)
 	begin
 		ds <= #tODLY 1'b1;
+		r_start_bit <= 1'b0;
 
 		r_count <= r_count - 1;
+		// Advance the shift register
+		// {{{
 		if (i_width[0])
 		begin
 			tx_sreg <= { tx_sreg[75:0], 4'hf };
@@ -308,9 +317,11 @@ module mdl_sdtx #(
 			tx_sreg <= { tx_sreg[78:0], 1'b1 };
 			tx_out  <= #tODLY { 7'h7f, tx_sreg[78] };
 		end
+		// }}}
 
 		if (r_crc || (!r_crc && r_count <= 1))
-		begin
+		begin // Insert CRC cycles into the shift register
+			// {{{
 			if (i_width[0])
 			begin
 				tx_sreg <= { crc[3][15],
@@ -332,6 +343,7 @@ module mdl_sdtx #(
 					40'hff_ffff_ffff, 32'hffff_ffff };
 				tx_out <= #tODLY { 7'h7f, crc[0][15] };
 			end
+			// }}}
 		end
 
 		if (r_count <= 1)
@@ -364,13 +376,14 @@ module mdl_sdtx #(
 	else if (!r_active || !i_ddr || !i_en)
 		// No token check here, since DDR doesn't do tokens
 		r_ddr_started <= 1'b0;
-	else if (r_active && w_dat[0] === 1'b0)
+	else if (r_active && r_start_bit)
 		r_ddr_started <= 1'b1;
 
 	always @(posedge sd_clk)
 	if (!rst_n)
 	begin
-	end else if (i_ddr && ((r_active && (r_ddr_started || w_dat[0] === 1'b0)) || r_token))
+	end else if (i_ddr && ((r_active && (r_ddr_started || r_start_bit))
+							|| r_token))
 	begin
 		r_count <= r_count - 1;
 		if (i_width[0])			// 4b
@@ -425,7 +438,7 @@ module mdl_sdtx #(
 			end else if (!r_crc)
 			begin
 				r_crc <= #tODLY 1'b1;
-				r_count <= #tODLY 32;
+				r_count <= 32;
 			end else
 				r_active <= #tODLY 0;
 			// }}}
@@ -462,27 +475,73 @@ module mdl_sdtx #(
 	generate for(gk=0; gk<8; gk=gk+1)
 	begin : GEN_CRC
 		reg	[15:0]	pedge_crc, nedge_crc;	// DEBUG ONLY signals
+		reg		lcl_dat, lcl_active;
 
+		// lcl_dat
+		// {{{
+		// Ideally, we'd use w_dat to handle our CRC's but ... we can't.
+		// If tODLY is any larger than one clock tick, w_dat will not
+		// match pos/negedge sd_clk.  tx_sreg will, however, so we use
+		// that.  We'll trim it just a touch here to make sure that our
+		// pin is active in the current mode, but otherwise simply
+		// reference the appropriate tx_sreg pin.
+		//
+		// This is a bit of a challenge, since tx_sreg[79:76] contains
+		// the pins for 4b mode, tx_sreg[79:72] contains the pins for
+		// 8b mode, and tx_sreg[79] contains the (single) pin value for
+		// 1b mode--so it takes a bit of a lookup.  tx_out doesn't have
+		// this problem, but tx_out already has the delay applied to it.
+		always @(*)
+		if (i_width[0])
+			lcl_dat = (gk < 4) ? tx_sreg[76+gk] : 1'b0;
+		else if (i_width[1])
+			lcl_dat = tx_sreg[72+gk];
+		else
+			lcl_dat = (gk == 0) ? tx_sreg[79] : 1'b0;
+		// }}}
+
+		// lcl_active
+		// {{{
+		always @(*)
+		if (!i_en || !r_active)
+			lcl_active = 1'b0;
+		else if (i_width[0])
+			lcl_active = (gk < 4);
+		else if (i_width[1])
+			lcl_active = 1;
+		else
+			lcl_active = (gk == 0);
+		// }}}
+
+		// The positive edge CRC fill register
+		// {{{
 		always @(posedge sd_clk or negedge rst_n)
 		if (!rst_n)
 			crc[gk] <= 0;
-		else if (!i_en || !r_active || r_token || pedge_token)
+		else if (!lcl_active || r_token || pedge_token)
 			crc[gk] <= 0;
 		else if (!r_crc)
-			crc[gk] <= STEPCRC(crc[gk], w_dat[gk]);
+			crc[gk] <= STEPCRC(crc[gk], lcl_dat);
 		else
 			crc[gk] <= crc[gk] << 1;
+		// }}}
 
+		// Negative edge CRC calculation
+		// {{{
 		always @(negedge sd_clk or negedge rst_n)
 		if (!rst_n)
 			crc[8+gk] <= 0;
-		else if (!r_ddr_started || !r_active || r_token)
+		else if (!r_ddr_started || !lcl_active || r_token)
 			crc[8+gk] <= 0;
 		else if (!r_crc)
-			crc[8+gk] <= STEPCRC(crc[8+gk], w_dat[gk]);
+			crc[8+gk] <= STEPCRC(crc[8+gk], lcl_dat);
 		else
 			crc[8+gk] <= crc[8+gk] << 1;
+		// }}}
 
+		// pedge_crc and nedge_crc are used for generating useful
+		//  simulation traces only.  They are not used for synthesis.
+		//  As such, nothing reads these.  They are completely ignored.
 		always @(*) pedge_crc = crc[  gk];
 		always @(*) nedge_crc = crc[8+gk];
 

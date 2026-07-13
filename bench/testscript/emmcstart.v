@@ -85,7 +85,7 @@ begin
 		sample_shift = { 11'h0, 5'h0c, 16'h0 };
 	end else begin // SERDES
 		// sample_shift = { 11'h0, 5'h0a, 16'h0 };	// For 1.25 delay
-		sample_shift = { 11'h0, 5'h0c, 16'h0 };	// For 3.75 delay
+		sample_shift = { 11'h0, 5'h10, 16'h0 };	// For 3.75 delay
 	end
 	// }}}
 

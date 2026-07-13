@@ -117,7 +117,7 @@ module	sdrxframe #(
 	reg	[LGTIMEOUT-1:0]	r_timeout;
 	reg			r_watchdog;
 
-	reg	last_strb;
+	reg	half_strb;
 	reg	w_done;
 
 	// }}}
@@ -434,12 +434,12 @@ module	sdrxframe #(
 		rail_count <= 0;
 		load_crc   <= 0;
 		data_phase <= 0;
-		last_strb  <= 0;
+		half_strb  <= 0;
 	end else if (!busy)
 	begin
 		// {{{
 		// Verilator lint_off WIDTH
-		last_strb  <= (!i_crc_en && w_cfg_width == WIDTH_8W && i_length == 1);
+		half_strb  <= (!i_crc_en && w_cfg_width == WIDTH_8W && i_length == 1);
 		if (i_cfg_ds)
 			rail_count <= i_length + (i_crc_en ? (16 + (i_cfg_ddr ? 16 : 0)) : 0);
 		else case(w_cfg_width)
@@ -470,10 +470,10 @@ module	sdrxframe #(
 				load_crc   <= (rail_count <= 18);
 			end
 
-			if (!i_crc_en || (rail_count <= 2))
+			if (rail_count <= 2)
 				load_crc <= 1'b0;
 
-			last_strb  <= (rail_count == 3);
+			half_strb  <= (rail_count == 3);
 			if (rail_count < 2)
 				rail_count <= 0;
 			else
@@ -489,17 +489,19 @@ module	sdrxframe #(
 			end else if (i_cfg_ddr)
 			begin
 				data_phase <= (rail_count >  16*2+1);
-				load_crc   <= (rail_count <= 16*2+1)&&(rail_count > 1);
+				load_crc   <= (rail_count <= 16*2+1);
 			end else begin
 				data_phase <= (rail_count >  17);
-				load_crc   <= (rail_count <= 17)&&(rail_count > 1);
+				load_crc   <= (rail_count <= 17);
 			end
 
-			last_strb  <= (rail_count == 2);
+			half_strb  <= (rail_count == 2);
 
 			if (rail_count <= 1)
+			begin
 				rail_count <= 0;
-			else
+				load_crc <= 0;
+			end else
 				rail_count <= rail_count - 1;
 			// }}}
 		end
@@ -507,7 +509,7 @@ module	sdrxframe #(
 	begin
 		// {{{
 		rail_count <= rail_count - 4;
-		last_strb  <= 0;
+		half_strb  <= 0;
 
 		if (!i_crc_en)
 		begin
@@ -665,7 +667,7 @@ module	sdrxframe #(
 		else if (!i_cfg_ds || !OPT_DS)
 		begin // CRC based upon synchronous inputs
 			// {{{
-			if (i_rx_strb == 2'b11 && !i_cfg_ddr && !last_strb)
+			if (i_rx_strb == 2'b11 && !i_cfg_ddr && !half_strb)
 				pedge_crc <= STEPCRC(STEPCRC(pedge_crc,
 					i_rx_data[8+gk]),
 					i_rx_data[  gk]);
@@ -786,6 +788,7 @@ module	sdrxframe #(
 	// }}}
 
 	function automatic [$clog2(MW/8):0] COUNTONES(input [MW/8-1:0] set);
+		// {{{
 		integer ik;
 	begin
 		COUNTONES=0;
@@ -793,6 +796,7 @@ module	sdrxframe #(
 		if (set[ik])
 			COUNTONES=COUNTONES+1;
 	end endfunction
+	// }}}
 
 	//
 	// Make verilator happy
@@ -1139,7 +1143,7 @@ module	sdrxframe #(
 
 		if (i_crc_en && load_crc)
 			assert(pending_crc);
-		assert(last_strb == (rail_count == 1));
+		assert(half_strb == (rail_count == 1));
 	end
 
 	always @(posedge i_clk)

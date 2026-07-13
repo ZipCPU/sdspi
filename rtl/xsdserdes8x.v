@@ -164,6 +164,14 @@ module	xsdserdes8x #(
 			.DATA_WIDTH(8),
 			.INTERFACE_TYPE("NETWORKING"),
 			.NUM_CE(1),
+			.IOBDELAY(OPT_TRIM ? "BOTH":"NONE"),
+				// Since we only have one input pin to this
+				// module, either coming from the IDELAYE2 or
+				// not, IOBDELAY can *only* be BOTH
+				// (w/ IDELAYE2) or NONE (w/o IDELAYE2).
+				// Otherwise, IOBDELAY could've also been
+				// IBUF, whereas IFD would've defeated the
+				// purpose of the IDELAY in the first place.
 			.INIT_Q1(1'b0), .INIT_Q2(1'b0),
 			.INIT_Q3(1'b0), .INIT_Q4(1'b0),
 			.SRVAL_Q1(1'b0), .SRVAL_Q2(1'b0),

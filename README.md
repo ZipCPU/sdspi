@@ -196,9 +196,9 @@ could still be made, as listed below:
   supported and their meanings.  More significant differences include both
   BOOT mode, and HS400 which requires the DS.
 
-- **eMMC HS400 Data Strobe**: Data strobe testing has had some limited success
-  in hardware.  I would welcome you try it.  Extended throughput testing
-  remains pending.
+- **eMMC HS400 Enhanced Data Strobe**: Extended data strobe testing has
+  been quite successful, but data strobe testing on the command line is not
+  yet ready for prime time.
 
 - **Better time modeling**: After reviewing various specifications, it is
   apparent the design needs better IO time modeling.  An ideal solution would
@@ -206,19 +206,24 @@ could still be made, as listed below:
   although it is not clear to what extent such constraints would be supported
   by the open source tool chain(s).
 
-- **eMMC Boot mode**: An initial draft of the eMMC boot mode now exists.
-  It has yet to pass testing.
+- **eMMC Boot mode**: Boot testing has been successfully demonstrated in
+  hardware following a CMD0 with a 0xf0f0f0f0 argument.  Automatic boot on
+  startup has not yet been tested in hardware.  Likewise alternate boot
+  mode has yet to pass testing in hardware.
 
-  Some (untested, preliminary) support exists for boot mode in the Verilog
-  [eMMC model](bench/verilog/mdl_emmc.v).
+  Support exists for boot mode in the Verilog [eMMC
+  model](bench/verilog/mdl_emmc.v).
 
 - **eMMC Collision Detection**: [Collision detection remains an ongoing issue
   with eMMC support](https://github.com/ZipCPU/sdspi/issues/13).  This issue
-  is limited to the `GO_IRQ_STATE` command, and specifically to the case where
-  both controller and device attempt to leave the IRQ state at the same time.
-  Without collision support, the message to leave the IRQ state may be
-  corrupted on return.  This should be detectable via a bad CRC on the command
-  line.
+  is limited to CMD40, the `GO_IRQ_STATE` command, and specifically to the
+  case where both controller and device attempt to leave the IRQ state at the
+  same time.  Without collision support, the message to leave the IRQ state
+  may be corrupted on return.  This should be detectable via a bad CRC on
+  the command line.
+
+  The software driver has not need for CMD40 support, and hence does not support
+  it at present.
 
 ## SDSlave controller
 

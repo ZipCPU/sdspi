@@ -132,7 +132,7 @@ module	sdtxframe #(
 	reg	[31:0]	ck_data, ck_sreg;
 
 	reg		r_done;
-	reg	[3:0]	r_timeout;
+	reg	[4:0]	r_timeout;
 
 	// }}}
 	// Steps: #1, Packetizer: breaks incoming signal into wires
@@ -930,13 +930,15 @@ module	sdtxframe #(
 	// 2 such clocks, together with the number of clocks required for an
 	// ACK/NACK sequence (5).  Here, we round that number up to 15 for good
 	// measure.
-	initial	r_timeout = (OPT_CRCTOKEN) ? 4'd15 : 4'h0;
+	// it doesn't account for the time through the PHY, or the DS handling.
+	// Therefore, we'll run twice as long.
+	initial	r_timeout = (OPT_CRCTOKEN) ? 5'd31 : 5'h0;
 	always @(posedge i_clk)
 	if (!OPT_CRCTOKEN)
 		r_timeout <= 0;
 	else if (i_reset || S_VALID || tx_valid || !i_en)
 	begin
-		r_timeout <= 15;
+		r_timeout <= 31;
 	end else if (i_ckstb && (r_timeout != 0))
 		r_timeout <= r_timeout - 1;
 	// }}}
@@ -948,7 +950,7 @@ module	sdtxframe #(
 	if (i_reset || S_VALID || tx_valid || !i_en)
 		r_done <= 1'b0;
 	else if (!r_done && ((i_ckstb && (!OPT_CRCTOKEN || r_timeout <= 1))
-			|| i_crcack || i_crcnak))
+				|| !i_cfg_expect_ack || i_crcack || i_crcnak))
 		// Once set, r_done will stay set until i_en drops
 		r_done <= 1'b1;
 
@@ -970,15 +972,16 @@ module	sdtxframe #(
 
 		initial	{ r_err, r_ercode } = 2'b00;
 		always @(posedge i_clk)
-		if (i_reset || (i_en && S_VALID) || tx_valid || !i_en)
+		if (i_reset || (i_en && S_VALID) || tx_valid || !i_en
+							|| !i_cfg_expect_ack)
 		begin
 			{ r_err, r_ercode } <= 2'b00;
 		end else if (i_en && !r_done && !o_err && !r_ackd)
 		begin
-			if (r_timeout <= 1 && i_cfg_expect_ack)
+			if (r_timeout <= 1)
 				{ r_err, r_ercode } <= 2'b10;
-			if (i_crcnak && !i_crcack)
-				{ r_err, r_ercode } <= 2'b11;
+			if (i_crcack || i_crcnak)
+				{ r_err, r_ercode } <= {(2){i_crcnak}};
 		end
 
 		assign	{ o_err, o_ercode } = { r_err, r_ercode };

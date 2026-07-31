@@ -252,7 +252,8 @@ static	const	uint32_t
 static	unsigned	EXCSD_HS_TIMING      = 185,
 			EXCSD_BUS_WIDTH      = 183,
 			EXCSD_BOOT_PARTITION = 179,
-			EXCSD_BOOT_BUSCOND   = 177;
+			EXCSD_BOOT_BUSCOND   = 177,
+			EXCSD_RESET_FUNCTION = 162;
 
 static	void	emmc_wait_while_busy(EMMCDRV *dev);
 static	void	emmc_go_idle(EMMCDRV *dev);
@@ -1095,6 +1096,13 @@ void emmc_send_ext_csd(EMMCDRV *dev) {	  // CMD 8
 
 		txstr("  BOOT_WP_STATUS: 0x"); tx8h(dev->d_EXCSD[174]); txstr("\n");
 		txstr("  BOOT_WP       : 0x"); tx8h(dev->d_EXCSD[173]); txstr("\n");
+		txstr("  RESET_n_FUNCTN: 0x"); tx8h(dev->d_EXCSD[162]);
+			switch(dev->d_EXCSD[162] & 3) {
+			case 0: txstr(" (Reset temp disabled)\n"); break;
+			case 1: txstr(" (Reset enabled)\n"); break;
+			case 2: txstr(" (Reset disabled)\n"); break;
+			case 3: txstr(" (Reserved?)\n"); break;
+			} txstr("\n");
 		txstr("  DATA_SECTOR_SZ: 0x"); tx8h(dev->d_EXCSD[ 61]); txstr("\n");
 		txstr("  CACHE         : 0x"); tx8h(dev->d_EXCSD[ 33]); txstr("\n");
 	}
@@ -1441,7 +1449,6 @@ int	emmc_switch_write(EMMCDRV *dev, unsigned idx, unsigned val) {
 	return 1;
 }
 // }}}
-
 
 void	emmc_best_width(EMMCDRV *dev) {
 	// {{{
@@ -1900,9 +1907,9 @@ void	emmc_tuning(EMMCDRV *dev) {	// CMD21
 	// }}}
 
 	// Now loop over blocks ...
-	bestph = (phy >> 16) & 0x01f; first = -2; lastv = 0;
+	bestph = (phy >> 16) & 0x01f; first = 8; lastv = 0;
 	bestw  = 0;
-	for(unsigned phase = 0; phase < 24; phase++) {
+	for(unsigned phase = 8; phase < 24; phase++) {
 		unsigned	match;
 
 		// Clear the FIFO, to make *sure* we get a valid response
@@ -1997,6 +2004,9 @@ void	emmc_tuning(EMMCDRV *dev) {	// CMD21
 	phy |= (bestph << 16);
 	dev->d_dev->sd_phy = phy;
 	// }}}
+
+	// TRIGGER_SCOPE;
+	// zip_halt();
 }
 // }}}
 
@@ -2028,6 +2038,13 @@ void	emmc_hs200(EMMCDRV *dev) {
 		phy |=   SDIOCK_200MHZ;
 
 		dev->d_dev->sd_phy = phy;
+
+		// Correct trim values may need to be adjusted from
+		// one hardware implementation to another.
+		phy = dev->d_dev->sd_rxtrim;
+		phy &= ~0x0ff00;
+		phy |= 0x0900;
+		dev->d_dev->sd_rxtrim = phy;
 	}
 	// }}}
 }
@@ -2181,19 +2198,37 @@ void	emmc_setup(EMMCDRV *dev) {
 			// Switch to HS400, enhanced STB
 			// NOTE: HS400 has had issues in testing
 			emmc_hs400en(dev);
+			dev->d_dev->sd_trim = 0x22222222;
+			dev->d_dev->sd_rxtrim = 0x862;
 		} else if (0x40 & cap) {		// Switch to HS400
 			// NOTE: HS400 has had issues in testing
 			emmc_hs400(dev);
+			dev->d_dev->sd_trim = 0x22222222;
+			dev->d_dev->sd_rxtrim = 0x862;
+		} else if (0x04 & cap) {		// Switch to HSDDR
 		} else if (0x10 & cap) {		// Switch to HS200
+			unsigned 	trim;
+
 			// NOTE: HS200 has had issues in testing
 			SET_SCOPE;
 			emmc_hs200(dev);
 			// Run tuning--only works in HS200 mode
+			//   Force a bit of a discontinuity while tuning, in
+			//   order to amplify the HS200 eye, so we can actually
+			//   see if/when an error takes place
+			dev->d_dev->sd_trim = 0x34103410;
+			trim = dev->d_dev->sd_rxtrim;
+			trim &= ~0x0ff;
+			trim |= 0x062;
+			trim = dev->d_dev->sd_rxtrim = trim;
 			emmc_tuning(dev);
+			dev->d_dev->sd_trim = 0x22222222;
 		} else if (0x04 & cap) {		// Switch to HSDDR
+			// Demonstrated throughput: 44.901 MB/s
 			emmc_hsddr(dev);
 		} else if (0x02 & cap) {		// Switch to HS
 			// Here, we can keep the interface slow enough
+			// that the SCOPE is ... relevant
 			// that the SCOPE is ... relevant
 			emmc_hs(dev);
 		} // else
@@ -2664,6 +2699,15 @@ int	emmc_ioctl(EMMCDRV *dev, char cmd, char *buf) {
 		txhex(cmd);
 		txstr(", 0x");
 		txhex(buf);
+
+		switch(cmd) {
+		case CTRL_SYNC: txstr(" [SYNC]"); break;
+		case GET_SECTOR_COUNT:	txstr(" [GET-NSECS]"); break;
+		case GET_SECTOR_SIZE:	txstr(" [GET-SECSZ]"); break;
+		case GET_BLOCK_SIZE:	txstr(" [GET-BLKSZ]"); break;
+		case MMC_GET_SDSTAT:	txstr(" [SDSTAT]"); break;
+		default:		txstr(" [(Unknown)]"); break;
+		}
 		txstr("\n");
 	}
 	// }}}
@@ -2702,7 +2746,6 @@ int	emmc_ioctl(EMMCDRV *dev, char cmd, char *buf) {
 // }}}
 
 int	emmc_boot(EMMCDRV *dev, const unsigned count, char *buf) {
-	// NOTE: emmc_boot has had issues during testing
 	// {{{
 	if (0 == count)
 		return 0;
@@ -2721,9 +2764,19 @@ int	emmc_boot(EMMCDRV *dev, const unsigned count, char *buf) {
 	}
 	// }}}
 
+	dev->d_dev->sd_phy |= SDIOCK_SHUTDN;
 	// Force the device into reset while we configure the hard boot
+	// Force the device into reset while we configure the hard boot
+	if (1 == (dev->d_EXCSD[EXCSD_RESET_FUNCTION] & 3)) {
 	dev->d_dev->sd_cmd = SDIO_HWRESET;	// | SDIO_ERR | SDIO_FIFO | SDIO_ACK | SDIO_BOOTEN
 	dev->d_dev->sd_cmd = 0;	// Release from reset (will be delayed)
+	} else {
+		dev->d_dev->sd_data= 0xf0f0f0f0;
+		dev->d_dev->sd_cmd = SDIO_CMD | SDIO_ERR | SDIO_RNONE;
+		// dev->d_dev->sd_cmd = SDIO_CMD | SDIO_RNONE | SDIO_ERR;
+		//	| SDIO_FIFO | SDIO_ACK | SDIO_BOOTEN
+		emmc_wait_while_busy(dev);
+	}
 	dev->d_dev->sd_dma_length = count;
 	dev->d_dev->sd_dma_addr   = buf;
 	dev->d_dev->sd_phy = SECTOR_512B | SDPHY_W8 | SDIOCK_25MHZ
@@ -2765,6 +2818,7 @@ int	emmc_boot(EMMCDRV *dev, const unsigned count, char *buf) {
 	CLEAR_DCACHE;
 #else
 	// {{{
+	// Note: Only the DMA path has been tested in hardware
 	unsigned	*dst = (unsigned *)buf, st;
 
 	dev->d_dev->sd_cmd = SDIO_ACK | SDIO_BOOT | SDIO_MEM;
@@ -2802,7 +2856,7 @@ int	emmc_boot(EMMCDRV *dev, const unsigned count, char *buf) {
 // }}}
 
 int	emmc_altboot(EMMCDRV *dev, const unsigned count, char *buf) {
-	// NOTE: emmc_altboot has had issues during testing
+	// NOTE: emmc_altboot has not yet passed H/W testing
 	// {{{
 	if (0 == count)
 		return 0;

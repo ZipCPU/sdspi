@@ -65,7 +65,7 @@
 %
 % Revision level.  If you change this, be sure to change the revision history
 % to match it
-\revision{Rev.~2.0pre}
+\revision{Rev.~2.0}
 \begin{document}
 \pagestyle{gqtekspecplain}
 \titlepage
@@ -96,7 +96,7 @@ with this program.  If not, see \texttt{http://www.gnu.org/licenses/} for a copy
 1.94 & 9/05/2024 & Gisselquist & Note that ACKs should always be expected on block writes.\\\hline
 1.95 & 11/25/2024 & Gisselquist & The design now fully supports AXI in addition to Wishbone, to include an (optional) AXI DMA\\\hline
 1.96 & 12/06/2024 & Gisselquist & Added the 1.8V feedback wire\\\hline
-2.0pre & 7/08/2026 & Gisselquist & eMMC Boot support, and trim registers\\\hline
+2.0 & 7/31/2026 & Gisselquist & eMMC Boot support, and trim registers\\\hline
 \end{revisionhistory}
 % Revision History
 % Table of Contents, named Contents
@@ -2436,6 +2436,12 @@ In the case of a Xilinx FPGA, the delay values are used to control the bottom
 5~bits of an {\tt IDELAYE2} module.
 
 The default (nominal) value of 0 should be good enough for most purposes.
+
+One difficulty experienced during testing the HS200 tuning command on an eMMC
+device, was that it was possible for all tuning delays to pass testing.
+The example software, therefore, uses nominal delays of 2 for all HS200
+mode values.  During tuning, these delays are pushed to either side to help
+guarantee tuning failures on the edges of the eye.
 %% }}}
 
 \section{RX TRIM}
@@ -2447,11 +2453,12 @@ and once the rest of any incoming data remains in the pipeline.
 Apart from this capability, it is possible for an external device to begin
 sending a next block of data as part of a multi--block read operation before
 the controller is ready for it.  This is a particular issue at higher speeds,
-such as HS400.  If this happens, the controller will likely miss the start
-bit of that second block and (assuming it's not all ones) then fail its CRC.
-To prevent this from happening, the clock must stop long enough between blocks
-to allow the controller to reset itself prior to receiving the next block.
-This control helps to make sure the clock stops early enough at higher speeds.
+such as HS200 or HS400.  If this happens, the controller will likely miss the
+start bit of that second block and (assuming it's not all ones) then fail its
+CRC.  To prevent this from happening, the clock must stop long enough between
+blocks to allow the controller to reset itself prior to receiving the next
+block.  This control helps to make sure the clock stops early enough at
+higher speeds.
 
 The PHY TRIM register controls the incoming delays across all of the data pins
 associated with the design.  The RX TRIM register finishes the optional
@@ -2494,15 +2501,16 @@ from the TRIM register.
 
 The DS pin's delay is different.  This should nominally be set to achieve
 a 90~degree phase shift in the clock--so that the DS clock would sample
-incoming data in the center of the eye.
+incoming data in the center of the eye.  In most cases, this should be
+an additional 4~units of delay beyond those for the IOs and the CMD wire.
 
-Turning to the RX TRIM register, with zero RX TRIM, the receive clock will
-stop once the last incoming clock's worth of data is registered.  This
-includes both data and CRC.  Hence, in 1b mode, a 512 Byte sector will require
-4112~clocks containing return data, whereas in 8b mode the same sector would
-require 528~clocks.  Once this number, less the RX TRIM, has been received,
-a flag will be set to allow the clock to stop.  From that point on, no more
-clocks will be generated for this receive block.
+Turning to the RX TRIM field of this register, with zero RX TRIM, the receive
+clock will stop once the last incoming clock's worth of data is registered.
+This includes both data and CRC.  Hence, in 1b mode, a 512 Byte sector will
+require 4112~clocks containing return data, whereas in 8b mode the same sector
+would require 528~clocks.  Once this number, less the RX TRIM, has been
+received, a flag will be set to allow the clock to stop.  From that point on,
+no more clocks will be generated for this receive block.
 
 In the case of HS400, the number of 100~MHz system clock cycles of return
 data per block would be 132 (at a 200~MHz clock).  Adjusting the receive trim
@@ -2516,6 +2524,11 @@ is too small, it is possible for the external device to start sending a
 subsequent block in a multi--block transfer prior to the controller being
 ready.  It is quite likely that this ``correct'' value will be clock rate
 dependent.
+
+When working with Xilinx Series-7 devices, an RX TRIM delay of 9 was found
+to be acceptable.  Note that in both HS200 and HS400 modes, this RX TRIM delay
+is compared against a count that goes two per clock.  Hence, adjacent pairs
+of RX TRIM values will have identical performance.
 %% }}}
 
 %% }}}

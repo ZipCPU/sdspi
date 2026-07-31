@@ -140,6 +140,9 @@ module	sdfrontend #(
 
 	// Local declarations
 	// {{{
+	localparam	[5:0]	ACK_TOKEN = 6'b100101,
+				NAK_TOKEN = 6'b101011;
+
 	localparam	LGBUSY = $clog2(BUSY_CLOCKS+1);
 	genvar		gk;
 	reg		dat0_busy, wait_for_busy, pending_ack;
@@ -156,7 +159,7 @@ module	sdfrontend #(
 	reg		last_ck, sync_ack, sync_nak;
 	wire	[7:0]	next_pedge, next_nedge, next_dedge;
 	wire		async_ack, async_nak;
-	reg	[4:0]	acknak_sreg;
+	reg	[5:0]	acknak_sreg;
 
 	reg	ck_ack, ck_nak, pipe_ack, pipe_nak;
 	// }}}
@@ -367,8 +370,8 @@ module	sdfrontend #(
 		always @(posedge i_clk)
 		if(i_reset || i_expect_token || i_cfg_ds || !OPT_CRCTOKEN)
 			acknak_sreg <= -1;
-		else if (acknak_sreg[4] && sample_pck)
-			acknak_sreg <= { acknak_sreg[3:0], raw_iodat[0] };
+		else if (acknak_sreg[5:4] != 2'b10 && sample_pck)
+			acknak_sreg <= { acknak_sreg[4:0], raw_iodat[0] };
 
 		initial	{ sync_ack, sync_nak } = 2'b00;
 		always @(posedge i_clk)
@@ -377,8 +380,8 @@ module	sdfrontend #(
 			sync_ack <= 1'b0;
 			sync_nak <= 1'b0;
 		end else begin
-			sync_ack <= (acknak_sreg == 5'b00101);
-			sync_nak <= (acknak_sreg == 5'b01011);
+			sync_ack <= (acknak_sreg == ACK_TOKEN);
+			sync_nak <= (acknak_sreg == NAK_TOKEN);
 		end
 		// }}}
 
@@ -720,14 +723,14 @@ module	sdfrontend #(
 		always @(posedge i_clk)
 		if(i_reset || i_data_en || i_cfg_ds || !OPT_CRCTOKEN)
 			acknak_sreg <= -1;
-		else if (acknak_sreg[4])
+		else if (acknak_sreg[5:4] != 2'b10)
 		begin
-			if (sample_pck[1:0] == 2'b11 && acknak_sreg[3])
+			if (sample_pck[1:0]== 2'b11 && acknak_sreg[4:3]!= 2'b10)
 				acknak_sreg <= { acknak_sreg[2:0], w_dat[8], w_dat[0] };
 			else if (sample_pck[1])
-				acknak_sreg <= { acknak_sreg[3:0], w_dat[8] };
+				acknak_sreg <= { acknak_sreg[4:0], w_dat[8] };
 			else if (sample_pck[0])
-				acknak_sreg <= { acknak_sreg[3:0], w_dat[0] };
+				acknak_sreg <= { acknak_sreg[4:0], w_dat[0] };
 		end
 
 		initial	{ sync_ack, sync_nak } = 2'b00;
@@ -737,8 +740,8 @@ module	sdfrontend #(
 			sync_ack <= 1'b0;
 			sync_nak <= 1'b0;
 		end else begin
-			sync_ack <= (acknak_sreg == 5'b00101);
-			sync_nak <= (acknak_sreg == 5'b01011);
+			sync_ack <= (acknak_sreg == ACK_TOKEN);
+			sync_nak <= (acknak_sreg == NAK_TOKEN);
 		end
 		// }}}
 
@@ -902,9 +905,9 @@ module	sdfrontend #(
 		reg	[15:0]	r_rx_data;
 		wire	[15:0]	w_rx_data;
 		// wire	[7:0]	next_ck_sreg, next_ck_psreg;
-		reg	[HWBIAS+24:0]	ck_sreg, ck_psreg;
+		reg	[HWBIAS+23:0]	ck_sreg, ck_psreg, pck_sreg;
 		wire	[7:0]	wide_cmd_data;
-		reg	[7:0]	r_wide_cmd_data, r_raw;
+		reg	[7:0]	r_wide_cmd_data;
 		reg	[7:0]	sample_ck, sample_pck;
 		reg	[1:0]	r_cmd_data;
 		reg		busy_strb;
@@ -913,10 +916,10 @@ module	sdfrontend #(
 		reg	[1:0]	io_started;
 		reg		resp_started;
 		reg	[1:0]	r_cmd_strb;
-		reg	[HWBIAS+24:0]	pck_sreg;
 		reg	[7:0]	cmd_sample_ck;
 		wire		busy_pin;
 		reg	[1:0]	busy_delay;
+		reg		acknak_primed;
 		reg	[1:0]	itok;
 		wire	[HWBIAS+31:0]	wide_pedge, wide_dedge, wide_cmdedge;
 		// Verilator lint_off UNUSED
@@ -1191,34 +1194,44 @@ module	sdfrontend #(
 
 		// CRC TOKEN detection
 		// {{{
-		localparam	[4:0]	ACK_TOKEN = 5'b00101,
-					NAK_TOKEN = 5'b01011;
+		always @(posedge i_clk)
+		if(i_reset || i_rx_en || i_cfg_ds
+				|| i_data_en || i_expect_token || !OPT_CRCTOKEN)
+			acknak_primed <= 0;
+		else begin
+			// Make sure we receive at least one 1 before we start
+			// counting things towards the token
+			if (|sample_pck[3:0] && itok[0])
+				acknak_primed <= 1;
+			if (|sample_pck[7:4] && itok[1] && sample_pck[3:0] == 0)
+				acknak_primed <= 1;
+		end
 
 		always @(posedge i_clk)
 		if(i_reset || i_rx_en || i_cfg_ds || !OPT_CRCTOKEN)
 			acknak_sreg <= 0;
-		else if (i_data_en || i_expect_token)
+		else if (i_data_en || i_expect_token || !acknak_primed)
 			acknak_sreg <= -1;
-		else if (acknak_sreg[4])
+		else if (acknak_sreg[5:4] != 2'b10)
 		begin
-			if ((|sample_pck[7:4] && |sample_pck[3:0])
-							&& acknak_sreg[3])
-				acknak_sreg <= { acknak_sreg[2:0], itok[1], itok[0] };
+			if ((|sample_pck[7:4]) && (|sample_pck[3:0])
+						&& acknak_sreg[4:3] != 2'b10)
+				acknak_sreg <= { acknak_sreg[3:0], itok[1:0] };
 			else if (|sample_pck[7:4])
-				acknak_sreg <= { acknak_sreg[3:0], itok[1] };
+				acknak_sreg <= { acknak_sreg[4:0], itok[1] };
 			else if (|sample_pck[3:0])
-				acknak_sreg <= { acknak_sreg[3:0], itok[0] };
+				acknak_sreg <= { acknak_sreg[4:0], itok[0] };
 		end
 
 		initial	{ sync_ack, sync_nak } = 2'b00;
 		always @(posedge i_clk)
-		if(i_reset || i_data_en || i_cfg_ds || !OPT_CRCTOKEN)
+		if(i_reset || i_expect_token || i_data_en || i_cfg_ds || !OPT_CRCTOKEN)
 		begin
 			sync_ack <= 1'b0;
 			sync_nak <= 1'b0;
 		end else begin
-			sync_ack <= acknak_sreg == 5'b00101;
-			sync_nak <= acknak_sreg == 5'b01011;
+			sync_ack <= acknak_sreg == ACK_TOKEN;
+			sync_nak <= acknak_sreg == NAK_TOKEN;
 		end
 		// }}}
 
@@ -1408,16 +1421,22 @@ module	sdfrontend #(
 			r_debug[22] <= io_started[1];
 
 			r_debug[21:20] <= { i_rx_en, i_data_en };
+			if (i_expect_token)
+				r_debug[19:17] <= 3'h0;
+			else begin
 			r_debug[19] <= pending_ack;
-			r_debug[18] <= i_cfg_ds ? ck_ack : sync_ack;
-			r_debug[17] <= i_cfg_ds ? ck_nak : sync_nak;
+				r_debug[18] <= i_cfg_ds ? ck_ack
+						: (sync_ack ^ !acknak_sreg[4]);
+				r_debug[17] <= i_cfg_ds ? ck_nak
+						: (sync_nak ^ !acknak_sreg[4]);
+			end
 
 			if (pending_ack)
 			begin
-				r_debug[16:15] <= r_debug[16:15];
+				r_debug[16:15] <= {(2){r_debug[15]}};
 
 				if (|sample_pck[7:4])
-					r_debug[16] <= itok[1];
+					r_debug[16:15] <= {(2){itok[1]}};
 				if (|sample_pck[3:0])
 					r_debug[15] <= itok[0];
 			end else
@@ -1479,8 +1498,8 @@ module	sdfrontend #(
 		{ ck_nak, pipe_nak } <= { pipe_nak, async_nak };
 	end
 
-	assign	o_crcack = OPT_CRCTOKEN && (sync_ack || ck_ack) && pending_ack;
-	assign	o_crcnak = OPT_CRCTOKEN && (sync_nak || ck_nak) && pending_ack;
+	assign	o_crcack = OPT_CRCTOKEN && (sync_ack || ck_ack) && pending_ack && !i_expect_token;
+	assign	o_crcnak = OPT_CRCTOKEN && (sync_nak || ck_nak) && pending_ack && !i_expect_token;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -1516,8 +1535,7 @@ module	sdfrontend #(
 		wire		afifo_reset_n, cmd_ds_en;
 		(* ASYNC_REG="TRUE" *)
 		reg		af_started_p, af_started_n, acmd_started;
-		reg		af_count_p, af_count_n, acmd_count,
-				af_waiting;
+		reg		af_count_p, af_count_n, acmd_count;
 		wire	[3:0]	ign_afifo_full, afifo_empty;
 		wire	[31:0]	af_data;
 		wire	[1:0]	acmd_empty, ign_acmd_full;
@@ -1602,10 +1620,10 @@ module	sdfrontend #(
 			if (acknak_reset)
 				atok_sreg <= -1;
 			else if (atok_sreg[4])
-				atok_sreg <= { atok_sreg, raw_iodat[0] };
+				atok_sreg <= { atok_sreg[3:0], raw_iodat[0] };
 
-			assign	async_ack = (atok_sreg == 5'b00101);
-			assign	async_nak = (atok_sreg == 5'b01011);
+			assign	async_ack = (atok_sreg == ACK_TOKEN[4:0]);
+			assign	async_nak = (atok_sreg == NAK_TOKEN[4:0]);
 		end else begin : NO_ASYNCTOKEN
 			assign	async_ack = 1'b0;
 			assign	async_nak = 1'b0;

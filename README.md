@@ -166,7 +166,8 @@ Features include:
 
   Software testing is currently taking place as part of the integrated test
   benches associated with separate repositories, such as the
-  [VideoZip](https://github.com/ZipCPU/videozip) repository that contains both
+  [VideoZip](https://github.com/ZipCPU/videozip) and
+  [Eth10G](https://github.com/ZipCPU/eth10g) repositories that contain both
   this component and the [ZipCPU](https://zipcpu.com/about/zipcpu.html).
 
 - **AXI Support**: This design has also been demonstrated in AXI environments.
@@ -178,7 +179,7 @@ Features include:
 - **CRC Tokens**: CRC token's are 5b response values, indicating whether
   or not a page has transferred successfully.
   The [frontend](rtl/sdio/sdfrontend.v) can successfully recognize those CRC
-  tokens following block write transfers.
+  tokens following block write transfers or boot requests.
 
   Failure to receive a CRC token when one is expected will (now) generate an
   error condition, as will receiving a negative CRC acknowledgment.

@@ -370,12 +370,12 @@ module	sdcmd #(
 		if (srcount > 0)
 		begin
 			if (i_ckstb)
-	begin
-		if (cfg_dbl)
-			o_ac_reset_n <= (srcount <= 2);
-		else
-			o_ac_reset_n <= (srcount <= 1);
-	end
+			begin
+				if (cfg_dbl)
+					o_ac_reset_n <= (srcount <= 2);
+				else
+					o_ac_reset_n <= (srcount <= 1);
+			end
 
 			if (ac_reset_dly != 0)
 				o_ac_reset_n <= 1'b0;

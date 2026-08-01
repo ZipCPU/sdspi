@@ -157,6 +157,7 @@ module	sdaxil #(
 		output	reg			o_cfg_shutdown,
 		output	reg	[39:0]		o_cfg_phy_trim,
 		output	reg	[3:0]		o_cfg_rxck_trim,
+		output	reg	[3:0]		o_cfg_cmd_trim,
 		output	wire	[1:0]		o_cfg_width,
 		output	wire			o_cfg_ds, o_cfg_dscmd,
 		output	reg			o_cfg_ddr,
@@ -3997,7 +3998,8 @@ module	sdaxil #(
 			? dma_addr_return[63:32] : dma_addr_return[31:0];
 		4'h7: pre_data <= dma_len_return;
 		ADDR_TRIM:   pre_data <= o_cfg_phy_trim[31:0];
-		ADDR_RXTRIM: pre_data <= { 20'h0, o_cfg_rxck_trim[3:0],
+		ADDR_RXTRIM: pre_data <= { 16'h0, o_cfg_cmd_trim,
+				o_cfg_rxck_trim,
 				o_cfg_phy_trim[39:32] };
 		default: begin end
 		endcase
@@ -4691,7 +4693,8 @@ module	sdaxil #(
 	faxil_register #(
 		// {{{
 		.AW(6), .ADDR({ ADDR_RXTRIM, 2'b00 }),
-		.MASK(32'h0), .FIXED_BIT_MASK(32'hffff_f000)
+		.MASK(32'h0), .FIXED_BIT_MASK(32'hffff_0000
+					| (OPT_DS ? 32'h0 : 32'h0_f000))
 		// }}}
 	) faxil_rxtrim (
 		// {{{
@@ -4705,8 +4708,9 @@ module	sdaxil #(
 		.S_AXIL_ARADDR(bus_rdaddr),
 		.S_AXIL_RVALID(pre_valid),
 		.S_AXIL_RDATA(pre_data),
-		.i_register({ 20'h0, o_cfg_rxck_trim[3:0],
-						o_cfg_phy_trim[39:32] })
+		.i_register({ 16'h0,
+				o_cfg_cmd_trim, o_cfg_rxck_trim,
+				o_cfg_phy_trim[39:32] })
 		// }}}
 	);
 	// }}}

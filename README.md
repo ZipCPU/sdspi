@@ -13,12 +13,12 @@ controller.  It has been designed to enable an FPGA to act like an SD card.
 
 [The SDSPI controller](rtl/sdspi/sdspi.v) exports an SD card controller
 interface from internal to an FPGA to the rest of the FPGA core, while taking
-care of the lower level details internal to the interface.  Unlike the [SDIO
-controller](rtl/sdio/sdio.v) in this respository, this controller focuses on
-the SPI interface of the SD Card.  While this is a slower interface, the SPI
+care of the lower level details internal to the interface.  Unlike the full
+[SDIO controller](rtl/sdio/sdio.v) in this respository, this controller focuses
+on the SPI interface of the SD Card.  While this is a slower interface, the SPI
 interface is necessary to access the card when using a [XuLA2
 board](http://www.xess.com/shop/product/xula2-lx25/) (for which it was
-originally written), or in general any time the full 7--bit, bi--directional
+originally written), or in general any time the full 6--bit, bi--directional
 interface to the SD card has not been implemented.  Further, for those who are
 die--hard Verilog authors, this core is written in Verilog as opposed to the
 [XESS provided demonstration SD Card controller found on
@@ -76,7 +76,8 @@ the two types of chips handled by software.
 
 The interface to this controller is roughly the same as that of the [SDSPI
 controller](rtl/sdspi/sdspi.v), although there are enough significant
-differences to warrant a [separate user guide](doc/sdio.pdf).
+differences to warrant a separate [user guide](doc/sdio.pdf) and a separate
+[driver](sw/sdiodrvr.c).
 
 The controller is designed to support IO modes all the way up to the HS400
 mode used by eMMC.  HS400 is an eMMC DDR mode based off of a 200MHz IO clock,
@@ -123,8 +124,8 @@ Features include:
 
 - **`OPT_DMA`**: An optional DMA is now available, and passing tests in silicon.
 
-  Both Wishbone and AXI versions of the DMA controller exist and pass all
-  simulation based testing.
+  Both Wishbone and AXI versions of the DMA controller exist and routinely
+  pass all simulation based testing.
 
 - **STREAM DMA**: At customer request, hooks now exist for an (optional)
   stream DMA interface.  This interface will accept an AXI stream input,
@@ -196,15 +197,11 @@ could still be made, as listed below:
   supported and their meanings.  More significant differences include both
   BOOT mode, and HS400 which requires the DS.
 
-- **eMMC HS400 Enhanced Data Strobe**: Extended data strobe testing has
-  been quite successful, but data strobe testing on the command line is not
-  yet ready for prime time.
-
 - **Better time modeling**: After reviewing various specifications, it is
-  apparent the design needs better IO time modeling.  An ideal solution would
-  depend upon both `$hold` and `$setup` simulation timing constraints,
-  although it is not clear to what extent such constraints would be supported
-  by the open source tool chain(s).
+  apparent the [Verilog eMMC model](bench/verilog/mdl_emmc.v) needs better
+  IO time modeling.  An ideal solution would depend upon both `$hold` and
+  `$setup` simulation timing constraints, although it is not clear to what
+  extent such constraints would be supported by the open source tool chain(s).
 
 - **eMMC Boot mode**: Boot testing has been successfully demonstrated in
   hardware following a CMD0 with a 0xf0f0f0f0 argument.  Automatic boot on
@@ -214,7 +211,7 @@ could still be made, as listed below:
   Support exists for boot mode in the Verilog [eMMC
   model](bench/verilog/mdl_emmc.v).
 
-- **eMMC Collision Detection**: [Collision detection remains an ongoing issue
+- **eMMC Collision Detection**: [Collision detection remains an known issue
   with eMMC support](https://github.com/ZipCPU/sdspi/issues/13).  This issue
   is limited to CMD40, the `GO_IRQ_STATE` command, and specifically to the
   case where both controller and device attempt to leave the IRQ state at the
@@ -222,8 +219,8 @@ could still be made, as listed below:
   may be corrupted on return.  This should be detectable via a bad CRC on
   the command line.
 
-  The software driver has not need for CMD40 support, and hence does not support
-  it at present.
+  The [eMMC software driver](sw/emmcdrvr.c) has no need for CMD40 support,
+  and hence there is no pressing need for this capability.
 
 ## SDSlave controller
 

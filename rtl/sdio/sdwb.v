@@ -141,6 +141,7 @@ module	sdwb #(
 		output	reg			o_cfg_shutdown,
 		output	reg	[39:0]		o_cfg_phy_trim,
 		output	reg	[3:0]		o_cfg_rxck_trim,
+		output	reg	[3:0]		o_cfg_cmd_trim,
 		output	wire	[1:0]		o_cfg_width,
 		output	wire			o_cfg_ds, o_cfg_dscmd,
 		output	reg			o_cfg_ddr,
@@ -1713,6 +1714,19 @@ module	sdwb #(
 	begin
 		if (bus_wstrb[1])
 			o_cfg_rxck_trim[ 3: 0] <= bus_wdata[11:8];
+	end
+	// }}}
+
+	// }}}
+
+	initial	o_cfg_cmd_trim = 4'h0;
+	always @(posedge i_clk)
+	if (i_reset || !OPT_DS)
+		o_cfg_cmd_trim <= 4'h0;
+	else if (bus_write && bus_wraddr == ADDR_RXTRIM)
+	begin
+		if (bus_wstrb[1])
+			o_cfg_cmd_trim <= bus_wdata[15:12];
 	end
 	// }}}
 
@@ -3902,7 +3916,8 @@ module	sdwb #(
 			? dma_addr_return[63:32] : dma_addr_return[31:0];
 		4'h7: pre_data <= dma_len_return;
 		ADDR_TRIM:   pre_data <= o_cfg_phy_trim[31:0];
-		ADDR_RXTRIM: pre_data <= { 20'h0, o_cfg_rxck_trim[3:0],
+		ADDR_RXTRIM: pre_data <= { 16'h0, o_cfg_cmd_trim,
+				o_cfg_rxck_trim,
 				o_cfg_phy_trim[39:32] };
 		default: begin end
 		endcase
@@ -4531,7 +4546,8 @@ module	sdwb #(
 	fwb_register #(
 		// {{{
 		.AW(4), .DW(MW), .ADDR(ADDR_RXTRIM),
-		.MASK(32'h0), .FIXED_BIT_MASK(32'hffff_f000)
+		.MASK(32'h0), .FIXED_BIT_MASK(32'hffff_0000
+					| (OPT_DS ? 32'h0 : 32'h0_f000))
 		// }}}
 	) fwb_rxtrim (
 		// {{{
@@ -4541,8 +4557,9 @@ module	sdwb #(
 				.i_wb_sel(i_wb_sel),
 		.i_wb_ack(pre_valid),
 			.i_wb_return(pre_data),
-		.i_register({ 20'h0, o_cfg_rxck_trim[3:0],
-						o_cfg_phy_trim[39:32] })
+		.i_register({ 16'h0,
+				o_cfg_cmd_trim, o_cfg_rxck_trim,
+				o_cfg_phy_trim[39:32] })
 		// }}}
 	);
 	// }}}

@@ -96,7 +96,7 @@ with this program.  If not, see \texttt{http://www.gnu.org/licenses/} for a copy
 1.94 & 9/05/2024 & Gisselquist & Note that ACKs should always be expected on block writes.\\\hline
 1.95 & 11/25/2024 & Gisselquist & The design now fully supports AXI in addition to Wishbone, to include an (optional) AXI DMA\\\hline
 1.96 & 12/06/2024 & Gisselquist & Added the 1.8V feedback wire\\\hline
-2.0 & 7/31/2026 & Gisselquist & eMMC Boot support, and trim registers\\\hline
+2.0 & 8/01/2026 & Gisselquist & eMMC Boot support, and trim registers\\\hline
 \end{revisionhistory}
 % Revision History
 % Table of Contents, named Contents
@@ -2470,7 +2470,8 @@ Fig.~\ref{fig:RXTRIM},
 %% {{{
 \begin{bytefield}[endianness=big,bitwidth=0.03\linewidth]{32}
 \bitheader{0-31}\\
-\bitbox{20}{(Reserved)}
+\bitbox{16}{(Reserved)}
+\bitbox{4}{CMD Trim}
 \bitbox{4}{Rx Trim}
 \bitbox{4}{DS Dly}
 \bitbox{4}{CMD Dly}
@@ -2483,17 +2484,21 @@ and Tbl.~\ref{tbl:PHY},
 %% {{{
 \begin{tabular}{|p{1.2in}|p{0.5in}|p{3.5in}|}\hline
 	\rowcolor[gray]{0.85} Name & Width & Description\\\hline\hline
-Rx TRIM & 4 & Once the controller is this many clock cycles prior to receiving
+CMD Trim & 4 & Delays the clearing of the asynchronous command FIFO reset
+	by this many clocks, to keep the asynchronous FIFO from capturing
+	outputs and misreading a start signal.
+	\\\hline
+Rx Trim & 4 & Once the controller is this many clock cycles prior to receiving
 	the last data, a clock shut down will be enabled (assuming it is
 	also enabled in the PHY register).\\\hline
 DS Dly & 4 & Controls an incoming delay on the DS. \\\hline
-CMD Dly & 4 & Controls an incoming, pre--sample delay on the CMD wire.\\
+CMD Dly & 4 & Controls an incoming, pre--sample delay on the CMD wire.
 	\\\hline
 \end{tabular}
 %% }}}
 \caption{PHY Front end configuration register fields}\label{tbl:RXTRIM}
 \end{center}\end{table}
-show the allocation of the bits for both the RX TRIM and the two remaining
+show the allocation of the bits for both the RX Trim and the two remaining
 incoming pin delay controls.
 
 The command pin's delay should nominally be identical to the IO pin delays
@@ -2504,11 +2509,11 @@ a 90~degree phase shift in the clock--so that the DS clock would sample
 incoming data in the center of the eye.  In most cases, this should be
 an additional 4~units of delay beyond those for the IOs and the CMD wire.
 
-Turning to the RX TRIM field of this register, with zero RX TRIM, the receive
+Turning to the RX Trim field of this register, with zero RX Trim, the receive
 clock will stop once the last incoming clock's worth of data is registered.
 This includes both data and CRC.  Hence, in 1b mode, a 512 Byte sector will
 require 4112~clocks containing return data, whereas in 8b mode the same sector
-would require 528~clocks.  Once this number, less the RX TRIM, has been
+would require 528~clocks.  Once this number, less the RX Trim, has been
 received, a flag will be set to allow the clock to stop.  From that point on,
 no more clocks will be generated for this receive block.
 
@@ -2517,7 +2522,7 @@ data per block would be 132 (at a 200~MHz clock).  Adjusting the receive trim
 register will shut the clock down before this number has been received, by
 however much the trim value is set to.
 
-The ``correct'' value for the RX TRIM is a matter of active research.  If this
+The ``correct'' value for the RX Trim is a matter of active research.  If this
 delay is too large, the controller will likely hang on every block.  (A soft
 reset should be able to resolve this, to allow proper testing.)  If this delay
 is too small, it is possible for the external device to start sending a
@@ -2525,10 +2530,22 @@ subsequent block in a multi--block transfer prior to the controller being
 ready.  It is quite likely that this ``correct'' value will be clock rate
 dependent.
 
-When working with Xilinx Series-7 devices, an RX TRIM delay of 9 was found
-to be acceptable.  Note that in both HS200 and HS400 modes, this RX TRIM delay
-is compared against a count that goes two per clock.  Hence, adjacent pairs
-of RX TRIM values will have identical performance.
+When working with Xilinx Series-7 devices, an RX Trim delay of 9 was found
+to be acceptable for HS200, while an RX Trim of 8 was found acceptable in
+HS400.  Note that in both HS200 and HS400 modes, this RX Trim delay is
+compared against a count that goes two per clock.  Hence, adjacent pairs
+of RX Trim values will have identical performance.
+
+Finally, the CMD Trim setting is only used in HS400 mode when the enhanced
+DS is enabled. (D$_C$ in the PHY register.)  Nominally, the asynchronous
+command FIFO will be released from reset as soon as the last CMD bits are
+sent to the PHY for transmission.  In practice, releasing the asynchronous
+FIFOs this early could cause an outgoing CMD bit to be interpreted as a start
+bit.  This field then controls how many clock cycles after the last command
+bit is sent before releasing the CMD asynchronous FIFO from reset.
+
+When working with Xilinx Series-7 devices, a CMD Trim value of 4 was found
+to be acceptable.
 %% }}}
 
 %% }}}

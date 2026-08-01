@@ -267,7 +267,7 @@ module	sdio #(
 
 	wire			cfg_clk90, cfg_clk_shutdown, cfg_expect_ack,
 				cfg_cmd_pp, cfg_data_pp;
-	wire	[3:0]		cfg_rxck_trim;
+	wire	[3:0]		cfg_rxck_trim, cfg_cmd_trim;
 	wire	[7:0]		cfg_ckspeed;
 	wire	[1:0]		cfg_width;
 	wire			w_cmd_en, w_cmd_tristate, w_boot_cmd,
@@ -377,6 +377,9 @@ module	sdio #(
 		// {{{
 		.o_cfg_clk90(cfg_clk90), .o_cfg_ckspeed(cfg_ckspeed),
 		.o_cfg_shutdown(cfg_clk_shutdown),
+		.o_cfg_phy_trim(o_cfg_phy_trim),
+		.o_cfg_rxck_trim(cfg_rxck_trim),
+		.o_cfg_cmd_trim(cfg_cmd_trim),
 		.o_cfg_width(cfg_width), .o_cfg_ds(o_cfg_ds),
 			.o_cfg_dscmd(o_cfg_dscmd), .o_cfg_ddr(o_cfg_ddr),
 		.o_pp_cmd(cfg_cmd_pp), .o_pp_data(cfg_data_pp), // Push-pull
@@ -496,6 +499,7 @@ module	sdio #(
 		.o_cfg_shutdown(cfg_clk_shutdown),
 		.o_cfg_phy_trim(o_cfg_phy_trim),
 		.o_cfg_rxck_trim(cfg_rxck_trim),
+		.o_cfg_cmd_trim(cfg_cmd_trim),
 		.o_cfg_width(cfg_width), .o_cfg_ds(o_cfg_ds),
 			.o_cfg_dscmd(o_cfg_dscmd), .o_cfg_ddr(o_cfg_ddr),
 		.o_pp_cmd(cfg_cmd_pp), .o_pp_data(cfg_data_pp), // Push-pull
@@ -625,6 +629,7 @@ module	sdio #(
 		//
 		.i_cfg_ds(o_cfg_dscmd), .i_cfg_dbl(cfg_ckspeed == 0),
 		.i_cfg_pp(cfg_cmd_pp),
+		.i_cfg_trim(cfg_cmd_trim),
 		.i_ckstb(clk_stb),
 		//
 		.i_cmd_request(cmd_request), .i_cmd_type(cmd_type),

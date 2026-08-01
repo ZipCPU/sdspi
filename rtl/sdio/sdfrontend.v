@@ -67,7 +67,7 @@ module	sdfrontend #(
 		parameter [0:0]	OPT_TRIM = OPT_DS && OPT_SERDES,
 		// As per the eMMC spec, BUSY_CLOCKS need be no more than 2
 		// 4 is likely overkill.
-		parameter 	BUSY_CLOCKS = 4,
+		parameter 	BUSY_CLOCKS = 6,
 		parameter	HWBIAS = (OPT_SERDES ? 2 : 0),
 		parameter	NUMIO = 8
 		// }}}
@@ -1454,7 +1454,7 @@ module	sdfrontend #(
 				if (MAD_VALID)
 					r_debug[9:0] <= { 2'b11, MAD_DATA[7:0] };
 				else
-					r_debug[9:0] <= r_debug[9:0];
+					r_debug[9:0] <= { 2'b00, r_debug[7:0] };
 			end else // if (!i_cfg_ds)
 			begin
 				r_debug[9:0] <= r_debug[9:0];

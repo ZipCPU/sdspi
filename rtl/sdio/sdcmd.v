@@ -71,6 +71,7 @@ module	sdcmd #(
 		input	wire			i_cfg_ds,	// Use ASYNC
 		input	wire			i_cfg_dbl,	// 2Bits/Clk
 		input	wire			i_cfg_pp,	// Push/Pull
+		input	wire	[3:0]		i_cfg_trim,
 		input	wire			i_ckstb,
 		//
 		input	wire			i_boot_cmd,
@@ -161,7 +162,7 @@ module	sdcmd #(
 	reg	[LGDLY-1:0]	r_dly_count;
 
 	reg		r_done;
-
+	reg	[3:0]	ac_reset_dly;
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//
@@ -363,7 +364,12 @@ module	sdcmd #(
 					|| i_boot_cmd || o_done || !r_busy)
 	begin
 		o_ac_reset_n <= 1'b0;
-	end else if (i_ckstb)
+		ac_reset_dly <= (OPT_DS && cfg_ds) ? i_cfg_trim : 4'h0;
+	end else if (!o_ac_reset_n)
+	begin
+		if (srcount > 0)
+		begin
+			if (i_ckstb)
 	begin
 		if (cfg_dbl)
 			o_ac_reset_n <= (srcount <= 2);
@@ -371,15 +377,40 @@ module	sdcmd #(
 			o_ac_reset_n <= (srcount <= 1);
 	end
 
+			if (ac_reset_dly != 0)
+				o_ac_reset_n <= 1'b0;
+		end else begin
+			ac_reset_dly <= ac_reset_dly - 1;
+			o_ac_reset_n <= (ac_reset_dly <= 1);
+		end
+	end
 `ifdef	FORMAL
 	always @(*)
 	if (!i_reset)
 	begin
+		if (active || srcount != 0)
+		begin
+			assert(!o_ac_reset_n);
+		end
+
+		if (!OPT_DS)
+		begin
+			assert(!o_ac_reset_n && ac_reset_dly == 0);
+		end
+
 		if (!cfg_ds || !OPT_DS || !waiting_on_response)
 		begin
 			assert(!o_ac_reset_n);
-		end else
-			assert(o_ac_reset_n != active);
+		end else begin
+			assert(ac_reset_dly <= i_cfg_trim);
+			assert(o_ac_reset_n == (srcount == 0 && ac_reset_dly == 0));
+		end
+	end
+
+	always @(posedge i_clk)
+	if (!i_reset && $stable(i_cfg_trim))
+	begin
+		assert(ac_reset_dly <= i_cfg_trim);
 	end
 `endif
 	// }}}
@@ -920,6 +951,7 @@ module	sdcmd #(
 	reg	[7:0]	f_last_resp_count;
 	reg	[47:0]	f_tx_reg, f_tx_now;
 	wire	[5:0]	f_txshift;
+	(* anyconst *) reg [3:0]	f_cfg_trim;
 
 
 	initial	f_past_valid = 0;
@@ -947,6 +979,8 @@ module	sdcmd #(
 	else
 		f_past_doublet <= (&i_cmd_strb);
 
+	always @(*)
+		assume(i_cfg_trim == f_cfg_trim);
 	////////////////////////////////////////////////////////////////////////
 	//
 	// Command requests

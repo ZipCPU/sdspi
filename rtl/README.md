@@ -51,13 +51,17 @@ This particular design is somewhat optimized for low area.
       been designed specifically for Xilinx components, but also supports a
       non-Xilinx simulation model.
 
+    - [XSDDELAY](xsddelay.v), contains the trim support--an option that can
+      be used to artificially delay each IO input--CMD, DS, and DAT[7:0]--by
+      an arbitrary amount to help close timing.
+
     - [XSDSERDES8X](xsdserdes8x.v), contains the setup necessary to instantiate
       both low-level 8:1 and 1:8 SERDES IO controllers.  This has also been
       designed for Xilinx components, and no non-Xilinx simulation model
       (currently) exists for this component.
 
-  - [SDIO](sdio/sdio.v) is the top level of the host controller.  It contains all
-    of the logic of this IP, save the PHY front end itself.
+  - [SDIO](sdio/sdio.v) is the top level of the host controller.  It contains
+    all of the logic of this IP, save the PHY front end itself.
 
     - [SDWB](sdio/sdwb.v) is the Wishbone command and control module.
 
@@ -69,23 +73,28 @@ This particular design is somewhat optimized for low area.
 
     - [SDCMD](sdio/sdcmd.v) controls interaction via the command pin.
 
-    - [SDRXFRAME](sdio/sdrxframe.v) transforms data returned by the IO controller 
-      into commands to write into the data FIFOs within [SDWB](sdwb.v).  Data
-      may be returned by either the asynchronous interface (if the data strobe
-      is in use) at up to 32-bits per clock cycle, or at slower rates of up
-      to 16-bits per clock cycle.
+    - [SDRXFRAME](sdio/sdrxframe.v) transforms data returned by the IO
+      controller into commands to write into the data FIFOs within
+      [SDWB](sdwb.v).  Data may be returned by either the asynchronous
+      interface (if the data strobe is in use) at up to 32-bits per clock
+      cycle, or at slower rates of up to 16-bits per clock cycle.
 
-    - [SDTXFRAME](sdio/sdtxframe.v) transforms a 32-bit AXI stream into an outgoing
-      transmit sequence.  Three data widths are supported: 1b, 4b, and 8b.
-      (SDIO tops out at 4b, whereas eMMC can use an 8b interface.)  Three
+    - [SDTXFRAME](sdio/sdtxframe.v) transforms a 32-bit AXI stream into an
+      outgoing transmit sequence.  Three data widths are supported: 1b, 4b, and
+      8b.  (SDIO tops out at 4b, whereas eMMC can use an 8b interface.)  Three
       clock types are supported: 1) one data word per clock, for supporting
       100MHz/SDR or 50MHz/DDR clock frequencies and below, 2) two data words
       per clock, for supporting 200MHz/SDR or 100MHz/DDR, and 3) four data
       words per clock, for 200MHz DDR.
 
-    - [SDDMA](sdio/sddma.v) is top level of the DMA memory handling module.  It depends heavily on the command/control interface to activate.  This module primarily converts memory to an AXI stream to be fed to the command/control module, and again AXI stream to memory.  An option exists for skipping memory and writing directly from an AXI stream, or likewise reading directly from one.
+    - [SDDMA](sdio/sddma.v) is top level of the DMA memory handling module.  It
+      depends heavily on the command/control interface to activate.  This
+      module primarily converts memory to an AXI stream to be fed to the
+      command/control module, and again AXI stream to memory.  An option
+      exists for skipping memory and writing directly from an AXI stream, or
+      likewise reading directly from one.
 
-      - [SDDMA_MM2S](sddma_mm2s.v) reads data from memory, to feed the gearboxes and then write to the SD card.  This forms the beginning of the S2SD (write) path.
+      - [SDDMA_MM2S](sddma_mm2s.v) reads data from memory, to feed the gearboxes and then write to the SD card.  This forms the beginning of the S2SD (write) path.  An AXI version exists in [SDAX_MM2S](sdio/sdax_mm2s.v).
 
       - [SDDMA_RXGEARS](sddma_rxgears.v) massages incoming data to the size of a full bus word, in preparation for (bus-word sized) the FIFO.
 
@@ -93,7 +102,7 @@ This particular design is somewhat optimized for low area.
 
       - [SDDMA_TXGEARS](sddma_txgears.v) takes data from the FIFO and massages it to either the size of a full bus word for writing to memory, or to 32b for writing to the SD controller.
 
-      - [SDDMA_S2MM](sddma_s2mm.v) writes data from SD card, having gone through the gearboxes, finally to memory.  This forms the conclusion of the SD2S (read) path.
+      - [SDDMA_S2MM](sddma_s2mm.v) writes data from SD card, having gone through the gearboxes, finally to memory.  This forms the conclusion of the SD2S (read) path.  An AXI version of this DMA exists in [SDAX_S2MM](sdio/sdax_s2mm.v).
 
 
 The [SDIO controller](sdio/sdio_top.v) has been optimized for speed, rather than
@@ -106,9 +115,9 @@ adjust this optimization for lowpower at the (potential) expense of area.
 
 The SDIO slave remans a work in progress at this time.  Components include:
 
-- (SDSLAVE-TOP)--not yet written.  Once built, this will have two submodules,
-  the [SDSLAVE](sdslave/sdslave.v) logic module, and a device-dependent
-  physical IO module.
+- [SDSLAVE_TOP](sdslave/sdslave_top.v) - Top level modulue, having two
+  two submodules, the [SDSLAVE](sdslave/sdslave.v) logic module, and a
+  device-dependent physical IO module, [SDSFRONTENT](sdslave/sdsfrontend.v).
 
 - [SDSLAVE](sdslave/sdslave.v) - Top device level module for the slave IP.
   This primarily consists of instantiations of the various components below.
@@ -138,13 +147,16 @@ The SDIO slave remans a work in progress at this time.  Components include:
     2) Returns ACK/NAK tokens following a received frame.  3) Activates the
     "busy" line (i.e. lowers D[0]) while operations are ongoing.
 
-  - [SDSDMA](sdslave/sdsdma.v) - The DMA wrapper.  This is (primarily) a high level module containing several sub-components beneath it.
+  - [SDSDMA](sdslave/sdsdma.v) - The DMA wrapper.  This is (primarily) a high
+    level module containing several sub-components beneath it.  These
+    subcomponents are identical to the similar ones for the [SDIO DMA](sddma.v).
+    As such, AXI components exist.
 
     - [SDTFRVALUE](sdslave/sdtfrvalue.v) - Used to move a single word of data from one clock domain to another.  Specifically, used to move the DMA control signals to and from the SD clock domain and the system clock domain.
     - [SDDMA_RXGEARS](sddma_rxgears.v) massages incoming data to the size of a full bus word, in preparation for (bus-word sized) the FIFO.
     - [SDDMA_TXGEARS](sddma_txgears.v) massages incoming data from the size of a bus word back down to the 32b size used by the transmit frame component.
-    - [SDDMA_MM2S](sddma_mm2s.v) reads data from memory, to feed the gearboxes and then return data via the SDIO channel to the host.  This forms the beginning of the DEV2HOST return path.
-    - [SDDMA_S2MM](sddma_s2mm.v) takes data from the SDIO interface (via the RX Gears, asynchronous FIFO, and then the synchronous FIFO) and writes it to the bus.  This forms the end of the HOST2DEV data path.
+    - [SDDMA_MM2S](sddma_mm2s.v) reads data from memory, to feed the gearboxes and then return data via the SDIO channel to the host.  This forms the beginning of the DEV2HOST return path.  [SDAX_MM2S](sdio/sdax_mm2s.v) contains the AXI version of this DMA.
+    - [SDDMA_S2MM](sddma_s2mm.v) takes data from the SDIO interface (via the RX Gears, asynchronous FIFO, and then the synchronous FIFO) and writes it to the bus.  This forms the end of the HOST2DEV data path.  [SDAX_S2MM](sdio/sdax_s2mm.v) contains the AXI version of this (otherwise Wishbone) DMA component.
     - [AFIFO](afifo.v), an asynchronous FIFO, for moving data between the SD clock domain and the system (bus) clock domain.  All asynchronous FIFO operations are on full bus-word sized data words.
     - [SDFIFO](sdfifo.v), a basic synchronous data FIFO.  This is required by the Wishbone MM2S component, and it guarantees that no data will be requested of the bus unless there's a place to put it.  When used by the S2MM DMA, it helps to guarantee that no bus operation takes place unless there's sufficient data to warrant a transfer.
 
@@ -153,7 +165,7 @@ The SDIO slave remans a work in progress at this time.  Components include:
 A [perl script](usage.pl) is also available to measure the logic usage of these
 two IP components via Yosys.  Measurement results are kept [here](usage.txt).
 As of this writing, the [SDSPI](spi/sdspi.v) controller requires only 545 Xilinx
-6-LUTs, whereas the [SDIO](sdio/sdio.v) controller requires 1427 Xilinx 6-LUTs
-without the DMA, and 2852 6-LUTs with the DMA.  The [SDSLAVE](sdslave/sdslave.v)
-has no non-DMA option, and requires 1342 6-LUTs.
+6-LUTs, whereas the [SDIO](sdio/sdio.v) controller requires 1506 Xilinx 6-LUTs
+without the DMA, and 2949 6-LUTs with the DMA.  The [SDSLAVE](sdslave/sdslave.v)
+has no non-DMA option, and requires 1383 6-LUTs when using Wishbone.
 

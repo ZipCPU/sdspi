@@ -1,5 +1,5 @@
-           iCE40  X7-s   RAW
-Controller  4LUT  6LUT  NANDs
+              iCE40  X7-s   RAW
+Controller     4LUT  6LUT   NANDs
 -----------------------------------
 SDIO(AXIL):    3052  1563  730114
 SDIO(WB):      3032  1502  729558
@@ -13,3 +13,4 @@ EMAXI w/DMA:   7762  4420  996640
 EMAXI w/BOOT:  7906  4408 1017649
 SDSPI:          995   545   12616
 SDSLAVE(WB):   2362  1383   74947
+SDSLAVE(AXI):  3357  1793   94325

@@ -178,6 +178,13 @@ $header = "              iCE40  X7-s    RAW\n"
 		calcusage($asicsynth,  "sdslave", "wb", "",$asicpost));
 	$result = $result . $line;
 	print USAGE $line;
+
+	$line = sprintf("SDSLAVE(AXI): %5d %5d %7d\n",
+		calcusage($ice40synth, "sdslave", "axil", "",""),
+		calcusage($xilinxsynth,"sdslave", "axil", "",""),
+		calcusage($asicsynth,  "sdslave", "axil", "",$asicpost));
+	$result = $result . $line;
+	print USAGE $line;
 	close(USAGE);
 
 	$result
@@ -188,8 +195,8 @@ $result = "";
 $result = topusage();
 
 ## Add a header
-$result = "           iCE40  X7-s   RAW\n"
-	. "Controller  4LUT  6LUT  NANDs\n"
+$result = "              iCE40  X7-s   RAW\n"
+	. "Controller     4LUT  6LUT   NANDs\n"
 	. "-----------------------------------\n" . $result;
 print $result;
 

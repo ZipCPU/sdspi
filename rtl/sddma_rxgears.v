@@ -570,6 +570,7 @@ module	sddma_rxgears #(
 		cvr_32b <= cvr_32b+1;
 
 
+`ifdef	RXGEARS
 	always @(*)
 	begin
 		cover(cvr_8b  > 8 && M_VALID && M_LAST);
@@ -579,7 +580,7 @@ module	sddma_rxgears #(
 		cover(f_sent >= 32 && M_VALID && M_LAST);
 		cover(f_sent >= 64 && M_VALID && M_LAST);
 	end
-
+`endif
 	// }}}
 	////////////////////////////////////////////////////////////////////////
 	//

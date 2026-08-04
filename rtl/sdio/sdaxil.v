@@ -1808,6 +1808,19 @@ module	sdaxil #(
 
 	// }}}
 
+	initial	o_cfg_cmd_trim = 4'h0;
+	always @(posedge i_clk)
+	if (i_reset || !OPT_DS)
+		o_cfg_cmd_trim <= 4'h0;
+	else if (bus_write && bus_wraddr == ADDR_RXTRIM)
+	begin
+		if (bus_wstrb[1])
+			o_cfg_cmd_trim <= bus_wdata[15:12];
+	end
+	// }}}
+
+	// }}}
+
 	assign	o_crc_en = 1'b1;
 	// }}}
 	////////////////////////////////////////////////////////////////////////

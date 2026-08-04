@@ -235,6 +235,7 @@ module	sdax_s2mm #(
 	wire				w_complete, w_overflow;
 	//
 	// FIFO stage
+	integer		ik;
 	reg				last_rcvd;
 	reg	[AXILSB:0]		beat_bytes;
 	reg	[LGMAX_FIFO_BYTES-1:0]	bytes_not_written;
@@ -414,7 +415,14 @@ module	sdax_s2mm #(
 	// beat_bytes, bytes_not_written
 	// {{{
 	always @(*)
-		beat_bytes = $countones(M_WSTRB);
+	begin
+		beat_bytes = 0;
+		for(ik=0; ik < DW/8; ik=ik+1)
+		if (M_WSTRB[ik])
+			beat_bytes = beat_bytes + 1;
+
+		// beat_bytes = $countones(M_WSTRB);
+	end
 
 	always @(posedge i_clk)
 	if (i_reset || i_soft_reset || !r_busy)

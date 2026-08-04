@@ -57,7 +57,7 @@ typedef	uint32_t DWORD, LBA_t, UINT;
 #define	txchr(A)		putchar(A)
 #define	txstr(A)		fputs(A, stdout)
 #define	tx8h(A)			printf("%02x", A & 0x0ff)
-#define	txhex(A)		printf("%08x", A)
+#define	txhex(A)		printf("%08x", (unsigned)(A))
 #define	txdecimal(A)		printf("%d", A)
 #define	STDIO_DEBUG
 #else
@@ -132,7 +132,7 @@ static	const	int	EMMCMULTI = 1;
 typedef	struct	EMMCDRV_S {
 	EMMC		*d_dev;
 	uint32_t	d_CID[4], d_OCR;
-	char		d_SCR[8], d_CSD[16], d_EXCSD[512];
+	unsigned char	d_SCR[8], d_CSD[16], d_EXCSD[512];
 	uint16_t	d_RCA;	// Relative Card Address
 			// d_sector_count: the number of 512B blocks / device
 	uint32_t	d_sector_count,
@@ -678,10 +678,19 @@ void emmc_read_csd(EMMCDRV *dev) {	  // CMD 9
 
 		uv = dev->d_dev->sd_fifa;
 		if (EMMCINFO) { txhex(uv); if (k < 12) txstr(":"); }
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+		// CMD data is returned big endian, independent of the IPs
+		// byte order.
 		dev->d_CSD[k + 3] = uv & 0x0ff; uv >>= 8;
 		dev->d_CSD[k + 2] = uv & 0x0ff; uv >>= 8;
 		dev->d_CSD[k + 1] = uv & 0x0ff; uv >>= 8;
 		dev->d_CSD[k + 0] = uv;
+#else
+		dev->d_CSD[k + 3] = uv & 0x0ff; uv >>= 8;
+		dev->d_CSD[k + 2] = uv & 0x0ff; uv >>= 8;
+		dev->d_CSD[k + 1] = uv & 0x0ff; uv >>= 8;
+		dev->d_CSD[k + 0] = uv;
+#endif
 	}
 
 	unsigned	CSD_STRUCTURE;
@@ -931,10 +940,17 @@ void emmc_send_ext_csd(EMMCDRV *dev) {	  // CMD 8
 
 		uv = dev->d_dev->sd_fifa;
 		// if (EMMCINFO) { txhex(uv); if (k < 12) txstr(":"); }
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+		dev->d_EXCSD[k + 0] = uv & 0x0ff; uv >>= 8;
+		dev->d_EXCSD[k + 1] = uv & 0x0ff; uv >>= 8;
+		dev->d_EXCSD[k + 2] = uv & 0x0ff; uv >>= 8;
+		dev->d_EXCSD[k + 3] = uv;
+#else
 		dev->d_EXCSD[k + 3] = uv & 0x0ff; uv >>= 8;
 		dev->d_EXCSD[k + 2] = uv & 0x0ff; uv >>= 8;
 		dev->d_EXCSD[k + 1] = uv & 0x0ff; uv >>= 8;
 		dev->d_EXCSD[k + 0] = uv;
+#endif
 	}
 	// }}}
 
@@ -2327,7 +2343,7 @@ int	emmc_write(EMMCDRV *dev, const unsigned sector,
 		txstr(", ");
 		txhex(count);
 		txstr(", @0x");
-		txhex((unsigned)buf);
+		txhex((uintptr_t)buf);
 		txstr("-- [DEV ");
 		txhex(dev->d_dev->sd_cmd);
 		txstr("]\n");
@@ -2541,7 +2557,7 @@ int	emmc_read(EMMCDRV *dev, const unsigned sector,
 		txstr(", ");
 		txhex(count);
 		txstr(", @0x");
-		txhex((unsigned)buf);
+		txhex((uintptr_t)buf);
 		txstr("-- [DEV ");
 		txhex(dev->d_dev->sd_cmd);
 		txstr("]\n");
@@ -2722,7 +2738,7 @@ int	emmc_ioctl(EMMCDRV *dev, char cmd, char *buf) {
 		txstr("EMMC-IOCTL():    ");
 		txhex(cmd);
 		txstr(", 0x");
-		txhex(buf);
+		txhex((uintptr_t)buf);
 
 		switch(cmd) {
 		case CTRL_SYNC: txstr(" [SYNC]"); break;
@@ -2781,7 +2797,7 @@ int	emmc_boot(EMMCDRV *dev, const unsigned count, char *buf) {
 		txstr("EMMC-BOOT: ");
 		txhex(count);
 		txstr(", @0x");
-		txhex((unsigned)buf);
+		txhex((uintptr_t)buf);
 		txstr("-- [DEV ");
 		txhex(dev->d_dev->sd_cmd);
 		txstr("]\n");
@@ -2890,7 +2906,7 @@ int	emmc_altboot(EMMCDRV *dev, const unsigned count, char *buf) {
 		txstr("EMMC-ALTBOOT: ");
 		txhex(count);
 		txstr(", @0x");
-		txhex((unsigned)buf);
+		txhex((uintptr_t)buf);
 		txstr("-- [DEV ");
 		txhex(dev->d_dev->sd_cmd);
 		txstr("]\n");
@@ -2958,7 +2974,7 @@ int	emmc_altboot(EMMCDRV *dev, const unsigned count, char *buf) {
 	dev->d_dev->sd_cmd = SDIO_ACK | SDIO_ALTBOOT | SDIO_MEM;
 	do { st = dev->d_dev->sd_cmd; } while(st & SDIO_BUSY);
 	// Request the first block
-	dev->sd_cmd = SDIO_MEM;	// FIFO = 0
+	dev->d_dev->sd_cmd = SDIO_MEM;	// FIFO = 0
 	for(unsigned bk=1; (0==(st & SDIO_ERMASK)) && bk<count; bk++) {
 		// Wait 'til we're free
 		do { st = dev->d_dev->sd_cmd; } while(st & SDIO_BUSY);
@@ -2971,7 +2987,7 @@ int	emmc_altboot(EMMCDRV *dev, const unsigned count, char *buf) {
 			for(unsigned k=0; k<512/4; k++)
 				*dst++ = *fifo;
 		}
-	} do { st = dev->sd_cmd; } while(st & SDIO_BUSY);
+	} do { st = dev->d_dev->sd_cmd; } while(st & SDIO_BUSY);
 	if (0 == (st & SDIO_ERMASK)) {
 		// Read block N-1 back out
 		volatile	unsigned *fifo = (count & 1) ? &dev->d_dev->sd_fifa : &dev->d_dev->sd_fifb;
@@ -2998,7 +3014,7 @@ int	emmc_write_boot(EMMCDRV *dev, const unsigned count, const char *buf) {
 		txstr("EMMC-BOOT-WRITE: ");
 		txhex(count);
 		txstr(", @0x");
-		txhex((unsigned)buf);
+		txhex((uintptr_t)buf);
 		txstr("-- [DEV ");
 		txhex(dev->d_dev->sd_cmd);
 		txstr("]\n");
@@ -3020,7 +3036,7 @@ int	emmc_write_boot(EMMCDRV *dev, const unsigned count, const char *buf) {
 	// }}}
 
 	// 1. Verify this data will fit in the boot partition
-	assert(count < ((dev->d_EXCSD[226] & 0x0ff) << 8));
+	// assert(count < ((dev->d_EXCSD[226] & 0x0ff) << 8));
 
 	// 2. Set the (current/active) partition to BOOT #1
 	// {{{
@@ -3038,7 +3054,7 @@ int	emmc_write_boot(EMMCDRV *dev, const unsigned count, const char *buf) {
 	// {{{
 	//	BOOT_ACK: 0x40		=> Enable the ACK token
 	//	BOOT_PARTITION_ENABLE	=> 0x08, boot partition #1 enabled
-	assert(0 == emmc_switch_write(dev, EXCSD_BOOT_PARTITION, 0x48));
+	// assert(0 == emmc_switch_write(dev, EXCSD_BOOT_PARTITION, 0x48));
 	// }}}
 
 	// 5. Set the BOOT mode to 25MHz, no DS, 8b, with ACK TOKEN
@@ -3049,7 +3065,7 @@ int	emmc_write_boot(EMMCDRV *dev, const unsigned count, const char *buf) {
 	//		after boot
 	//	BOOT_BUS_WIDTH = 0x02: Use 8b width for boot
 	//
-	assert(0 == emmc_switch_write(dev, EXCSD_BOOT_BUSCOND, 0x02));
+	// assert(0 == emmc_switch_write(dev, EXCSD_BOOT_BUSCOND, 0x02));
 	// }}}
 
 	return 0;

@@ -1717,8 +1717,8 @@ module	sdwb #(
 	end
 	// }}}
 
-	// }}}
-
+	// o_cfg_cmd_trim
+	// {{{
 	initial	o_cfg_cmd_trim = 4'h0;
 	always @(posedge i_clk)
 	if (i_reset || !OPT_DS)

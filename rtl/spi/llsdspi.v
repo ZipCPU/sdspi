@@ -207,7 +207,7 @@ module	llsdspi #(
 	generate if (STARTUP_CLOCKS > 0)
 	begin : WAIT_FOR_STARTUP
 		// {{{
-		localparam	STARTUP_BITS = $clog2(STARTUP_CLOCKS);
+		localparam	STARTUP_BITS = $clog2(STARTUP_CLOCKS+1);
 		reg	[STARTUP_BITS-1:0]	startup_counter;
 		reg				r_startup_hold;
 

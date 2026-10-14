@@ -45,6 +45,9 @@ tb_sdckgen: $(RTL)/sdio/sdckgen.v tb_sdckgen.v
 tb_txframe: $(RTL)/sdio/sdckgen.v $(RTL)/sdio/sdtxframe.v tb_txframe.v
 	iverilog -g2012 $^ -o $@
 
+tb_llsdspi: $(RTL)/spi/llsdspi.v tb_llsdspi.v
+	iverilog -g2012 -s tb_llsdspi $^ -o $@
+
 obj_dir/Vtb_cpu.h:
 	verilator -Wall -Wno-TIMESCALEMOD -y $(RTL) -y . -y $(CPU)/rtl -y $(CPU)/rtl/core -y $(CPU)/rtl/peripherals -y $(CPU)/rtl/zipdma -y $(CPU)/rtl/ex -y $(CPU)/sim/rtl -cc tb_cpu.v
 
@@ -56,8 +59,12 @@ test_ckgen: tb_sdckgen
 test_txframe: tb_txframe
 	./tb_txframe
 
+.PHONY: test_llsdspi
+test_llsdspi: tb_llsdspi
+	./tb_llsdspi
+
 .PHONY: test
-test: test_txframe test_ckgen
+test: test_txframe test_ckgen test_llsdspi
 	perl sim_run.pl all
 	perl gen_report.pl
 

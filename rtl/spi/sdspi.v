@@ -560,7 +560,7 @@ module	sdspi #(
 		if (cmd_valid)
 			r_cmd_err <= r_cmd_err || (cmd_response[38:33] != 0);
 		if (rx_valid)
-			r_cmd_err <= r_cmd_err || rx_response[3];
+			r_cmd_err <= r_cmd_err || (rx_response != 0);
 	end else if (wb_cmd_stb)
 		r_cmd_err <= (r_cmd_err)&&(!wb_data[ERR_BIT]);
 	// }}}

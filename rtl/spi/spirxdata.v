@@ -63,7 +63,7 @@ module spirxdata #(
 		output	reg [DW-1:0]	o_data,
 		//
 		output	reg 		o_rxvalid,
-		output	reg [7:0]	o_response
+		output	reg [8:0]	o_response
 		// }}}
 	);
 
@@ -154,6 +154,8 @@ module spirxdata #(
 		o_rxvalid <= 0;
 	else if (error_token || done)
 		o_rxvalid <= 1;
+	else
+		o_rxvalid <= 0;
 	// }}}
 
 	// o_response
@@ -163,9 +165,9 @@ module spirxdata #(
 	if (i_reset || !o_busy)
 		o_response <= 0;
 	else if (error_token)
-		o_response <= i_ll_byte;
+		o_response <= { 1'b1, i_ll_byte };
 	else if (done)
-		o_response <= (crc_err || (crc_data[7:0] != i_ll_byte)) ? 8'h10 : 0;
+		o_response <= (crc_err || (crc_data[7:0] != i_ll_byte)) ? 9'h110 : 0;
 	// }}}
 
 	// o_write

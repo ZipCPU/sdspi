@@ -201,14 +201,14 @@ module	sdspi #(
 	reg		rx_start;
 	wire		spi_write_to_fifo;
 	wire		rx_valid, rx_busy;
-	wire	[7:0]	rx_response;
+	wire	[8:0]	rx_response;
 
 	reg		tx_start;
 	wire		spi_read_from_fifo;
 	wire		tx_stb;
 	wire	[7:0]	tx_byte;
 	wire		tx_valid, tx_busy;
-	wire	[7:0]	tx_response;
+	wire	[8:0]	tx_response;
 
 	reg	last_busy;
 
@@ -559,8 +559,10 @@ module	sdspi #(
 		// However, we can check read response tokens for errors
 		if (cmd_valid)
 			r_cmd_err <= r_cmd_err || (cmd_response[38:33] != 0);
+		if (tx_valid)
+			r_cmd_err <= r_cmd_err || tx_response[8];
 		if (rx_valid)
-			r_cmd_err <= r_cmd_err || rx_response[3];
+			r_cmd_err <= r_cmd_err || rx_response[8];
 	end else if (wb_cmd_stb)
 		r_cmd_err <= (r_cmd_err)&&(!wb_data[ERR_BIT]);
 	// }}}

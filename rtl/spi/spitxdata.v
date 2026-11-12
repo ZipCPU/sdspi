@@ -65,7 +65,7 @@ module spitxdata #(
 		input	wire [7:0]	i_ll_byte,
 		//
 		output	reg 		o_rxvalid,
-		output	reg [7:0]	o_response
+		output	reg [8:0]	o_response
 		// }}}
 	);
 
@@ -134,7 +134,7 @@ module spitxdata #(
 	// {{{
 	always @(posedge i_clk)
 	if (token)
-		o_response <= i_ll_byte;
+		o_response <= { (i_ll_byte[3:1] != 3'b010), i_ll_byte };
 	// }}}
 
 	// o_read & o_addr

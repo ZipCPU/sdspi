@@ -201,14 +201,14 @@ module	sdspi #(
 	reg		rx_start;
 	wire		spi_write_to_fifo;
 	wire		rx_valid, rx_busy;
-	wire	[7:0]	rx_response;
+	wire	[8:0]	rx_response;
 
 	reg		tx_start;
 	wire		spi_read_from_fifo;
 	wire		tx_stb;
 	wire	[7:0]	tx_byte;
 	wire		tx_valid, tx_busy;
-	wire	[7:0]	tx_response;
+	wire	[8:0]	tx_response;
 
 	reg	last_busy;
 
@@ -559,8 +559,10 @@ module	sdspi #(
 		// However, we can check read response tokens for errors
 		if (cmd_valid)
 			r_cmd_err <= r_cmd_err || (cmd_response[38:33] != 0);
+		if (tx_valid)
+			r_cmd_err <= r_cmd_err || tx_response[8];
 		if (rx_valid)
-			r_cmd_err <= r_cmd_err || rx_response[3];
+			r_cmd_err <= r_cmd_err || rx_response[8];
 	end else if (wb_cmd_stb)
 		r_cmd_err <= (r_cmd_err)&&(!wb_data[ERR_BIT]);
 	// }}}
@@ -1614,7 +1616,7 @@ module spitxdata #(
 		input	wire [7:0]	i_ll_byte,
 		//
 		output	reg 		o_rxvalid,
-		output	reg [7:0]	o_response
+		output	reg [8:0]	o_response
 		// }}}
 	);
 
@@ -1683,7 +1685,7 @@ module spitxdata #(
 	// {{{
 	always @(posedge i_clk)
 	if (token)
-		o_response <= i_ll_byte;
+		o_response <= { (i_ll_byte[3:1] != 3'b010), i_ll_byte };
 	// }}}
 
 	// o_read & o_addr
@@ -2342,7 +2344,7 @@ module spirxdata #(
 		output	reg [DW-1:0]	o_data,
 		//
 		output	reg 		o_rxvalid,
-		output	reg [7:0]	o_response
+		output	reg [8:0]	o_response
 		// }}}
 	);
 
@@ -2433,6 +2435,8 @@ module spirxdata #(
 		o_rxvalid <= 0;
 	else if (error_token || done)
 		o_rxvalid <= 1;
+	else
+		o_rxvalid <= 0;
 	// }}}
 
 	// o_response
@@ -2442,9 +2446,9 @@ module spirxdata #(
 	if (i_reset || !o_busy)
 		o_response <= 0;
 	else if (error_token)
-		o_response <= i_ll_byte;
+		o_response <= { 1'b1, i_ll_byte };
 	else if (done)
-		o_response <= (crc_err || (crc_data[7:0] != i_ll_byte)) ? 8'h10 : 0;
+		o_response <= (crc_err || (crc_data[7:0] != i_ll_byte)) ? 9'h110 : 0;
 	// }}}
 
 	// o_write
@@ -3143,7 +3147,7 @@ module	llsdspi #(
 	generate if (POWERUP_IDLE > 0)
 	begin : WAIT_FOR_POWERUP
 		// {{{
-		localparam	POWERUP_BITS = $clog2(POWERUP_IDLE);
+		localparam	POWERUP_BITS = $clog2(POWERUP_IDLE+1);
 		reg	[POWERUP_BITS-1:0]	powerup_counter;
 		reg				r_powerup_hold;
 
@@ -3182,7 +3186,7 @@ module	llsdspi #(
 	generate if (STARTUP_CLOCKS > 0)
 	begin : WAIT_FOR_STARTUP
 		// {{{
-		localparam	STARTUP_BITS = $clog2(STARTUP_CLOCKS);
+		localparam	STARTUP_BITS = $clog2(STARTUP_CLOCKS+1);
 		reg	[STARTUP_BITS-1:0]	startup_counter;
 		reg				r_startup_hold;
 

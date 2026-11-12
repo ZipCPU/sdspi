@@ -585,11 +585,11 @@ module	sdrxframe #(
 		begin
 			// Stop the clock TRIM strobes before completion
 			o_ckactive <= (rail_count > (i_rx_strb[0] ? 1:0)
-				+ (i_rx_strb[1] ? 1:0) + { 9'h0, i_cfg_trim });
+				+ (i_rx_strb[1] ? 1:0) + { 14'h0, i_cfg_trim });
 		end
 	end else if (S_ASYNC_VALID)
 		// Stop the clock TRIM clocks before we are finished
-		o_ckactive <= (rail_count > 4 + { 7'h0, i_cfg_trim, 2'h0 });
+		o_ckactive <= (rail_count > 4 + { 13'h0, i_cfg_trim, 2'h0 });
 `ifdef	FORMAL
 	(* anyconst *) reg	fln_long;
 	always @(*)

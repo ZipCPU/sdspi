@@ -42,7 +42,7 @@ VERILATOR:= verilator
 # VOB := $(HOME)/src/verilog/vopro	## Verilog scrambler
 VOB := cat
 VOBJ:= obj_dir
-VFLAGS := -MMD -Wall -trace -cc
+VFLAGS := --quiet -MMD -Wall -trace -cc
 SUBMAKE:= $(MAKE) --no-print-directory -C
 SDSPI_FILES := spi/sdspi.v spi/spicmd.v spi/spitxdata.v spi/spirxdata.v spi/llsdspi.v
 SDDMA_FILES := sddma_mm2s.v sddma_rxgears.v sddma_txgears.v sddma_s2mm.v sdio/sddma.v sdfifo.v sdskid.v
@@ -60,7 +60,7 @@ $(VOBJ)/Vsdspi.h: spi/sdspi.v spi/llsdspi.v
 $(VOBJ)/Vsdio.h: $(SDIO_FILES)
 	$(VERILATOR) -y sdio $(VFLAGS) sdio.v
 $(VOBJ)/Vsdaxil.h: $(SDAXI_FILES)
-	$(VERILATOR) -DSDIO_AXI --prefix Vsdaxi $(VFLAGS) sdio.v
+	$(VERILATOR) -DSDIO_AXI -y sdio --prefix Vsdaxi $(VFLAGS) sdio.v
 ## }}}
 
 $(VOBJ)/Vsdspi__ALL.so: $(VOBJ)/Vsdspi.h

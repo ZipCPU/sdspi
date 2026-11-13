@@ -60,7 +60,7 @@ $(VOBJ)/Vsdspi.h: spi/sdspi.v spi/llsdspi.v
 $(VOBJ)/Vsdio.h: $(SDIO_FILES)
 	$(VERILATOR) -y sdio $(VFLAGS) sdio.v
 $(VOBJ)/Vsdaxil.h: $(SDAXI_FILES)
-	$(VERILATOR) -DSDIO_AXI -y sdio --prefix Vsdaxi $(VFLAGS) sdio.v
+	$(VERILATOR) -DSDIO_AXI -y sdio --prefix Vsdaxil $(VFLAGS) sdio.v
 ## }}}
 
 $(VOBJ)/Vsdspi__ALL.so: $(VOBJ)/Vsdspi.h

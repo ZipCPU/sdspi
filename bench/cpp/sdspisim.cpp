@@ -317,8 +317,10 @@ int	SDSPISIM::operator()(const int csn, const int sck, const int mosi) {
 						}
 					} else {
 						m_dat_out = 0x0b;
-						printf("SDSPISIM: RXCRC Err!  %04x != %04x\n", rxcrc, crc);
-						assert(rxcrc == crc);
+						if (!m_gen_blkcrc_err) {
+							printf("SDSPISIM: RXCRC Err!  %04x != %04x\n", rxcrc, crc);
+							assert(rxcrc == crc);
+						}
 					}
 				}
 				// }}}
@@ -666,7 +668,7 @@ unsigned SDSPISIM::blockcrc(int len, char *buf) const {
 
 	fill &= 0x0ffff;
 	if (dbg) { printf("BLOCKCRC(%d,...) = %04x\n", len, fill); }
-	return fill;
+	return fill ^ (m_gen_blkcrc_err ? 1:0);
 }
 // }}}
 

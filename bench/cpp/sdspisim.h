@@ -64,7 +64,7 @@ class	SDSPISIM {
 	int		m_last_sck, m_delay, m_mosi;
 	bool		m_busy, m_debug, m_block_address, m_altcmd_flag,
 			m_syncd, m_host_supports_high_capacity, m_reading_data,
-			m_have_token;
+			m_have_token, m_gen_blkcrc_err;
 
 	RESET_STATES	m_reset_state;
 
@@ -89,6 +89,10 @@ public:
 	bool	check_cmdcrc(char *buf) const;
 	unsigned blockcrc(int ln, char *buf) const;
 	void	add_block_crc(int ln, char *buf) const;
+	bool	gen_blkcrc_err(bool nw) {
+		m_gen_blkcrc_err = nw;
+		return m_gen_blkcrc_err;
+	}
 
 	unsigned	OCR(void);
 	uint8_t	CSD(int index);

@@ -86,7 +86,7 @@ public:
 	SDSPI_TB(const char *sdcard_image) {
 		// {{{
 		if (0 != access(sdcard_image, R_OK)) {
-			fprintf(stderr, "Cannoot open %s for reading\n", sdcard_image);
+			fprintf(stderr, "Cannot open %s for reading\n", sdcard_image);
 			exit(EXIT_FAILURE);
 		} if (0 != access(sdcard_image, W_OK)) {
 			fprintf(stderr, "Cannot open %s for writing\n", sdcard_image);
@@ -262,13 +262,18 @@ fprintf(stderr, "LGLEN = %d, LN = %d\n", lglen, ln);
 		// }}}
 	}
 
+	bool brokencrc(bool nw) {
+		// {{{
+		return m_sdspi->gen_blkcrc_err(nw);
+	}
+	// }}}
 };
 
 int	main(int argc, char **argv) {
 	const char	SDIMAGE_FILENAME[] = "sdcard.img";
 	const char	VCD_FILENAME[] = "trace.vcd";
 	SDSPI_TB	tb(SDIMAGE_FILENAME);
-	unsigned	v;
+	unsigned	v, rsp;
 
 	unsigned	boot_sector[128], test_sector[128], buf[128];
 
@@ -361,6 +366,23 @@ fprintf(stderr, "TST[%d] = 0x%08x\n", k, test_sector[k]);
 	// Check that it was properly stored
 	for(unsigned k=0; k<128; k++)
 		assert(buf[k] == boot_sector[k]);
+
+	// Send a (broken) write
+	tb.brokencrc(true);
+	rsp = tb.read(SDSPI_READ_SECTOR | SDSPI_FIFO_ID, 256, 512, buf);
+	assert(rsp & SDSPI_ERROR);
+
+	tb.brokencrc(false);
+	rsp = tb.read(SDSPI_READ_SECTOR | SDSPI_FIFO_ID, 256, 512, buf);
+	assert(0 == (rsp & SDSPI_ERROR));
+
+	tb.brokencrc(true);
+	rsp = tb.write(SDSPI_WRITE_SECTOR, 256, 512, buf);
+	assert(rsp & SDSPI_ERROR);
+
+	tb.brokencrc(false);
+	rsp = tb.write(SDSPI_WRITE_SECTOR, 256, 512, buf);
+	assert(0 == (rsp & SDSPI_ERROR));
 
 	printf("SUCCESS!\n");
 }
